@@ -1,0 +1,241 @@
+# OpenCity: Architecture
+
+Status: **draft, awaiting approval**. No code exists yet.
+Working titles: project `OpenCity`, fictional city `Marevia`. Both are placeholders.
+
+Labels used below:
+
+- **Verified**: checked on this machine or in Epic's docs on 2026-11-07.
+- **Target**: a number we aim for.
+- **Check in Mx**: unknown until tested in that milestone.
+
+## 1. Fixed decisions
+
+| Area | Decision |
+|---|---|
+| Engine | Unreal Engine 5.8.x prebuilt Linux binaries at `~/UnrealEngine`. Stay on 5.8 for the whole project, with no move to UE6 (due 2027) |
+| Game type | Single-player only. No replication code, no dedicated server |
+| Performance | 1080p output, 60 FPS on Medium, by upscaling. **When visuals and frame rate conflict, frame rate wins** |
+| VRAM | 5,000 MiB for the game, measured with browsers closed |
+| Setting | Present-day fictional Mediterranean-style coast: 2x2 km district with old town, hills, port and beach road |
+| Assets | CC0 sources plus original Blender work. Megascans/Fab are not part of the plan |
+| Rendering API | Vulkan SM6 only |
+
+## 2. Hardware and platform facts
+
+| Item | Value | Effect on the design |
+|---|---|---|
+| GPU | RTX 3050 6 GB Laptop, driver 610.57.04 (pinned), dGPU-only mode | Below Epic's recommended 8 GB. Everything on the desktop shares this card |
+| VRAM already in use | 1,362 MiB with browsers open | Close browsers when measuring and for long editor sessions |
+| CPU | Ryzen 5 7235HS, 4 cores / 8 threads | Likely the limit for physics, AI and streaming, so traffic is kinematic (section 7) |
+| RAM | 23 GiB plus 8 GiB zram; 16 GiB in use at idle with browsers | Below Epic's recommended 32 GB. Cap parallel compiles |
+| Disk | 214 GB free on btrfs | Engine takes about 70 GB after extraction; delete the 39 GB zip afterwards |
+| Session | Plasma 6.8 on Wayland, no X11 session installed | Run the editor through XWayland with `SDL_VIDEODRIVER=x11`. Epic calls pure Wayland unusable for the editor |
+| Vulkan extensions | `VK_KHR_shader_atomic_int64` present | Nanite and VSM requirement met (verified) |
+| OS | Arch | Not an Epic-supported dev OS (they list Ubuntu 22.04 and Rocky 8). Expect some unsupported issues |
+
+### Stability risk
+
+Hard GPU freezes during games were unresolved at last record, on every kernel and driver tried, and the freeze-capture sysctl config is not installed. The editor loads the GPU in a similar way, though natively rather than through Proton. So:
+
+- M0 has a stress gate before any feature work.
+- Autosave runs every 5 minutes, and we commit after every working step.
+- `t.MaxFPS 60` is set in editor sessions.
+- If a freeze happens, run `~/Projects/forge-os/utils/freeze-report.sh` first. A freeze in native Vulkan would also be useful evidence, because it rules out Proton.
+
+## 3. Where this design differs from the brief
+
+| Brief | Change | Why |
+|---|---|---|
+| Mass/ZoneGraph for traffic and crowds | **Pooled actors on our own lane graph first.** Mass gets a time-boxed spike in M5 and is used only if it beats the fallback | Steep for someone new to UE, and the fallback is easier to debug. Crowd sizes this CPU can run don't need Mass yet |
+| GAS for all health and damage | **GAS for the player, police and armed NPCs only.** Ambient pedestrians use a light health component behind the same `IOCDamageable` interface | An ability system component on every pooled pedestrian wastes memory and CPU |
+| Chaos Vehicles for the motorbike | **Hidden four-wheel chassis with stabilising torque and visual lean** | Standard wheeled vehicles don't balance on two wheels. Biggest risk in M2. Chaos Modular Vehicles is the alternative to evaluate |
+| M4 as one milestone | **Split into M4a (pipeline, three key materials, world state) and M4b (remaining materials, weather, final tuning)** | Too large for one step, and character and vehicle materials are better tuned against real content |
+| 4 GB limit | 5,000 MiB budget | The card has 6 GB (your decision) |
+| All plugins on at M0 | Mass, Water and CommonUI are smoke-tested at M0, then **switched off until their milestone** | Faster editor start, less memory, fewer shaders |
+| Star-based wanted display | Same 1 to 5 mechanic, shown with an **original "heat" design** | Keeps the HUD's look distinct from existing games |
+| Water plugin assumed | Spike in M3, with a custom ocean plane as fallback | Maturity and World Partition behaviour are unverified. The game only needs one coastline |
+| Substrate if stable | **Off for v1**, standard shading models | Reported production-ready since 5.7, but the car paint needs only Clear Coat, and it's a project-wide shader rebuild for little gain on this GPU. Check in M0 that it is actually off |
+
+**Not used in v1:** Mesh Terrain and Fast Geometry Streaming (both Experimental in 5.8), MegaLights (disabled to reduce shaders), MetaHuman (too heavy), hardware ray tracing.
+
+## 4. Modules
+
+```text
+OpenCity.uproject
+Source/
+  OpenCityCore/     Interfaces, gameplay tags, shared types, DataAsset base classes.
+                    Depends only on engine modules.
+  OpenCity/         All gameplay, by feature folder. Depends on OpenCityCore.
+    Player/ Vehicles/ Combat/ Population/ Wanted/ Missions/
+    World/  UI/       Audio/  Save/
+  OpenCityEditor/   Editor-only tools and validators. Never packaged.
+```
+
+Three modules keep rebuilds short without too much boilerplate. Feature folders inside `OpenCity` must not include each other's private headers. They communicate through `OpenCityCore` interfaces, subsystems and events. A feature moves to its own module only if rebuild time becomes a real problem.
+
+All C++ types use the `OC` prefix: `AOCCharacter`, `UOCWantedSubsystem`, `IOCDamageable`. Tests live in `Private/Tests/` in each module.
+
+## 5. Key classes
+
+### Interfaces (OpenCityCore)
+
+| Interface | Purpose |
+|---|---|
+| `IOCDamageable` | The only entry point for damage. Implemented by GAS actors, light NPCs, vehicles and props |
+| `IOCInteractable` | Doors, pickups, vehicle entry, mission triggers |
+| `IOCVehicleSeatProvider` | Lets a character enter a vehicle without knowing its type |
+| `IOCPoolable` | `OnAcquired` and `OnReleased` reset hooks |
+| `IOCSaveable` | Actors and subsystems that write save data |
+
+### Subsystems
+
+| Class | Scope | Owns |
+|---|---|---|
+| `UOCWorldStateSubsystem` | World | Time of day, weather state, sole writer of `MPC_World` |
+| `UOCEventSubsystem` | World | Tag-based gameplay events: crimes, deaths, objective signals |
+| `UOCPoolSubsystem` | World | Projectile, NPC, vehicle and decal pools |
+| `UOCPopulationSubsystem` | World | Spawn and despawn rings around the player, density budgets |
+| `UOCRoadGraphSubsystem` | World | Lane and intersection queries |
+| `UOCWantedSubsystem` | World | Heat level, search zones, police dispatch requests |
+| `UOCMissionSubsystem` | World | Active mission, objective state, checkpoints |
+| `UOCSaveSubsystem` | GameInstance | Save slots, versioning |
+| `UOCSettingsSubsystem` | GameInstance | Applies scalability presets and graphics options |
+
+### Actors and components
+
+- `AOCCharacter` stays small: movement and component wiring only. Behaviour lives in components: `UOCCameraAimComponent`, `UOCInteractionComponent`, `UOCVehicleOccupantComponent`, `UOCWeaponComponent`, `UOCLightHealthComponent`.
+- `AOCPlayerController` owns input context switching. It possesses the character or the vehicle, and the character is attached and hidden while driving.
+- `AOCVehicle` derives from `AWheeledVehiclePawn` and adds `UOCVehicleDamageComponent`, `UOCVehicleCameraComponent` and `UOCRadioComponent`.
+- `AOCTrafficVehicle` is a separate cheap kinematic actor. It swaps to a pooled physics `AOCVehicle` on impact or when the player takes it.
+
+### Data assets
+
+`UOCWeaponData`, `UOCVehicleData`, `UOCNPCArchetype`, `UOCMissionData` (with instanced `UOCObjective` objects), `UOCRadioStationData` and `UOCWeatherPreset`. All derive from `UPrimaryDataAsset` and load through the Asset Manager. Balance values live in DataTables and data assets, never in C++.
+
+## 6. How systems communicate
+
+Rules:
+
+1. Direct calls go downward only, from gameplay code to a subsystem or an interface.
+2. Sideways messages use subsystem delegates or `UOCEventSubsystem`.
+3. No feature `Cast<>`s to another feature's concrete class.
+4. Blueprint subclasses hold tuning and art hookup only. Gameplay logic stays in C++.
+
+Example: the player shoots a pedestrian.
+
+```text
+UOCWeaponComponent --hit--> IOCDamageable::ApplyDamage (target)
+target dies --> UOCEventSubsystem: Event.Crime.Murder {location, instigator}
+                  |-- UOCWantedSubsystem: witness check, raises heat
+                  |     \-- OnHeatChanged --> HUD, UOCPopulationSubsystem (police spawns)
+                  |-- UOCPopulationSubsystem: nearby NPCs enter panic
+                  \-- UOCMissionSubsystem: fails objective if the target was protected
+```
+
+Example: weather changes.
+
+```text
+UOCWorldStateSubsystem (timer, about 10 Hz, blends values)
+   |-- writes MPC_World: every material updates
+   |-- OnWeatherChanged --> Niagara rain, audio, vehicle grip, NPC behaviour
+```
+
+## 7. World and population
+
+- **World Partition:** one persistent level, 128 m grid cells, 384 m loading range (Target; cars reach about 50 m/s). One file per actor also suits Git LFS.
+- **Data Layers:** mission-specific content and night-only props.
+- **HLOD:** two layers, built by commandlet. Check in M3 that the builder runs headless on Linux.
+- **Terrain:** standard Landscape. RVT handles road and terrain blending.
+- **City generation:** a road graph asset is the single source of truth. PCG reads it for roads and building blockouts. Traffic, the minimap and police routing read the same graph. PCG runs at **edit time only**, with results saved into the level.
+- **Population rings (Targets):** physics vehicles within 80 m when needed, kinematic traffic up to 200 m, despawn beyond 250 m and out of view.
+- **Budgets on Medium (Targets):** 24 traffic vehicles, 40 pedestrians, 8 police. Pools are allocated at load, so play causes no spawn spikes.
+- **NPC AI:** State Tree, updating at 2 to 5 Hz based on distance. No per-frame AI on ambient NPCs.
+
+## 8. Rendering budget
+
+All figures below are **Targets to be replaced by measurements** in M0 and M4.
+
+### VRAM: 5,000 MiB (packaged build, 1080p output, Medium, browsers closed)
+
+| Category | MiB |
+|---|---:|
+| Texture streaming pool (`r.Streaming.PoolSize=2000`) | 2,000 |
+| Render targets, TSR history | 650 |
+| Non-Nanite meshes, skeletal meshes, GPU Scene | 600 |
+| Nanite streaming pool | 400 |
+| Lumen scene | 350 |
+| Shadows (VSM physical pages) | 300 |
+| Niagara, decals, other | 150 |
+| Headroom | 550 |
+| **Total** | **5,000** |
+
+The desktop takes roughly 800 MiB of the remaining 1,144 (an estimate from the current per-process list). If `stat unit` reports over budget, cut the texture pool first. UE 5.8 shows VRAM used and budget directly in `stat unit` on discrete GPUs.
+
+### Frame time: 16.6 ms
+
+| GPU pass | ms |
+|---|---:|
+| Nanite and base pass | 3.5 |
+| Shadows | 2.5 |
+| Lumen GI and reflections | 4.0 |
+| Post-process and TSR | 2.0 |
+| Translucency, particles, decals | 1.0 |
+| Other | 1.5 |
+| Margin | 2.1 |
+
+CPU targets: game thread and render thread each under 12 ms.
+
+### Scalability presets
+
+The brief requires presets that really change the output. Low must be a true fallback.
+
+| Setting | Low | Medium (target) | High | Ultra |
+|---|---|---|---|---|
+| Render scale to 1080p | 58% | 67 to 75%, dynamic | 83% | 100% |
+| GI | Screen-space plus sky ambient | **Lumen Lite** (Beta) | Lumen software | Lumen software, higher quality |
+| Reflections | Screen-space | Lumen Lite | Lumen | Lumen |
+| Shadows | Cascaded | VSM reduced, or cascaded if measured faster | VSM | VSM |
+| Clouds | Static sky | Volumetric, low cost | Volumetric | Volumetric, higher |
+| Foliage density | 40% | 70% | 100% | 100% |
+| View distance scale | 0.6 | 0.8 | 1.0 | 1.2 |
+| Texture pool (MiB) | 1,200 | 2,000 | 2,400 | 2,800 |
+| Traffic and crowd | 50% | 100% | 120% | 150% |
+
+High and Ultra exist for stronger GPUs. This laptop is not expected to hold 60 FPS on them. Dynamic resolution is available on Vulkan in 5.8 and helps hold 60 on Medium. Whether DLSS works on Linux is unverified: **check in M4**, and TSR remains the baseline either way.
+
+Lumen Lite is the basis of the Medium plan: it is reported at about 2x the speed of high-quality Lumen, using `sg.GlobalIlluminationQuality 1` and `sg.ReflectionQuality 1`. **It is Beta and untested here.** If it fails on Linux Vulkan, Medium falls back to reduced software Lumen at a lower render scale.
+
+## 9. Testing
+
+- **Automation tests** in C++ for pure logic: heat rules, mission state machine, pool lifecycle, save versioning, damage maths, lane graph queries.
+- **Functional tests** run in a small test map for possession, enter/exit and pickups.
+- **Headless runs** use `UnrealEditor-Cmd` with `-nullrhi` through `scripts/test.sh`.
+- **Editor validators** in `OpenCityEditor` reject wrongly named assets, wrong texture settings and materials not using approved masters.
+- **Performance reports** come from a fixed camera path in a test map, so numbers can be compared between milestones.
+
+## 10. Plugin matrix
+
+Linux behaviour for all of these is verified by a load-and-run smoke test in M0. The maturity labels for PCG, Mass, ZoneGraph, Water and Chaos Vehicles couldn't be confirmed from what I read of the 5.8 release notes, so M0 records them from the Plugins browser.
+
+| Plugin | Needed at | At M0 |
+|---|---|---|
+| Enhanced Input | M1 | On |
+| Chaos Vehicles | M2 | On |
+| Python Editor Script Plugin, Editor Scripting Utilities | M0 | On |
+| PCG | M3 | On |
+| Water | M3 | Smoke test, then off |
+| Gameplay Abilities | M6 | On |
+| State Tree | M5 | On |
+| Mass and ZoneGraph | M5 spike | Smoke test, then off |
+| CommonUI | M9 | Smoke test, then off |
+| MetaSounds, Niagara | M2+ | On |
+
+The Fab plugin and Quixel Bridge are not needed.
+
+## 11. Sources
+
+- [Epic: UE 5.8 release notes](https://dev.epicgames.com/documentation/unreal-engine/unreal-engine-5-8-release-notes?lang=en-US) (partially read; it is very long)
+- [Epic: Linux development requirements](https://dev.epicgames.com/documentation/unreal-engine/linux-development-requirements-for-unreal-engine)
+- [Epic: SDL3 on Linux](https://dev.epicgames.com/documentation/unreal-engine/updating-unreal-engine-on-linux-to-sdl3)
+- [Tom Looman: UE 5.8 performance highlights](https://tomlooman.com/unreal-engine-5-8-performance-highlights/)

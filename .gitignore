@@ -1,0 +1,33 @@
+# Unreal build and cache output
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Packaged/
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+
+# Generated project files (scripts/gen_clangd.sh and GenerateProjectFiles.sh)
+compile_commands.json
+.cache/
+Makefile
+CMakeLists.txt
+*.code-workspace
+*.pro
+*.pri
+*.kdev4
+.kdev4/
+*.sln
+.vs/
+.idea/
+.vscode/
+
+# Raw CC0 downloads are re-fetched from SourceArt/manifest.json, not committed
+SourceArt/Downloads/
+
+# Misc
+__pycache__/
+*.pyc
+*.blend1
+*.blend2
+.DS_Store
