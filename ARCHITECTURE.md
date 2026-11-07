@@ -40,8 +40,10 @@ Hard GPU freezes during games were unresolved at last record, on every kernel an
 
 - M0 has a stress gate before any feature work.
 - Autosave runs every 5 minutes, and we commit after every working step.
-- `t.MaxFPS 60` is set in editor sessions.
+- `scripts/run_editor.sh` caps the editor at 60 FPS (`t.MaxFPS`).
 - If a freeze happens, run `~/Projects/forge-os/utils/freeze-report.sh` first. A freeze in native Vulkan would also be useful evidence, because it rules out Proton.
+
+**M0 stability gate passed (2026-11-07, 17:40 to 18:40):** 60 minutes of the stress map, uncapped at about 63 to 66 FPS, with no crash, GPU error or freeze. Freeze capture was active. Heat ran higher than in the games that froze: GPU held at 87 C with driver thermal slowdown and clocks at about 1,600 to 1,990 MHz; CPU averaged 92 C and peaked at 100 C; NVMe reached 78 C. Sustained full load is thermally limited on this laptop, so long sessions should stay frame-capped.
 
 ## 3. Where this design differs from the brief
 

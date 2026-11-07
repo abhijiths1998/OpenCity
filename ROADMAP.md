@@ -41,7 +41,7 @@ These need your login or `sudo`, so they're yours to do:
 - [x] `scripts/package.sh` produces a running **Linux Shipping** build of the empty project. Packaging problems must surface now, not at M11
 - [x] `git lfs ls-files` shows a `.uasset` tracked by LFS
 - [x] Baseline VRAM and frame time recorded for an empty lit level
-- [ ] **Stability gate:** 60 minutes of the Lumen and Nanite stress map running in a game window (`scripts/stability/stress_gate.sh`) with no hard freeze, with temperature logging on and the freeze-capture config installed. Normal editor use during M0 counts as the editor part
+- [x] **Stability gate:** 60 minutes of the Lumen and Nanite stress map running in a game window (`scripts/stability/stress_gate.sh`) with no hard freeze, with temperature logging on and the freeze-capture config installed. Normal editor use during M0 counts as the editor part
 
 **If the stability gate fails:** pause feature work and treat the freeze as the priority. Try Hybrid GPU mode, the 60 FPS cap and `-sm5` to narrow it down.
 
