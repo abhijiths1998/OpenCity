@@ -100,7 +100,15 @@ void AOCVehicle::ApplyVehicleData(bool bRebuildPhysics)
 	}
 	BaseMaxTorque = V->EngineSetup.MaxTorque;
 
-	if (!VehicleData->SteeringCurvePoints.IsEmpty())
+	// Chaos samples this curve in steps of MaxX/20: fewer than two keys or MaxX <= 0 would
+	// loop forever (FVehicleSteeringConfig::FillSteeringSetup), so reject such curves.
+	const TArray<FVector2D>& SteerPts = VehicleData->SteeringCurvePoints;
+	const bool bValidSteerCurve = SteerPts.Num() >= 2 && SteerPts.Last().X > SteerPts[0].X;
+	if (!SteerPts.IsEmpty() && !bValidSteerCurve)
+	{
+		UE_LOG(LogOpenCity, Warning, TEXT("%s: steering curve needs 2+ points with increasing speed; ignored."), *VehicleData->GetName());
+	}
+	if (bValidSteerCurve)
 	{
 		FRichCurve* Steer = V->SteeringSetup.SteeringCurve.GetRichCurve();
 		Steer->Reset();
@@ -173,7 +181,26 @@ void AOCVehicle::BeginPlay()
 void AOCVehicle::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(PendingExitTimer);
+	// Destroyed with someone inside (not a level teardown): put the driver back in the world.
+	if (HasDriver() && EndPlayReason == EEndPlayReason::Destroyed)
+	{
+		FVector Spot;
+		ExitAt(FindExitSpot(Spot) ? Spot : GetActorLocation() + FVector(0.f, 0.f, 200.f));
+	}
 	Super::EndPlay(EndPlayReason);
+}
+
+float AOCVehicle::GetGroundSpeedKmh() const
+{
+	// Exit gating uses the real speed: a car sliding sideways has ~0 forward speed.
+	return GetVelocity().Size() * CmPerSecToKmh;
+}
+
+void AOCVehicle::HandleDriverDestroyed(AActor* DestroyedActor)
+{
+	UE_LOG(LogOpenCity, Warning, TEXT("%s: driver was destroyed while driving"), *GetName());
+	Driver.Reset();
+	GetWorldTimerManager().ClearTimer(PendingExitTimer);
 }
 
 float AOCVehicle::GetSpeedKmh() const
@@ -223,6 +250,7 @@ bool AOCVehicle::Interact(APawn* Instigator)
 	}
 
 	Driver = Instigator;
+	Instigator->OnDestroyed.AddUniqueDynamic(this, &AOCVehicle::HandleDriverDestroyed);
 	if (ACharacter* C = Cast<ACharacter>(Instigator))
 	{
 		C->GetCharacterMovement()->StopMovementImmediately();
@@ -263,18 +291,32 @@ bool AOCVehicle::FindExitSpot(FVector& OutLocation) const
 	Params.AddIgnoredActor(D);
 
 	const FTransform VehicleXf = GetActorTransform();
+	const FRotator Yaw(0.f, VehicleXf.Rotator().Yaw, 0.f); // spots stay upright if the vehicle is tilted
+	const FVector Seat = VehicleXf.GetLocation() + Yaw.RotateVector(VehicleData->DriverOffset);
+	UWorld* World = GetWorld();
 	for (const FVector& Local : VehicleData->ExitOffsets)
 	{
-		// Keep the spot upright even if the vehicle is tilted.
-		const FVector Flat = FRotator(0.f, VehicleXf.Rotator().Yaw, 0.f).RotateVector(Local);
-		const FVector Candidate = VehicleXf.GetLocation() + Flat + FVector(0.f, 0.f, HalfHeight * 0.5f);
-		const bool bBlocked = GetWorld()->OverlapBlockingTestByChannel(Candidate, FQuat::Identity, ECC_Pawn,
-			FCollisionShape::MakeCapsule(Radius, HalfHeight), Params);
-		if (!bBlocked)
+		const FVector Candidate = VehicleXf.GetLocation() + Yaw.RotateVector(Local) + FVector(0.f, 0.f, HalfHeight * 0.5f);
+
+		// 1. Nothing solid between the seat and the spot (no stepping through thin walls or rails).
+		if (World->LineTraceTestByChannel(Seat, Candidate, ECC_Visibility, Params))
 		{
-			OutLocation = Candidate;
-			return true;
+			continue;
 		}
+		// 2. Ground within reach below (no stepping off a ledge or bridge).
+		FHitResult Ground;
+		if (!World->LineTraceSingleByChannel(Ground, Candidate, Candidate - FVector(0.f, 0.f, HalfHeight + 150.f), ECC_Visibility, Params))
+		{
+			continue;
+		}
+		// 3. The capsule fits, standing on that ground.
+		const FVector Standing = Ground.ImpactPoint + FVector(0.f, 0.f, HalfHeight + 2.f);
+		if (World->OverlapBlockingTestByChannel(Standing, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params))
+		{
+			continue;
+		}
+		OutLocation = Standing;
+		return true;
 	}
 	return false;
 }
@@ -291,7 +333,7 @@ void AOCVehicle::RequestExit()
 		return;
 	}
 	const float MaxKmh = VehicleData ? VehicleData->MaxExitSpeedKmh : 15.f;
-	if (FMath::Abs(GetSpeedKmh()) <= MaxKmh)
+	if (GetGroundSpeedKmh() <= MaxKmh)
 	{
 		ForceExit();
 		return;
@@ -324,7 +366,7 @@ void AOCVehicle::CheckPendingExit()
 		GetWorldTimerManager().ClearTimer(PendingExitTimer);
 		return;
 	}
-	if (FMath::Abs(GetSpeedKmh()) <= MaxKmh)
+	if (GetGroundSpeedKmh() <= MaxKmh)
 	{
 		GetWorldTimerManager().ClearTimer(PendingExitTimer);
 		ForceExit();
@@ -343,7 +385,18 @@ bool AOCVehicle::ForceExit()
 	if (!FindExitSpot(Spot))
 	{
 		UE_LOG(LogOpenCity, Log, TEXT("%s: no free exit spot"), *GetName());
+		const bool bWasBrakingToExit = GetWorldTimerManager().IsTimerActive(PendingExitTimer);
 		GetWorldTimerManager().ClearTimer(PendingExitTimer);
+		if (bWasBrakingToExit)
+		{
+			// Hand the controls back: held keys send Triggered again, released ones stay at 0.
+			if (UChaosVehicleMovementComponent* V = GetVehicleMovementComponent())
+			{
+				V->SetBrakeInput(0.f);
+				V->SetThrottleInput(0.f);
+				V->SetHandbrakeInput(false);
+			}
+		}
 		return false;
 	}
 	ExitAt(Spot);
@@ -355,6 +408,10 @@ void AOCVehicle::ExitAt(const FVector& Location)
 	APawn* D = Driver.Get();
 	AController* PC = GetController();
 	Driver.Reset();
+	if (D)
+	{
+		D->OnDestroyed.RemoveDynamic(this, &AOCVehicle::HandleDriverDestroyed);
+	}
 	CameraRig->SetDriving(false);
 	Radio->PowerOff();
 	Park();

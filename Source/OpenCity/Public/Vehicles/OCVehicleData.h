@@ -34,6 +34,39 @@ public:
 	TObjectPtr<USoundBase> Sound;
 };
 
+/** Motorbike-only handling (used by AOCMotorbike, ignored by cars). */
+USTRUCT(BlueprintType)
+struct OPENCITY_API FOCMotorbikeHandling
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Lean", meta = (ClampMin = "0", ClampMax = "60", Units = "deg"))
+	float MaxLeanDegrees = 35.f;
+
+	/** Speed at which full lean is allowed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Lean", meta = (ClampMin = "1", Units = "km/h"))
+	float FullLeanSpeedKmh = 60.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Lean", meta = (ClampMin = "0"))
+	float LeanSpeed = 5.f;
+
+	/** Roll correction strength (angular acceleration per radian of roll). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stability", meta = (ClampMin = "0"))
+	float StabiliserStiffness = 60.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stability", meta = (ClampMin = "0"))
+	float StabiliserDamping = 10.f;
+
+	/** Pulls the turn rate toward speed * tan(steer) / wheelbase so the light chassis follows
+	 *  the front wheel instead of spinning out. 0 = off. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stability", meta = (ClampMin = "0"))
+	float YawAssist = 8.f;
+
+	/** Beyond this roll the bike counts as fallen and the stabiliser lets go (use Reset). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stability", meta = (Units = "deg"))
+	float CrashRollDegrees = 70.f;
+};
+
 /**
  * Everything that makes one vehicle model: art, Chaos physics setup, camera, damage, seating.
  * AOCVehicle copies the physics setup into its movement component at spawn, so tuning lives
@@ -119,6 +152,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Radio")
 	TArray<TObjectPtr<UOCRadioStationData>> RadioStations;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Motorbike")
+	FOCMotorbikeHandling Motorbike;
 };
 
 /** Input for driving. Asset: /Game/Core/Input/DA_OCVehicleInputConfig. */

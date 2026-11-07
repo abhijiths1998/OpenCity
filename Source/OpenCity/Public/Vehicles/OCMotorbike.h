@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Vehicles/OCVehicle.h"
+#include "Vehicles/OCVehicleData.h"
 #include "OCMotorbike.generated.h"
 
 class UStaticMesh;
@@ -66,47 +67,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Art", meta = (Units = "cm"))
 	float WheelWidth = 12.f;
 
-	/** Wheel centres relative to the vehicle root (match the chassis wheel bones). */
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Art")
-	FVector FrontWheelLocation = FVector(70.f, 0.f, 32.f);
+	/** Seconds parked, upright and empty before the bike stops ticking. */
+	UPROPERTY(EditDefaultsOnly, Category = "Motorbike")
+	float SleepAfterSeconds = 1.f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Art")
-	FVector RearWheelLocation = FVector(-70.f, 0.f, 32.f);
-
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Lean", meta = (ClampMin = "0", ClampMax = "60", Units = "deg"))
-	float MaxLeanDegrees = 35.f;
-
-	/** Speed at which full lean is allowed. */
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Lean", meta = (ClampMin = "1", Units = "km/h"))
-	float FullLeanSpeedKmh = 60.f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Lean", meta = (ClampMin = "0"))
-	float LeanSpeed = 5.f;
-
-	/** Flip if the bike leans out of turns. */
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Lean")
-	float LeanSign = 1.f;
-
-	/** Roll correction strength (angular acceleration per radian of roll). */
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Stability", meta = (ClampMin = "0"))
-	float StabiliserStiffness = 60.f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Stability", meta = (ClampMin = "0"))
-	float StabiliserDamping = 10.f;
-
-	/** Pulls the turn rate toward what the steering angle predicts (speed * tan(steer) / wheelbase),
-	 *  so the light, narrow chassis follows the front wheel instead of spinning out. 0 = off. */
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Stability", meta = (ClampMin = "0"))
-	float YawAssist = 8.f;
-
-	/** Beyond this roll the bike counts as crashed and the stabiliser lets go (use Reset). */
-	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Stability", meta = (Units = "deg"))
-	float CrashRollDegrees = 70.f;
+	virtual void OnDriverEntered() override;
 
 private:
 	void ApplyArt();
+	void UpdateWheelLayout();
 	void Stabilise(float DeltaSeconds);
 	void UpdateVisuals(float DeltaSeconds);
+	const FOCMotorbikeHandling& Handling() const;
 
+	/** Wheel centres in vehicle space, read from the chassis wheel bones. */
+	FVector FrontWheelLocation = FVector(70.f, 0.f, 32.f);
+	FVector RearWheelLocation = FVector(-70.f, 0.f, 32.f);
 	float LeanDegrees = 0.f;
+	float IdleTime = 0.f;
 };

@@ -27,6 +27,9 @@ Read `ARCHITECTURE.md`, `ROADMAP.md` and `ART_PIPELINE.md` before making changes
 | Stability gate (60 min) | `scripts/stability/stress_gate.sh [minutes]` |
 | Freeze capture (sudo) | `sudo scripts/stability/install_freeze_capture.sh [--remove]` |
 | Recreate M0 test maps | `scripts/run_python.sh Content/Python/oc_m0_create_test_maps.py` |
+| Rebuild M1 / M2 assets and maps | `scripts/run_python.sh Content/Python/oc_m1_setup.py` (then `oc_m2_setup.py`) |
+| Verify M1 / M2 assets after reload | `scripts/run_python.sh Content/Python/oc_m1_verify.py` (and `oc_m2_verify.py`) |
+| Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |
 
 Underlying tools:
 
@@ -40,6 +43,8 @@ Notes:
 - DDC is the engine's local Zen server at `~/.config/Epic/UnrealEngine/Common/Zen/Data`, outside the repo and shared by all projects. The first cook compiles every shader (about 11 min); later ones reuse it.
 - `build.sh` fails on any compiler warning in project code. Tests write reports to `Saved/Automation/`.
 - Later-milestone plugins (Water, Mass, ZoneGraph, CommonUI) are absent from `OpenCity.uproject` on purpose. Add them in their milestone.
+- Scripted runtime checks: non-Shipping builds have `oc.dev.*` console commands (`status`, `goto X Y Z`, `interact`, `exitvehicle`, `drive T S B`, `impact KMH`, `radio`, `resetvehicle`, `flip`, `tilt DEG`). `-ocdevscript="2:oc.dev.status;3:oc.dev.interact;9:quit"` runs them on a timeline and the results land in the log. Use these to verify gameplay changes headfully without input.
+- Editor runs need about 4 GiB free RAM. Browsers and Claude Code's own `clangd` (`--background-index`) can starve them: kill it with `pkill -f '^clangd '` (an unanchored pattern kills the calling shell).
 
 ## Code conventions
 

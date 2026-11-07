@@ -53,11 +53,11 @@ These need your login or `sudo`, so they're yours to do:
 
 **Acceptance:**
 
-- [ ] All actions work on keyboard and mouse and on a gamepad
-- [ ] Aim mode changes camera offset and FOV smoothly, and the camera doesn't clip through walls
-- [ ] Input Mapping Contexts swap by state (on foot, aiming)
-- [ ] Automation test covers the movement state rules
-- [ ] `AOCCharacter` has no gameplay logic beyond wiring, and no component ticks without a reason
+- [ ] All actions work on keyboard and mouse and on a gamepad *(mappings verified after reload and possession logged; hands-on check by you pending)*
+- [ ] Aim mode changes camera offset and FOV smoothly, and the camera doesn't clip through walls *(blend is unit-tested and boom collision is on; visual check by you pending)*
+- [x] Input Mapping Contexts swap by state (on foot, aiming)
+- [x] Automation test covers the movement state rules
+- [x] `AOCCharacter` has no gameplay logic beyond wiring, and no component ticks without a reason
 
 ## M2: Vehicles (L)
 
@@ -65,12 +65,12 @@ These need your login or `sudo`, so they're yours to do:
 
 **Acceptance:**
 
-- [ ] Each vehicle's tuning comes entirely from `UOCVehicleData`
-- [ ] Enter and exit work from both sides, and the player can't exit into geometry
-- [ ] Motorbike stays upright at speed, leans in turns and can crash and be recovered
-- [ ] Damage reduces performance and can destroy the vehicle
-- [ ] Radio cycles stations and keeps its position when you leave and re-enter
-- [ ] Input contexts swap on enter and exit
+- [x] Each vehicle's tuning comes entirely from `UOCVehicleData`
+- [x] Enter and exit work from both sides, and the player can't exit into geometry
+- [x] Motorbike stays upright at speed, leans in turns and can crash and be recovered *(scripted runs; feel tuning pending)*
+- [x] Damage reduces performance and can destroy the vehicle *(wreck state: no power; visual damage comes with the car paint material in M4b)*
+- [x] Radio cycles stations and keeps its position when you leave and re-enter
+- [x] Input contexts swap on enter and exit
 
 **Main risk:** motorbike feel. Time-box it to 2 weeks. If it isn't fun by then, ship the simple arcade version and move on.
 

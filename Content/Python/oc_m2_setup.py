@@ -301,6 +301,9 @@ def build_driving_map(datas):
     # A narrow alley (3 m) behind the start for exit-spot testing.
     L.block("Alley_Left", (-3000, -150 - 25, 150), (2000, 50, 300))
     L.block("Alley_Right", (-3000, 150 + 25, 150), (2000, 50, 300))
+    # Perf camera: a 25 m circle around the parked vehicles (runs only with -ocperf).
+    perf = L.spawn(unreal.load_class(None, "/Script/OpenCity.OCPerfCameraPath"), (600, 0, 0), label="PerfCameraPath")
+    L.set_props(perf, circle_radius=2500.0, circle_height=300.0)
     L.save_level(MAP_PATH, TAG)
 
 

@@ -61,6 +61,15 @@ Hard GPU freezes during games were unresolved at last record, on every kernel an
 
 **Not used in v1:** Mesh Terrain and Fast Geometry Streaming (both Experimental in 5.8), MegaLights (disabled to reduce shaders), MetaHuman (too heavy), hardware ray tracing.
 
+### M1/M2 implementation notes
+
+- **Input policy** (sprint toggles, crouch cancels, buffered jump) lives in `FOCLocomotionIntent` in OpenCityCore, so it is unit-tested. The character only forwards events.
+- **Look input** depends on `bEnableLegacyInputScales=True` (pinned in `DefaultInput.ini`, same as Epic's template). Turning it off inverts pitch and changes speed.
+- **Vehicles** copy `UOCVehicleData` into the Chaos component in `PostInitializeComponents`, then rebuild its physics. `AWheeledVehiclePawn` leaves simulation off, so `AOCVehicle` turns it on.
+- **Motorbike**: hidden 40 cm-track chassis, roll stabiliser, and a yaw assist (bicycle model) that stops spin-outs. Handling values live in `UOCVehicleData::Motorbike`; visual wheels follow the chassis wheel bones.
+- **Exit spots** need a clear line from the seat, ground below and room for the capsule. At speed, the vehicle brakes in its travel direction first.
+- **Driving map performance** (packaged Development, Medium, 3 vehicles + character, no volumetric clouds): 81 to 84 FPS, GPU 6.7 ms, game thread 5.1 ms, 1,201 MiB game VRAM.
+
 ## 4. Modules
 
 ```text

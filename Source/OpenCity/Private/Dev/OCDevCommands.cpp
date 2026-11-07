@@ -133,6 +133,21 @@ namespace OCDev
 		}
 	}
 
+	/** Tilt the driven vehicle to an exact roll and release it at rest (stabiliser tests). */
+	void Tilt(const TArray<FString>& Args, UWorld* World)
+	{
+		if (AOCVehicle* V = Cast<AOCVehicle>(PlayerPawn(World)))
+		{
+			const float Roll = Args.IsValidIndex(0) ? FCString::Atof(*Args[0]) : 10.f;
+			FRotator R = V->GetActorRotation();
+			R.Roll = Roll;
+			V->SetActorLocationAndRotation(V->GetActorLocation() + FVector(0.f, 0.f, 15.f), R, false, nullptr, ETeleportType::TeleportPhysics);
+			V->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+			V->GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV tilt roll=%.1f"), Roll);
+		}
+	}
+
 	void Radio(const TArray<FString>& Args, UWorld* World)
 	{
 		if (AOCVehicle* V = Cast<AOCVehicle>(PlayerPawn(World)))
@@ -149,6 +164,7 @@ namespace OCDev
 	FAutoConsoleCommandWithWorldAndArgs CmdImpact(TEXT("oc.dev.impact"), TEXT("Apply an impact in km/h to the driven vehicle."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Impact));
 	FAutoConsoleCommandWithWorldAndArgs CmdReset(TEXT("oc.dev.resetvehicle"), TEXT("Press reset vehicle."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ResetVehicle));
 	FAutoConsoleCommandWithWorldAndArgs CmdFlip(TEXT("oc.dev.flip"), TEXT("Roll the driven vehicle over: [deg/s]."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Flip));
+	FAutoConsoleCommandWithWorldAndArgs CmdTilt(TEXT("oc.dev.tilt"), TEXT("Tilt the driven vehicle to a roll angle at rest: [deg]."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Tilt));
 	FAutoConsoleCommandWithWorldAndArgs CmdRadio(TEXT("oc.dev.radio"), TEXT("Radio next (or 'prev')."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Radio));
 
 	/** Runs -ocdevscript once, on the first tick of the first game world that has begun play. */

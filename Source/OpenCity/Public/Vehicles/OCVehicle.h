@@ -43,6 +43,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Vehicle")
 	bool IsWrecked() const;
 
+	/** Speed over the ground in any direction (forward speed ignores sliding). */
+	float GetGroundSpeedKmh() const;
+
 	const UOCVehicleData* GetVehicleData() const { return VehicleData; }
 	UOCVehicleDamageComponent* GetDamage() const { return Damage; }
 	UOCRadioComponent* GetRadio() const { return Radio; }
@@ -106,6 +109,9 @@ private:
 	void HandleRadioNext(const FInputActionValue& Value);
 	void HandleRadioPrevious(const FInputActionValue& Value);
 	void HandleReset(const FInputActionValue& Value);
+
+	UFUNCTION()
+	void HandleDriverDestroyed(AActor* DestroyedActor);
 
 	void HandleDamaged(float DamageAmount, float HealthFraction);
 	void HandleWrecked();

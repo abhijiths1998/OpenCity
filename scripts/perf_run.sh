@@ -22,21 +22,31 @@ LAPS="${3:-2}"
 shift $(( $# > 3 ? 3 : $# ))
 BUILD="${OC_PERF_BUILD:-editor}"
 
+# Resolve a bare map name to its /Game path by finding the .umap under Content/Maps.
+if [[ "$MAP" == /Game/* ]]; then
+  MAP_PATH="$MAP"; MAP="${MAP##*/}"
+else
+  UMAP=$(find "$PROJECT_ROOT/Content/Maps" -name "$MAP.umap" | head -1)
+  [[ -n "$UMAP" ]] || { echo "error: map $MAP not found under Content/Maps" >&2; exit 1; }
+  REL="${UMAP#"$PROJECT_ROOT/Content/"}"
+  MAP_PATH="/Game/${REL%.umap}"
+fi
+
 COMMON_ARGS=(-windowed -ResX=1920 -ResY=1080 -WinX=0 -WinY=0 -nosplash
              -ocperf -ocperfloops="$LAPS" -ocperfquit)
 case "$BUILD" in
   editor)
     oc_require_engine
-    CMD=("$UE_EDITOR" "$UPROJECT" "/Game/Maps/Test/$MAP" -game "${COMMON_ARGS[@]}"
+    CMD=("$UE_EDITOR" "$UPROJECT" "$MAP_PATH" -game "${COMMON_ARGS[@]}"
          -ExecCmds="scalability $PRESET" -log="OCPerf_${MAP}.log")
     REPORT_DIR="$PROJECT_ROOT/Saved/Profiling/OCPerf" ;;
   dev)
     CMD=("$PROJECT_ROOT/Packaged/Development/Linux/OpenCity/Binaries/Linux/OpenCity" OpenCity
-         "/Game/Maps/Test/$MAP" "${COMMON_ARGS[@]}" -ExecCmds="scalability $PRESET")
+         "$MAP_PATH" "${COMMON_ARGS[@]}" -ExecCmds="scalability $PRESET")
     REPORT_DIR="$PROJECT_ROOT/Packaged/Development/Linux/OpenCity/Saved/Profiling/OCPerf" ;;
   shipping)
     CMD=("$PROJECT_ROOT/Packaged/Shipping/Linux/OpenCity/Binaries/Linux/OpenCity-Linux-Shipping" OpenCity
-         "/Game/Maps/Test/$MAP" "${COMMON_ARGS[@]}")
+         "$MAP_PATH" "${COMMON_ARGS[@]}")
     REPORT_DIR="$HOME/.config/Epic/OpenCity/Saved/Profiling/OCPerf"
     PRESET="first-run/saved"
     # Shipping ignores a map on the command line (UE_ALLOW_MAP_OVERRIDE_IN_SHIPPING=0 in the

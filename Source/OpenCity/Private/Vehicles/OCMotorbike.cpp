@@ -10,7 +10,8 @@ AOCMotorbike::AOCMotorbike(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = true;
-	PrimaryActorTick.TickGroup = TG_PrePhysics; // stabiliser torque goes into this frame's physics step
+	PrimaryActorTick.bStartWithTickEnabled = false; // ticks while ridden or settling (see Tick)
+	PrimaryActorTick.TickGroup = TG_PrePhysics;     // stabiliser torque goes into this frame's physics step
 
 	LeanPivot = CreateDefaultSubobject<USceneComponent>(TEXT("LeanPivot"));
 	LeanPivot->SetupAttachment(GetMesh());
@@ -39,8 +40,32 @@ AOCMotorbike::AOCMotorbike(const FObjectInitializer& ObjectInitializer)
 	}
 }
 
+const FOCMotorbikeHandling& AOCMotorbike::Handling() const
+{
+	static const FOCMotorbikeHandling Defaults;
+	return VehicleData ? VehicleData->Motorbike : Defaults;
+}
+
+void AOCMotorbike::UpdateWheelLayout()
+{
+	// Visual wheels and the yaw-assist wheelbase follow the physics wheel bones
+	// (setups 0/1 = front pair, 2/3 = rear pair), so they can't drift apart.
+	if (!VehicleData || VehicleData->WheelSetups.Num() < 4 || !GetMesh()->GetSkeletalMeshAsset())
+	{
+		return;
+	}
+	auto BoneLocal = [this](int32 i)
+	{
+		const FName Bone = VehicleData->WheelSetups[i].BoneName;
+		return GetMesh()->GetComponentTransform().InverseTransformPosition(GetMesh()->GetBoneLocation(Bone));
+	};
+	FrontWheelLocation = (BoneLocal(0) + BoneLocal(1)) * 0.5f;
+	RearWheelLocation = (BoneLocal(2) + BoneLocal(3)) * 0.5f;
+}
+
 void AOCMotorbike::ApplyArt()
 {
+	UpdateWheelLayout();
 	// The chassis mesh is invisible; its children (the visible bike) stay visible.
 	GetMesh()->SetVisibility(false, /*bPropagateToChildren*/ false);
 
@@ -72,11 +97,26 @@ void AOCMotorbike::BeginPlay()
 	ApplyArt();
 }
 
+void AOCMotorbike::OnDriverEntered()
+{
+	IdleTime = 0.f;
+	SetActorTickEnabled(true);
+}
+
 void AOCMotorbike::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	Stabilise(DeltaSeconds);
 	UpdateVisuals(DeltaSeconds);
+
+	// Parked, empty and settled: stop ticking until someone gets on.
+	const bool bSettled = !HasDriver() && FMath::Abs(GetSpeedKmh()) < 1.f && FMath::Abs(GetActorRotation().Roll) < 2.f
+		&& FMath::IsNearlyZero(LeanDegrees, 0.5f);
+	IdleTime = bSettled ? IdleTime + DeltaSeconds : 0.f;
+	if (IdleTime > SleepAfterSeconds)
+	{
+		SetActorTickEnabled(false);
+	}
 }
 
 void AOCMotorbike::Stabilise(float DeltaSeconds)
@@ -86,21 +126,25 @@ void AOCMotorbike::Stabilise(float DeltaSeconds)
 	{
 		return;
 	}
+	const FOCMotorbikeHandling& H = Handling();
 	const FVector Forward = GetActorForwardVector();
 	const FVector Right = GetActorRightVector();
-	// Roll angle: how far the right side has dropped (+) or risen (-).
+	// Roll angle: + when the right side is down (FRotationMatrix: Right = (0, cos R, -sin R)).
 	const float RollRad = FMath::Asin(FMath::Clamp(-Right.Z, -1.f, 1.f));
-	if (FMath::Abs(FMath::RadiansToDegrees(RollRad)) > CrashRollDegrees)
+	if (FMath::Abs(FMath::RadiansToDegrees(RollRad)) > H.CrashRollDegrees)
 	{
 		return; // fallen over: let it lie (reset puts it back up)
 	}
+	// Angular velocity +X turns Right toward +Z (right side up), i.e. it *reduces* roll.
+	// So the spring pushes along +X for positive roll, and damping opposes the roll rate.
 	const FVector AngVel = M->GetPhysicsAngularVelocityInRadians();
 	const float RollRate = FVector::DotProduct(AngVel, Forward);
-	const float Correction = -(StabiliserStiffness * RollRad + StabiliserDamping * RollRate);
+	const float Correction = H.StabiliserStiffness * RollRad - H.StabiliserDamping * RollRate;
 	M->AddTorqueInRadians(Forward * Correction, NAME_None, /*bAccelChange*/ true);
 
 	// Yaw assist (kinematic bicycle model): yaw rate = v * tan(steer) / wheelbase.
 	const UChaosWheeledVehicleMovementComponent* V = GetWheeledMovement();
+	const float YawAssist = H.YawAssist;
 	if (YawAssist > 0.f && V && V->Wheels.Num() >= 3 && V->Wheels[0])
 	{
 		const FVector Up = GetActorUpVector();
@@ -120,9 +164,10 @@ void AOCMotorbike::UpdateVisuals(float DeltaSeconds)
 		return;
 	}
 
-	const float SpeedFactor = FMath::Clamp(FMath::Abs(GetSpeedKmh()) / FullLeanSpeedKmh, 0.f, 1.f);
-	const float Target = LeanSign * V->GetSteeringInput() * MaxLeanDegrees * SpeedFactor;
-	LeanDegrees = FMath::FInterpTo(LeanDegrees, Target, DeltaSeconds, LeanSpeed);
+	const FOCMotorbikeHandling& H = Handling();
+	const float SpeedFactor = FMath::Clamp(FMath::Abs(GetSpeedKmh()) / H.FullLeanSpeedKmh, 0.f, 1.f);
+	const float Target = V->GetSteeringInput() * H.MaxLeanDegrees * SpeedFactor; // + = lean right
+	LeanDegrees = FMath::FInterpTo(LeanDegrees, Target, DeltaSeconds, H.LeanSpeed);
 	LeanPivot->SetRelativeRotation(FRotator(0.f, 0.f, LeanDegrees));
 
 	// Wheels 0/1 are front (steered), 2/3 rear; use one wheel of each pair.
