@@ -36,4 +36,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
 	static int32 ConfigureStreaming(UWorld* World, int32 CellSizeCm, int32 LoadingRangeCm);
+
+	/**
+	 * Build road surface meshes from the layout's road graph: road strips, junction discs and
+	 * sidewalks (for SidewalkKinds), in square chunks of ChunkSizeCm. Each chunk becomes a Nanite
+	 * static mesh asset in AssetFolder and an actor in the world (folder "Roads"). Bridges are
+	 * skipped (built separately). Returns the number of chunks.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 BuildRoadMeshes(UWorld* World, const FString& LayoutJsonPath, const FString& AssetFolder,
+		UMaterialInterface* RoadMaterial, UMaterialInterface* SidewalkMaterial, const TArray<FName>& SidewalkKinds,
+		float SidewalkWidthCm, float ChunkSizeCm);
 };

@@ -11,6 +11,7 @@ if [[ "${1:-}" == "--regen" ]]; then
 fi
 rm -rf "$PROJECT_ROOT/Content/Maps/Marevia" \
        "$PROJECT_ROOT/Content/__ExternalActors__/Maps/Marevia" \
-       "$PROJECT_ROOT/Content/__ExternalObjects__/Maps/Marevia"
+       "$PROJECT_ROOT/Content/__ExternalObjects__/Maps/Marevia" \
+       "$PROJECT_ROOT/Content/World/Roads"
 "$PROJECT_ROOT/scripts/run_python.sh" "$PROJECT_ROOT/Content/Python/oc_dev_materials.py"
 OC_PY_RENDER=1 exec "$PROJECT_ROOT/scripts/run_python.sh" "$PROJECT_ROOT/Content/Python/oc_m3_world.py"

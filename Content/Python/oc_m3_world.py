@@ -40,6 +40,55 @@ def setup_streaming(world):
     log(f"streaming: {n} partition(s), cell {CELL_SIZE_CM} cm, loading range {LOADING_RANGE_CM} cm")
 
 
+def build_roads(world, layout):
+    roads = layout["roads"]
+    n = unreal.OCWorldBuilderLibrary.build_road_meshes(
+        world, os.path.join(WORLD_DIR, "marevia_layout.json"), "/Game/World/Roads",
+        unreal.load_asset("/Game/Dev/Materials/M_Dev_Road"), unreal.load_asset("/Game/Dev/Materials/M_Dev_Sidewalk"),
+        [unreal.Name(k) for k in roads["sidewalk_kinds"]], roads["sidewalk_width"] * 100.0, 25200.0)
+    if n == 0:
+        raise RuntimeError("no road chunks built")
+    log(f"roads: {n} chunks")
+
+
+def build_bridges(layout):
+    """Decks (collidable, 1 m thick) and parapets for every bridge segment in the road graph."""
+    import math
+    nodes = layout["roads"]["nodes"]
+    cube = unreal.load_asset("/Engine/BasicShapes/Cube")
+    mat = unreal.load_asset("/Game/Dev/Materials/M_Dev_Bridge")
+    count = 0
+    for s in layout["roads"]["segments"]:
+        if not s["bridge"]:
+            continue
+        ax, ay, az = nodes[s["a"]]
+        bx, by, bz = nodes[s["b"]]
+        # Unreal: X east, Y south. Deck runs A -> B, 5 m onto each bank, tilted to meet both ends.
+        dx, dy, dz = (bx - ax), -(by - ay), (bz - az)
+        length = math.hypot(dx, dy) + 10.0
+        yaw = math.degrees(math.atan2(dy, dx))
+        pitch = math.degrees(math.atan2(dz, math.hypot(dx, dy)))
+        width = s["width"] + 3.0
+        mid = ((ax + bx) / 2.0 * 100.0, -(ay + by) / 2.0 * 100.0, (az + bz) / 2.0 * 100.0)
+        deck = L.spawn(unreal.StaticMeshActor, (mid[0], mid[1], mid[2] - 45.0), (0, pitch, yaw), f"Bridge_{s['bridge']}", "Bridges")
+        comp = deck.get_component_by_class(unreal.StaticMeshComponent)
+        comp.set_static_mesh(cube)
+        comp.set_material(0, mat)
+        deck.set_actor_scale3d(unreal.Vector(length, width, 1.0))
+        # Parapets: 1.1 m high, 40 cm thick, along both edges (offset in the deck's local Y).
+        right = (math.sin(math.radians(yaw)) * -1.0, math.cos(math.radians(yaw)))  # unit vector to the deck's side
+        for sign in (-1, 1):
+            off = sign * (width / 2.0 - 0.2) * 100.0
+            p = (mid[0] + right[0] * off, mid[1] + right[1] * off, mid[2] + 55.0)
+            rail = L.spawn(unreal.StaticMeshActor, p, (0, pitch, yaw), f"Bridge_{s['bridge']}_Parapet{'L' if sign < 0 else 'R'}", "Bridges")
+            rc = rail.get_component_by_class(unreal.StaticMeshComponent)
+            rc.set_static_mesh(cube)
+            rc.set_material(0, mat)
+            rail.set_actor_scale3d(unreal.Vector(length, 0.4, 1.1))
+        count += 1
+    log(f"bridges: {count}")
+
+
 def main():
     with open(os.path.join(WORLD_DIR, "marevia_layout.json"), encoding="utf-8") as f:
         layout = json.load(f)
@@ -78,6 +127,9 @@ def main():
     ps = L.spawn(unreal.PlayerStart, (start["pos"][0] * 100.0, -start["pos"][1] * 100.0, start["ground_z"] * 100.0 + 150.0),
                  (0, 0, 0), "PlayerStart_CittaAlta")
     ps.set_editor_property("is_spatially_loaded", False)
+
+    build_roads(world, layout)
+    build_bridges(layout)
 
     unreal.EditorLoadingAndSavingUtils.save_dirty_packages(True, True)
     log(f"saved {MAP_PATH}")

@@ -68,4 +68,20 @@ def make_terrain():
     return mat
 
 
+def make_flat(name, rgb, roughness=0.8):
+    """Single-colour two-sided grey-box material."""
+    mat = L.get_or_create(name, PATH, unreal.Material, unreal.MaterialFactoryNew(), "oc_dev")
+    MEL.delete_all_material_expressions(mat)
+    mat.set_editor_property("two_sided", True)
+    MEL.connect_material_property(color(mat, rgb, -300, 0), "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(const(mat, roughness, -300, 150), "", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    L.log("oc_dev", f"built {mat.get_path_name()}")
+    return mat
+
+
 make_terrain()
+make_flat("M_Dev_Road", (0.06, 0.06, 0.065), 0.7)
+make_flat("M_Dev_Sidewalk", (0.32, 0.31, 0.29), 0.85)
+make_flat("M_Dev_Bridge", (0.45, 0.44, 0.42), 0.8)

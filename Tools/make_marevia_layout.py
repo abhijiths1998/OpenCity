@@ -511,12 +511,49 @@ def render_preview(path, terrain, g):
     im.save(path)
 
 
+SIDEWALK_KINDS = {"avenue", "street"}   # get 2.5 m sidewalks on both sides in the city
+SIDEWALK_W = 2.5
+
+
+def flatten_roads(h, g):
+    """Flatten a corridor under every road (not bridges): the surface runs straight between its
+    junction heights, with sidewalks included and a soft 6 m shoulder blending into the land."""
+    for s in g.segments:
+        if s["bridge"]:
+            continue
+        ax, ay, az = g.nodes[s["a"]]
+        bx, by, bz = g.nodes[s["b"]]
+        half = s["width"] / 2.0 + (SIDEWALK_W if s["kind"] in SIDEWALK_KINDS else 0.0) + 1.0
+        reach = half + 6.0
+        x0, x1 = int(max(0, min(ax, bx) - reach)), int(min(W, max(ax, bx) + reach)) + 1
+        y0, y1 = int(max(0, min(ay, by) - reach - Y_MIN)), int(min(H, max(ay, by) + reach - Y_MIN)) + 1
+        if x1 <= x0 or y1 <= y0:
+            continue
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        yy += Y_MIN
+        dx, dy = bx - ax, by - ay
+        L2 = dx * dx + dy * dy
+        if L2 < 1e-6:
+            continue
+        t = np.clip(((xx - ax) * dx + (yy - ay) * dy) / L2, 0.0, 1.0)
+        dist = np.hypot(xx - (ax + t * dx), yy - (ay + t * dy))
+        # 20 cm below the road surface, so distant (coarser) landscape LODs never poke through.
+        target = az + t * (bz - az) - 0.2
+        w = np.clip((reach - dist) / (reach - half), 0.0, 1.0)  # 1 inside the road, fades over the shoulder
+        w = w * w * (3 - 2 * w)
+        region = h[y0:y1, x0:x1]
+        h[y0:y1, x0:x1] = np.where(w > 0, region * (1 - w) + target * w, region)
+
+
 def main():
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "SourceArt/World")
     out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(SEED)
     terrain = make_heightmap(np.random.default_rng(SEED))
     g = build_roads(terrain, rng)
+    flatten_roads(terrain, g)
+    for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
+        n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
 
     # Connectivity: report pieces of the road network that can't be reached from the start.
     adj = {i: set() for i in range(len(g.nodes))}
@@ -556,7 +593,8 @@ def main():
         "landmarks": [{"name": n, "district": dst, "pos": p, "footprint": f, "height": h, "kind": k,
                        "ground_z": ground(p[0], p[1])} for n, dst, p, f, h, k in LANDMARKS],
         "gates": [{"tag": t, "opens_with": m, "while_locked": w} for t, m, w in GATES],
-        "roads": {"kinds": ROAD_KINDS, "nodes": g.nodes, "segments": g.segments},
+        "roads": {"kinds": ROAD_KINDS, "sidewalk_kinds": sorted(SIDEWALK_KINDS), "sidewalk_width": SIDEWALK_W,
+                  "nodes": g.nodes, "segments": g.segments},
         "start": {"pos": [520, 1290], "district": "CittaAlta", "ground_z": ground(520, 1290)},
     }
     (out / "marevia_layout.json").write_text(json.dumps(layout, indent=1))
