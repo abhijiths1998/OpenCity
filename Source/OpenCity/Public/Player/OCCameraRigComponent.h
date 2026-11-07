@@ -25,8 +25,8 @@ public:
 	/** Must be called once by the owner before use. */
 	void Initialize(USpringArmComponent* InBoom, UCameraComponent* InCamera);
 
-	/** Pick the pose for this gait and start blending to it. */
-	void SetGait(EOCGait Gait);
+	/** Pick the pose for this gait (aiming overrides it) and start blending to it. */
+	void SetState(EOCGait Gait, bool bAiming);
 
 	/** Swap between right and left shoulder. */
 	void SwapShoulder();
@@ -56,7 +56,7 @@ protected:
 	float AimBlendSpeed = 14.f;
 
 private:
-	const FOCCameraPose& PoseFor(EOCGait Gait) const;
+	const FOCCameraPose& CurrentBasePose() const;
 	void StartBlend();
 	void ApplyPose(const FOCCameraPose& Pose);
 
@@ -65,5 +65,6 @@ private:
 	FOCCameraPose Current;
 	FOCCameraPose Target;
 	EOCGait CurrentGait = EOCGait::Jog;
+	bool bAiming = false;
 	bool bLeftShoulder = false;
 };

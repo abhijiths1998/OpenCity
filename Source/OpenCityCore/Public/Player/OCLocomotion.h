@@ -34,9 +34,13 @@ struct OPENCITYCORE_API FOCLocomotionSettings
 	/** Forward stick/key amount (0-1) needed to sprint. Sideways and backwards never sprint. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Locomotion", meta = (ClampMin = "0", ClampMax = "1"))
 	float SprintForwardThreshold = 0.5f;
+
+	/** A jump pressed while crouched fires when standing up completes within this time. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Locomotion", meta = (ClampMin = "0", Units = "s"))
+	float JumpAfterStandUpWindow = 0.3f;
 };
 
-/** What the player is asking for this moment. MoveInput: X = right, Y = forward, each -1..1. */
+/** Snapshot passed to the rules. MoveInput: X = right, Y = forward, each -1..1. */
 struct FOCLocomotionInput
 {
 	FVector2D MoveInput = FVector2D::ZeroVector;
@@ -48,18 +52,21 @@ struct FOCLocomotionInput
 /** Result of applying the rules. */
 struct FOCLocomotionDecision
 {
+	/** What the character is actually doing now (a pending stand-up still counts as crouched). */
 	EOCGait Gait = EOCGait::Jog;
 	float MaxSpeed = 0.f;
-	/** Sprinting from a crouch stands the character up. */
+	/** Aiming, including aiming while crouched: camera uses the aim pose. */
+	bool bAiming = false;
+	/** Character faces the camera direction (strafe) instead of its movement direction. */
+	bool bFaceCamera = false;
+	/** Sprint was requested from a crouch: stand up; gait becomes Sprint once standing. */
 	bool bShouldUncrouch = false;
-	/** Toggle-sprint (gamepad) ends when the player stops moving. */
-	bool bShouldClearSprintToggle = false;
 };
 
 /**
  * Locomotion rules. Pure logic with no engine state, so it is unit-tested.
- *   Aim beats everything (and blocks sprint); aiming while crouched stays crouched.
- *   Sprint needs mostly-forward input and stands up from a crouch.
+ *   Aim beats everything and blocks sprint; aiming while crouched stays crouched.
+ *   Sprint needs mostly-forward input; from a crouch it first requests a stand-up.
  *   Otherwise crouch if crouched, else jog.
  */
 class OPENCITYCORE_API FOCLocomotionRules
@@ -67,4 +74,41 @@ class OPENCITYCORE_API FOCLocomotionRules
 public:
 	static FOCLocomotionDecision Resolve(const FOCLocomotionInput& Input, const FOCLocomotionSettings& Settings);
 	static float SpeedFor(EOCGait Gait, const FOCLocomotionSettings& Settings);
+};
+
+enum class EOCCrouchRequest : uint8 { None, Crouch, Uncrouch };
+enum class EOCJumpRequest : uint8 { Jump, StandUpThenJump };
+
+/**
+ * The player's movement intent, updated by input events. Holds all input policy
+ * (toggles, cancels, buffered jump) so the character only forwards events.
+ */
+struct OPENCITYCORE_API FOCLocomotionIntent
+{
+	/** Stopping all movement ends a toggled (gamepad) sprint. */
+	void SetMoveInput(const FVector2D& NewMoveInput);
+	void SetSprintHeld(bool bHeld) { bSprintHeld = bHeld; }
+	void PressSprintToggle() { bSprintToggled = !bSprintToggled; }
+	void SetAim(bool bAim) { bWantsAim = bAim; }
+
+	/** Crouch toggles; crouching cancels any sprint (held or toggled) and a buffered jump. */
+	EOCCrouchRequest PressCrouch(bool bIsCrouched, bool bIsFalling);
+
+	/** Jumping from a crouch stands up first and buffers the jump. */
+	EOCJumpRequest PressJump(bool bIsCrouched, double NowSeconds);
+
+	/** True once if a buffered jump is still within the window. */
+	bool ConsumeBufferedJump(double NowSeconds, float WindowSeconds);
+
+	void Reset();
+
+	FOCLocomotionInput ToInput(bool bIsCrouched) const;
+
+	FVector2D MoveInput = FVector2D::ZeroVector;
+	bool bSprintHeld = false;
+	bool bSprintToggled = false;
+	bool bWantsAim = false;
+
+private:
+	double BufferedJumpTime = -1.0;
 };

@@ -35,9 +35,13 @@ void UOCCameraRigComponent::Initialize(USpringArmComponent* InBoom, UCameraCompo
 	ApplyPose(Current);
 }
 
-const FOCCameraPose& UOCCameraRigComponent::PoseFor(EOCGait Gait) const
+const FOCCameraPose& UOCCameraRigComponent::CurrentBasePose() const
 {
-	switch (Gait)
+	if (bAiming)
+	{
+		return AimPose; // also when aiming from a crouch
+	}
+	switch (CurrentGait)
 	{
 	case EOCGait::Sprint: return SprintPose;
 	case EOCGait::Crouch: return CrouchPose;
@@ -47,9 +51,14 @@ const FOCCameraPose& UOCCameraRigComponent::PoseFor(EOCGait Gait) const
 	}
 }
 
-void UOCCameraRigComponent::SetGait(EOCGait Gait)
+void UOCCameraRigComponent::SetState(EOCGait Gait, bool bInAiming)
 {
+	if (Gait == CurrentGait && bInAiming == bAiming)
+	{
+		return;
+	}
 	CurrentGait = Gait;
+	bAiming = bInAiming;
 	StartBlend();
 }
 
@@ -61,19 +70,22 @@ void UOCCameraRigComponent::SwapShoulder()
 
 void UOCCameraRigComponent::StartBlend()
 {
-	const FOCCameraPose& Base = PoseFor(CurrentGait);
+	const FOCCameraPose& Base = CurrentBasePose();
 	Target = bLeftShoulder ? Base.Mirrored() : Base;
-	if (!Current.Equals(Target))
+	if (Current.Equals(Target))
 	{
-		SetComponentTickEnabled(true);
+		Current = Target; // already close: snap, no tick needed
+		ApplyPose(Current);
+		return;
 	}
+	SetComponentTickEnabled(true);
 }
 
 void UOCCameraRigComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	const float Speed = CurrentGait == EOCGait::Aim ? AimBlendSpeed : BlendSpeed;
+	const float Speed = bAiming ? AimBlendSpeed : BlendSpeed;
 	Current = Current.InterpTo(Target, DeltaTime, Speed);
 	if (Current.Equals(Target))
 	{

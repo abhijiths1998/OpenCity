@@ -13,6 +13,7 @@
 #include "InputMappingContext.h"
 #include "OCLog.h"
 #include "Player/OCCameraRigComponent.h"
+#include "Player/OCInteractionComponent.h"
 #include "Player/OCInputConfig.h"
 
 AOCCharacter::AOCCharacter(const FObjectInitializer& ObjectInitializer)
@@ -55,6 +56,7 @@ AOCCharacter::AOCCharacter(const FObjectInitializer& ObjectInitializer)
 	FollowCamera->bUsePawnControlRotation = false;
 
 	CameraRig = CreateDefaultSubobject<UOCCameraRigComponent>(TEXT("CameraRig"));
+	Interaction = CreateDefaultSubobject<UOCInteractionComponent>(TEXT("Interaction"));
 }
 
 void AOCCharacter::ApplyArt()
@@ -116,7 +118,7 @@ void AOCCharacter::PawnClientRestart()
 	if (InputConfig)
 	{
 		AddMappingContext(InputConfig->OnFootContext, InputConfig->OnFootPriority);
-		if (bWantsAim)
+		if (Intent.bWantsAim)
 		{
 			AddMappingContext(InputConfig->AimingContext, InputConfig->AimingPriority);
 		}
@@ -133,8 +135,7 @@ void AOCCharacter::UnPossessed()
 		RemoveMappingContext(InputConfig->OnFootContext);
 	}
 	// Don't keep running or aiming without a driver.
-	MoveInput = FVector2D::ZeroVector;
-	bSprintHeld = bSprintToggled = bWantsAim = false;
+	Intent.Reset();
 	UpdateLocomotion();
 	Super::UnPossessed();
 }
@@ -192,24 +193,20 @@ void AOCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(C.SwapShoulder, ETriggerEvent::Started, this, &AOCCharacter::HandleSwapShoulder);
 	}
+	if (C.Interact)
+	{
+		Input->BindAction(C.Interact, ETriggerEvent::Started, this, &AOCCharacter::HandleInteract);
+	}
 }
 
 void AOCCharacter::UpdateLocomotion()
 {
-	FOCLocomotionInput In;
-	In.MoveInput = MoveInput;
-	In.bWantsSprint = bSprintHeld || bSprintToggled;
-	In.bWantsAim = bWantsAim;
-	In.bIsCrouched = bIsCrouched;
-
-	const FOCLocomotionDecision D = FOCLocomotionRules::Resolve(In, LocomotionSettings);
-	if (D.bShouldClearSprintToggle)
+	const FOCLocomotionDecision D = FOCLocomotionRules::Resolve(Intent.ToInput(bIsCrouched), LocomotionSettings);
+	if (D.bShouldUncrouch)
 	{
-		bSprintToggled = false;
-	}
-	if (D.bShouldUncrouch && bIsCrouched)
-	{
-		UnCrouch(); // OnEndCrouch re-enters UpdateLocomotion
+		// Stand-up happens on the next movement update (or never, under a low roof);
+		// OnEndCrouch re-runs this and the gait becomes Sprint then.
+		UnCrouch();
 	}
 
 	UCharacterMovementComponent* Move = GetCharacterMovement();
@@ -219,15 +216,11 @@ void AOCCharacter::UpdateLocomotion()
 	}
 
 	// Aiming faces the camera direction (strafe); otherwise turn toward movement.
-	const bool bFaceCamera = bWantsAim;
-	bUseControllerRotationYaw = bFaceCamera;
-	Move->bOrientRotationToMovement = !bFaceCamera;
+	bUseControllerRotationYaw = D.bFaceCamera;
+	Move->bOrientRotationToMovement = !D.bFaceCamera;
 
-	if (D.Gait != Gait)
-	{
-		Gait = D.Gait;
-		CameraRig->SetGait(Gait);
-	}
+	Gait = D.Gait;
+	CameraRig->SetState(D.Gait, D.bAiming);
 }
 
 void AOCCharacter::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
@@ -246,24 +239,29 @@ void AOCCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdj
 {
 	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
 	UpdateLocomotion();
+	if (Intent.ConsumeBufferedJump(GetWorld()->GetTimeSeconds(), LocomotionSettings.JumpAfterStandUpWindow))
+	{
+		Jump();
+	}
 }
 
 void AOCCharacter::HandleMove(const FInputActionValue& Value)
 {
-	MoveInput = Value.Get<FVector2D>();
+	const FVector2D Move = Value.Get<FVector2D>();
+	Intent.SetMoveInput(Move);
 	if (Controller)
 	{
 		const FRotator YawOnly(0.f, Controller->GetControlRotation().Yaw, 0.f);
 		const FRotationMatrix M(YawOnly);
-		AddMovementInput(M.GetUnitAxis(EAxis::X), MoveInput.Y);
-		AddMovementInput(M.GetUnitAxis(EAxis::Y), MoveInput.X);
+		AddMovementInput(M.GetUnitAxis(EAxis::X), Move.Y);
+		AddMovementInput(M.GetUnitAxis(EAxis::Y), Move.X);
 	}
 	UpdateLocomotion();
 }
 
 void AOCCharacter::HandleMoveStopped(const FInputActionValue& Value)
 {
-	MoveInput = FVector2D::ZeroVector;
+	Intent.SetMoveInput(FVector2D::ZeroVector);
 	UpdateLocomotion();
 }
 
@@ -276,9 +274,9 @@ void AOCCharacter::HandleLook(const FInputActionValue& Value)
 
 void AOCCharacter::HandleJumpStarted(const FInputActionValue& Value)
 {
-	if (bIsCrouched)
+	if (Intent.PressJump(bIsCrouched, GetWorld()->GetTimeSeconds()) == EOCJumpRequest::StandUpThenJump)
 	{
-		UnCrouch(); // jump from a crouch stands up first
+		UnCrouch(); // the buffered jump fires in OnEndCrouch
 		return;
 	}
 	Jump();
@@ -291,38 +289,36 @@ void AOCCharacter::HandleJumpStopped(const FInputActionValue& Value)
 
 void AOCCharacter::HandleSprintStarted(const FInputActionValue& Value)
 {
-	bSprintHeld = true;
+	Intent.SetSprintHeld(true);
 	UpdateLocomotion();
 }
 
 void AOCCharacter::HandleSprintStopped(const FInputActionValue& Value)
 {
-	bSprintHeld = false;
+	Intent.SetSprintHeld(false);
 	UpdateLocomotion();
 }
 
 void AOCCharacter::HandleSprintToggle(const FInputActionValue& Value)
 {
-	bSprintToggled = !bSprintToggled;
+	Intent.PressSprintToggle();
 	UpdateLocomotion();
 }
 
 void AOCCharacter::HandleCrouch(const FInputActionValue& Value)
 {
-	if (bIsCrouched)
+	switch (Intent.PressCrouch(bIsCrouched, GetCharacterMovement()->IsFalling()))
 	{
-		UnCrouch();
+	case EOCCrouchRequest::Crouch:   Crouch(); break;
+	case EOCCrouchRequest::Uncrouch: UnCrouch(); break;
+	case EOCCrouchRequest::None:     break;
 	}
-	else if (!GetCharacterMovement()->IsFalling())
-	{
-		bSprintToggled = false; // crouching cancels a toggled sprint
-		Crouch();
-	}
+	UpdateLocomotion();
 }
 
 void AOCCharacter::HandleAimStarted(const FInputActionValue& Value)
 {
-	bWantsAim = true;
+	Intent.SetAim(true);
 	if (InputConfig)
 	{
 		AddMappingContext(InputConfig->AimingContext, InputConfig->AimingPriority);
@@ -332,7 +328,7 @@ void AOCCharacter::HandleAimStarted(const FInputActionValue& Value)
 
 void AOCCharacter::HandleAimStopped(const FInputActionValue& Value)
 {
-	bWantsAim = false;
+	Intent.SetAim(false);
 	if (InputConfig)
 	{
 		RemoveMappingContext(InputConfig->AimingContext);
@@ -343,4 +339,9 @@ void AOCCharacter::HandleAimStopped(const FInputActionValue& Value)
 void AOCCharacter::HandleSwapShoulder(const FInputActionValue& Value)
 {
 	CameraRig->SwapShoulder();
+}
+
+void AOCCharacter::HandleInteract(const FInputActionValue& Value)
+{
+	Interaction->TryInteract();
 }

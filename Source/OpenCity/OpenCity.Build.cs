@@ -14,6 +14,7 @@ public class OpenCity : ModuleRules
 			"Engine",
 			"InputCore",
 			"EnhancedInput",
+			"ChaosVehicles",
 			"OpenCityCore",
 		});
 

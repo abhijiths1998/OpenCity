@@ -10,6 +10,7 @@ class UCameraComponent;
 class UInputMappingContext;
 class USkeletalMesh;
 class UOCCameraRigComponent;
+class UOCInteractionComponent;
 class UOCInputConfig;
 class USpringArmComponent;
 struct FInputActionValue;
@@ -32,13 +33,13 @@ public:
 	EOCGait GetGait() const { return Gait; }
 
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Locomotion")
-	bool IsAiming() const { return bWantsAim; }
+	bool IsAiming() const { return Intent.bWantsAim; }
 
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Locomotion")
 	bool IsSprinting() const { return Gait == EOCGait::Sprint; }
 
 	/** Last move input, X = right, Y = forward. */
-	FVector2D GetMoveInput() const { return MoveInput; }
+	FVector2D GetMoveInput() const { return Intent.MoveInput; }
 
 	USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	UCameraComponent* GetFollowCamera() const { return FollowCamera; }
@@ -60,6 +61,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<UOCCameraRigComponent> CameraRig;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "OpenCity|Interaction")
+	TObjectPtr<UOCInteractionComponent> Interaction;
 
 	UPROPERTY(EditDefaultsOnly, Category = "OpenCity|Input")
 	TObjectPtr<UOCInputConfig> InputConfig;
@@ -94,10 +98,9 @@ private:
 	void HandleAimStarted(const FInputActionValue& Value);
 	void HandleAimStopped(const FInputActionValue& Value);
 	void HandleSwapShoulder(const FInputActionValue& Value);
+	void HandleInteract(const FInputActionValue& Value);
 
-	FVector2D MoveInput = FVector2D::ZeroVector;
+	/** All input policy (toggles, cancels, buffered jump) lives here, in OpenCityCore. */
+	FOCLocomotionIntent Intent;
 	EOCGait Gait = EOCGait::Jog;
-	bool bSprintHeld = false;
-	bool bSprintToggled = false;
-	bool bWantsAim = false;
 };

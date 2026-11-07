@@ -31,7 +31,7 @@ abp = unreal.load_asset("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed")
 parent = unreal.BlueprintEditorLibrary.get_blueprint_parent_class(abp)
 check("ABP_Unarmed parent", parent == unreal.OCCharacterAnimInstance.static_class(), parent.get_name())
 
-for name, expected in (("IMC_OnFoot", 15), ("IMC_Aiming", 2)):
+for name, expected in (("IMC_OnFoot", 17), ("IMC_Aiming", 2)):
     imc = unreal.load_asset(f"/Game/Core/Input/{name}")
     maps = imc.get_editor_property("default_key_mappings").get_editor_property("mappings")
     check(f"{name} mapping count", len(maps) == expected, f"{len(maps)}")
@@ -39,12 +39,16 @@ for name, expected in (("IMC_OnFoot", 15), ("IMC_Aiming", 2)):
         action = m.get_editor_property("action")
         k = m.get_editor_property("key").get_editor_property("key_name")
         mods = [type(x).__name__ for x in m.get_editor_property("modifiers")]
-        unreal.log(f"OCVERIFY      {name}: {action.get_name() if action else None} <- {k} {mods}")
+        trigs = [f"{type(x).__name__}({x.get_editor_property('actuation_threshold'):.2f})" for x in m.get_editor_property("triggers")]
+        unreal.log(f"OCVERIFY      {name}: {action.get_name() if action else None} <- {k} {mods} {trigs}")
         check(f"{name} {k} has action", action is not None)
+
+legacy = unreal.get_default_object(unreal.InputSettings).get_editor_property("enable_legacy_input_scales")
+check("legacy input scales on (look mappings depend on it)", legacy is True, str(legacy))
 
 cfg = unreal.load_asset("/Game/Core/Input/DA_OCInputConfig")
 for prop in ("on_foot_context", "aiming_context", "move", "look", "jump", "sprint",
-             "sprint_toggle", "crouch", "aim", "swap_shoulder"):
+             "sprint_toggle", "crouch", "aim", "swap_shoulder", "interact"):
     check(f"input config {prop}", cfg.get_editor_property(prop) is not None)
 
 unreal.log(f"OCVERIFY DONE, {len(fails)} failure(s)")

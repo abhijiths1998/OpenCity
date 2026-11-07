@@ -58,6 +58,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Actions")
 	TObjectPtr<UInputAction> Aim;
 
+	/** Use the nearest interactable (enter vehicles). */
+	UPROPERTY(EditDefaultsOnly, Category = "Actions")
+	TObjectPtr<UInputAction> Interact;
+
 	/** Only mapped in AimingContext. */
 	UPROPERTY(EditDefaultsOnly, Category = "Actions")
 	TObjectPtr<UInputAction> SwapShoulder;

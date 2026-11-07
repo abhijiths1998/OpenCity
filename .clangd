@@ -1,0 +1,6 @@
+# Background indexing of the whole Unreal Engine tree costs about 4 GiB of RAM
+# (measured 2026-11-07 on this 24 GiB machine), enough to starve editor runs.
+# Per-file completion and go-to-definition still work. Delete this to get
+# project-wide find-references back.
+Index:
+  Background: Skip

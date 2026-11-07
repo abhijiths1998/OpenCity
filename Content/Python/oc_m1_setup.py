@@ -64,6 +64,7 @@ ACTIONS = {
     "IA_Crouch": BOOL,
     "IA_Aim": BOOL,
     "IA_SwapShoulder": BOOL,
+    "IA_Interact": BOOL,
 }
 
 
@@ -114,14 +115,24 @@ def scale_by_dt(imc):
     return unreal.new_object(unreal.InputModifierScaleByDeltaTime, outer=imc)
 
 
+def down_trigger(imc, threshold):
+    """Analog-to-button with an explicit actuation threshold (e.g. a trigger)."""
+    t = unreal.new_object(unreal.InputTriggerDown, outer=imc)
+    t.set_editor_property("actuation_threshold", threshold)
+    return t
+
+
 def build_context(imc, rows):
-    """rows: list of (action, key_name, [modifiers])."""
+    """rows: list of (action, key_name, [modifiers]) or (action, key_name, [modifiers], [triggers])."""
     mappings = []
-    for action, key_name, modifiers in rows:
+    for row in rows:
+        action, key_name, modifiers = row[:3]
+        triggers = row[3] if len(row) > 3 else []
         m = unreal.EnhancedActionKeyMapping()
         m.set_editor_property("action", action)
         m.set_editor_property("key", key(key_name))
         m.set_editor_property("modifiers", modifiers)
+        m.set_editor_property("triggers", triggers)
         mappings.append(m)
     data = imc.get_editor_property("default_key_mappings")
     data.set_editor_property("mappings", mappings)
@@ -140,7 +151,10 @@ def make_contexts(a):
         (a["IA_Move"], "A", [negate(imc)]),
         (a["IA_Move"], "D", []),
         (a["IA_Move"], "Gamepad_Left2D", [dead_zone(imc)]),
-        # Look: mouse is per-frame delta; stick is a rate, so scale by delta time
+        # Look, X = yaw, Y = pitch. Same scheme as Epic's tested template: legacy controller
+        # scales ON (DefaultInput.ini pins it; PlayerController yaw x2.5, pitch x-2.5), so Y is
+        # negated. Enhanced Input reads raw mouse deltas, so the mouse needs no scalar.
+        # Stick is a rate: scaled by delta time, then x2.5 by legacy = 150 deg/s yaw, 100 pitch.
         (a["IA_Look"], "Mouse2D", [negate(imc, x=False, y=True, z=False)]),
         (a["IA_Look"], "Gamepad_Right2D", [dead_zone(imc), negate(imc, x=False, y=True, z=False),
                                             scalar(imc, 60.0, 40.0), scale_by_dt(imc)]),
@@ -151,7 +165,9 @@ def make_contexts(a):
         (a["IA_Crouch"], "C", []),
         (a["IA_Crouch"], "Gamepad_FaceButton_Right", []),
         (a["IA_Aim"], "RightMouseButton", []),
-        (a["IA_Aim"], "Gamepad_LeftTrigger", []),
+        (a["IA_Aim"], "Gamepad_LeftTrigger", [], [down_trigger(imc, 0.35)]),
+        (a["IA_Interact"], "F", []),
+        (a["IA_Interact"], "Gamepad_FaceButton_Top", []),
     ])
 
     aiming = get_or_create("IMC_Aiming", INPUT_DIR, unreal.InputMappingContext, unreal.InputMappingContext_Factory())
@@ -170,7 +186,8 @@ def make_input_config(a, on_foot, aiming):
     cfg.set_editor_property("aiming_context", aiming)
     for prop, name in (("move", "IA_Move"), ("look", "IA_Look"), ("jump", "IA_Jump"),
                        ("sprint", "IA_Sprint"), ("sprint_toggle", "IA_SprintToggle"),
-                       ("crouch", "IA_Crouch"), ("aim", "IA_Aim"), ("swap_shoulder", "IA_SwapShoulder")):
+                       ("crouch", "IA_Crouch"), ("aim", "IA_Aim"), ("swap_shoulder", "IA_SwapShoulder"),
+                       ("interact", "IA_Interact")):
         cfg.set_editor_property(prop, a[name])
     save(cfg)
     return cfg
@@ -247,10 +264,8 @@ def block(label, center, size, rotation=(0, 0, 0), folder="Course"):
 
 
 def build_playground():
-    if assets.does_asset_exist(MAP_PATH):
-        assets.delete_asset(MAP_PATH)
-    if not level_subsystem.new_level(MAP_PATH):
-        raise RuntimeError(f"new_level failed for {MAP_PATH}")
+    import oc_lib
+    oc_lib.new_level(MAP_PATH)
 
     sun = spawn(unreal.DirectionalLight, (0, 0, 1000), (-40, 35, 0), "Sun", "Lighting")
     sc = sun.get_component_by_class(unreal.DirectionalLightComponent)
