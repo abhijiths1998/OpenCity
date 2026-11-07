@@ -94,6 +94,11 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Steering")
 	FVehicleSteeringConfig SteeringSetup;
 
+	/** Steering limit by speed as (km/h, 0-1 of full lock); built into SteeringSetup.SteeringCurve.
+	 *  Less lock at speed stops spin-outs. Empty = full lock at all speeds. */
+	UPROPERTY(EditDefaultsOnly, Category = "Steering")
+	TArray<FVector2D> SteeringCurvePoints;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	FOCVehicleCameraSettings Camera;
 

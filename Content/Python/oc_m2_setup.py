@@ -220,6 +220,7 @@ def main():
         engine_setup=engine(650.0, 7000.0, 900.0),
         transmission_setup=transmission([4.0, 2.6, 1.8, 1.4, 1.1, 0.9], 3.4, 6200.0, 3000.0),
         differential_setup=differential(RWD),
+        steering_curve_points=vec2s([(0, 1.0), (60, 0.7), (120, 0.45), (200, 0.3)]),
         camera=camera(650.0, 150.0), radio_stations=radio)
 
     offroad = make_vehicle_data(
@@ -233,6 +234,7 @@ def main():
         engine_setup=engine(800.0, 5500.0, 800.0),
         transmission_setup=transmission([4.5, 2.9, 1.9, 1.3, 1.0], 3.9, 4800.0, 2200.0),
         differential_setup=differential(AWD, 0.5),
+        steering_curve_points=vec2s([(0, 1.0), (50, 0.7), (100, 0.45), (160, 0.3)]),
         camera=camera(750.0, 200.0, 85.0, 96.0, 140.0), radio_stations=radio)
 
     bike = make_vehicle_data(
@@ -245,13 +247,14 @@ def main():
         engine_setup=engine(140.0, 10000.0, 1400.0),
         transmission_setup=transmission([3.2, 2.2, 1.7, 1.35, 1.1], 3.0, 9000.0, 5000.0),
         differential_setup=differential(RWD),
+        steering_curve_points=vec2s([(0, 1.0), (20, 0.6), (40, 0.35), (80, 0.2), (140, 0.12)]),
         camera=camera(450.0, 110.0, 85.0, 104.0, 150.0),
         driver_offset=unreal.Vector(0.0, 0.0, 100.0),
         exit_offsets=[unreal.Vector(0, -110, 60), unreal.Vector(0, 110, 60), unreal.Vector(-200, 0, 60)],
         max_exit_speed_kmh=20.0, radio_stations=[])
 
     # --- Blueprints ---------------------------------------------------------------
-    bps = {}
+    datas = {}
     for name, parent, data in (("BP_OCVehicle_Coupe", unreal.OCVehicle, coupe),
                                ("BP_OCVehicle_Offroad", unreal.OCVehicle, offroad),
                                ("BP_OCVehicle_Bike", unreal.OCMotorbike, bike)):
@@ -261,35 +264,43 @@ def main():
             L.set_props(cdo, body_mesh=unreal.load_asset("/Engine/BasicShapes/Cube"),
                         wheel_mesh=unreal.load_asset("/Engine/BasicShapes/Cylinder"))
         L.save(bp)
-        bps[name] = bp
+        datas[name] = data
 
-    build_driving_map(bps)
+    build_driving_map(datas)
     log("done")
 
 
-def build_driving_map(bps):
+def build_driving_map(datas):
     L.new_level(MAP_PATH)
     L.daylight()
     L.block("Floor", (0, 0, -50), (40000, 40000, 100), folder="Ground")
     L.spawn(unreal.PlayerStart, (0, 0, 100), (0, 0, 0), "PlayerStart")
 
-    # Vehicles parked side by side in front of the player, facing +X.
-    for i, name in enumerate(("BP_OCVehicle_Coupe", "BP_OCVehicle_Offroad", "BP_OCVehicle_Bike")):
-        L.spawn(bps[name].generated_class(), (600, -500 + i * 500, 60), (0, 0, 0), name.replace("BP_OCVehicle_", "Vehicle_"), "Vehicles")
+    # Vehicles parked side by side in front of the player, facing +X. The data asset is set on
+    # each instance explicitly: right after a Blueprint save in the same session, the class can
+    # still carry stale (empty) defaults, and placed actors would be saved without data.
+    for i, (name, data) in enumerate(datas.items()):
+        cls = unreal.EditorAssetLibrary.load_blueprint_class(f"{VEH_DIR}/Blueprints/{name}")
+        actor = L.spawn(cls, (600, -500 + i * 500, 60), (0, 0, 0), name.replace("BP_OCVehicle_", "Vehicle_"), "Vehicles")
+        actor.set_editor_property("vehicle_data", data)
+        if actor.get_editor_property("vehicle_data") is None:
+            raise RuntimeError(f"{name}: vehicle_data did not stick on the placed actor")
 
-    # Crash test: a long concrete wall 60 m ahead, and a row of blocks.
+    # Layout: a clear runway along +X (y -1500..1500) from the start to a crash wall at 60 m.
+    # Everything else sits beside it, so scripted runs don't clip props by accident.
     L.block("CrashWall", (6000, 0, 150), (100, 3000, 300))
+    # Crash blocks in their own lane at y = -7000.
     for i in range(6):
-        L.block(f"CrashBlock_{i}", (3500, -1250 + i * 500, 75), (150, 150, 150))
+        L.block(f"CrashBlock_{i}", (2000 + i * 800, -7000, 75), (150, 150, 150))
     # Jump ramps at 10 and 18 degrees.
     L.block("Ramp_10deg", (2000, 3000, 60), (1400, 600, 20), (0, -10, 0))
     L.block("Ramp_18deg", (2000, 4500, 110), (1400, 600, 20), (0, -18, 0))
-    # Slalom posts every 15 m.
+    # Slalom posts every 15 m in the lane at y = -4000.
     for i in range(8):
-        L.block(f"Slalom_{i}", (1500 + i * 1500, -3500 + (i % 2) * 400, 100), (40, 40, 200))
-    # A narrow alley (3 m) for exit-spot testing.
-    L.block("Alley_Left", (-2000, -150 - 25, 150), (2000, 50, 300))
-    L.block("Alley_Right", (-2000, 150 + 25, 150), (2000, 50, 300))
+        L.block(f"Slalom_{i}", (1500 + i * 1500, -4000 + (i % 2) * 400, 100), (40, 40, 200))
+    # A narrow alley (3 m) behind the start for exit-spot testing.
+    L.block("Alley_Left", (-3000, -150 - 25, 150), (2000, 50, 300))
+    L.block("Alley_Right", (-3000, 150 + 25, 150), (2000, 50, 300))
     L.save_level(MAP_PATH, TAG)
 
 

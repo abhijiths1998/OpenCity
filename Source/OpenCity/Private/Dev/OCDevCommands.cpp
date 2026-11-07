@@ -112,6 +112,27 @@ namespace OCDev
 		}
 	}
 
+	void ResetVehicle(const TArray<FString>& Args, UWorld* World)
+	{
+		if (AOCVehicle* V = Cast<AOCVehicle>(PlayerPawn(World)))
+		{
+			V->ResetUpright();
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV resetvehicle"));
+		}
+	}
+
+	/** Roll the driven vehicle over with an angular impulse, to test crash recovery. */
+	void Flip(const TArray<FString>& Args, UWorld* World)
+	{
+		if (AOCVehicle* V = Cast<AOCVehicle>(PlayerPawn(World)))
+		{
+			const float DegPerSec = Args.IsValidIndex(0) ? FCString::Atof(*Args[0]) : 400.f;
+			V->GetMesh()->SetPhysicsAngularVelocityInDegrees(V->GetActorForwardVector() * DegPerSec);
+			V->GetMesh()->AddImpulse(FVector(0.f, 0.f, 400.f), NAME_None, /*bVelChange*/ true);
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV flip %.0f deg/s"), DegPerSec);
+		}
+	}
+
 	void Radio(const TArray<FString>& Args, UWorld* World)
 	{
 		if (AOCVehicle* V = Cast<AOCVehicle>(PlayerPawn(World)))
@@ -126,6 +147,8 @@ namespace OCDev
 	FAutoConsoleCommandWithWorldAndArgs CmdExit(TEXT("oc.dev.exitvehicle"), TEXT("Press exit vehicle."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExitVehicle));
 	FAutoConsoleCommandWithWorldAndArgs CmdDrive(TEXT("oc.dev.drive"), TEXT("Set vehicle inputs: throttle steer brake."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Drive));
 	FAutoConsoleCommandWithWorldAndArgs CmdImpact(TEXT("oc.dev.impact"), TEXT("Apply an impact in km/h to the driven vehicle."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Impact));
+	FAutoConsoleCommandWithWorldAndArgs CmdReset(TEXT("oc.dev.resetvehicle"), TEXT("Press reset vehicle."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ResetVehicle));
+	FAutoConsoleCommandWithWorldAndArgs CmdFlip(TEXT("oc.dev.flip"), TEXT("Roll the driven vehicle over: [deg/s]."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Flip));
 	FAutoConsoleCommandWithWorldAndArgs CmdRadio(TEXT("oc.dev.radio"), TEXT("Radio next (or 'prev')."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Radio));
 
 	/** Runs -ocdevscript once, on the first tick of the first game world that has begun play. */

@@ -31,6 +31,9 @@ AOCVehicle::AOCVehicle(const FObjectInitializer& ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = false; // the Chaos movement component ticks; this actor doesn't need to
 
+	// AWheeledVehiclePawn leaves simulation off (Epic's templates enable it in Blueprint).
+	GetMesh()->BodyInstance.bSimulatePhysics = true;
+
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(GetMesh());
 	CameraBoom->bUsePawnControlRotation = false;
@@ -78,6 +81,9 @@ void AOCVehicle::ApplyVehicleData(bool bRebuildPhysics)
 	V->TransmissionSetup = VehicleData->TransmissionSetup;
 	V->DifferentialSetup = VehicleData->DifferentialSetup;
 	V->SteeringSetup = VehicleData->SteeringSetup;
+	// S reverses once stopped; while rolling backwards, W brakes. The exit sequence relies on this.
+	V->bReverseAsBrake = true;
+	V->bThrottleAsBrake = true;
 
 	// Chaos divides by the curve's max value, so an empty curve would break the engine.
 	FRichCurve* Curve = V->EngineSetup.TorqueCurve.GetRichCurve();
@@ -93,6 +99,16 @@ void AOCVehicle::ApplyVehicleData(bool bRebuildPhysics)
 		UE_LOG(LogOpenCity, Warning, TEXT("%s: %s has no torque curve, using a flat one."), *GetName(), *VehicleData->GetName());
 	}
 	BaseMaxTorque = V->EngineSetup.MaxTorque;
+
+	if (!VehicleData->SteeringCurvePoints.IsEmpty())
+	{
+		FRichCurve* Steer = V->SteeringSetup.SteeringCurve.GetRichCurve();
+		Steer->Reset();
+		for (const FVector2D& P : VehicleData->SteeringCurvePoints)
+		{
+			Steer->AddKey(P.X * 0.621371f, P.Y); // Chaos reads this curve in mph
+		}
+	}
 
 	if (VehicleData->AnimClass && M->GetAnimClass() != VehicleData->AnimClass)
 	{
@@ -281,13 +297,23 @@ void AOCVehicle::RequestExit()
 		return;
 	}
 	// Too fast to step out: brake hard, then get out once slow enough.
-	if (UChaosVehicleMovementComponent* V = GetVehicleMovementComponent())
-	{
-		V->SetThrottleInput(0.f);
-		V->SetBrakeInput(1.f);
-		V->SetHandbrakeInput(true);
-	}
+	ApplyExitBraking();
 	GetWorldTimerManager().SetTimer(PendingExitTimer, this, &AOCVehicle::CheckPendingExit, 0.1f, true);
+}
+
+void AOCVehicle::ApplyExitBraking()
+{
+	UChaosVehicleMovementComponent* V = GetVehicleMovementComponent();
+	if (!V)
+	{
+		return;
+	}
+	// Brake means "reverse" once moving backwards (auto-reverse), so when rolling backwards
+	// press throttle instead, which Chaos treats as a brake (bThrottleAsBrake).
+	const bool bForward = V->GetForwardSpeed() >= 0.f;
+	V->SetBrakeInput(bForward ? 1.f : 0.f);
+	V->SetThrottleInput(bForward ? 0.f : 1.f);
+	V->SetHandbrakeInput(true);
 }
 
 void AOCVehicle::CheckPendingExit()
@@ -302,7 +328,9 @@ void AOCVehicle::CheckPendingExit()
 	{
 		GetWorldTimerManager().ClearTimer(PendingExitTimer);
 		ForceExit();
+		return;
 	}
+	ApplyExitBraking(); // re-evaluate direction every check
 }
 
 bool AOCVehicle::ForceExit()
@@ -491,6 +519,11 @@ void AOCVehicle::HandleRadioPrevious(const FInputActionValue& Value)
 }
 
 void AOCVehicle::HandleReset(const FInputActionValue& Value)
+{
+	ResetUpright();
+}
+
+void AOCVehicle::ResetUpright()
 {
 	// Back on the wheels, facing the same way, slightly above where it was.
 	const FVector Up = GetActorLocation() + FVector(0.f, 0.f, 120.f);

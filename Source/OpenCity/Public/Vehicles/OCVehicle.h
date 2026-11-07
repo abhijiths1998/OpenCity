@@ -50,6 +50,9 @@ public:
 	/** Exit as the exit button does: immediately if slow enough, otherwise brake first. */
 	void RequestExit();
 
+	/** Put the vehicle back on its wheels, facing the same way (the reset button). */
+	void ResetUpright();
+
 	/** Leave the vehicle now if a free exit spot exists (ignores speed). */
 	bool ForceExit();
 
@@ -108,6 +111,7 @@ private:
 	void HandleWrecked();
 
 	void CheckPendingExit();
+	void ApplyExitBraking();
 	bool FindExitSpot(FVector& OutLocation) const;
 	void ExitAt(const FVector& Location);
 	void Park();

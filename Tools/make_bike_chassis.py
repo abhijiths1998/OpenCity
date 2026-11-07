@@ -5,9 +5,9 @@ The chassis is invisible in game: it only gives Chaos Vehicles a physics body an
 wheel bones. Bones: root (box skinned here) + PhysWheel_FL/FR/RL/RR. The narrow track is
 the "hidden four-wheel" approach from ARCHITECTURE.md section 3.
 
-glTF axes: +Y up, +Z forward, -X right (1 unit = 1 m). Unreal's importer converts to
-X forward, Z up, cm. AOCVehicle logs the imported wheel positions at BeginPlay so the
-conversion can be checked.
+Axes: Unreal 5.8's glTF importer maps glTF (x, y, z) to Unreal (x, z, y), in metres to cm
+(measured: AOCVehicle logs imported wheel bone positions at BeginPlay). So positions here
+are written as Unreal (forward X, right Y, up Z) and converted with to_gltf().
 
 Usage: python3 -I Tools/make_bike_chassis.py [out.gltf]
        default: SourceArt/Vehicles/Bike/SKM_BikeChassis.gltf
@@ -22,20 +22,28 @@ from pathlib import Path
 WHEEL_RADIUS = 0.32
 WHEELBASE_HALF = 0.70   # front and rear axle distance from the centre
 TRACK_HALF = 0.20       # each hidden wheel pair is 40 cm wide
-BODY = (0.30, 0.45, 1.50)  # width (x), height (y), length (z) in metres
-BODY_BOTTOM = 0.30          # gap under the body for suspension travel
+BODY_LENGTH, BODY_WIDTH, BODY_HEIGHT = 1.50, 0.30, 0.45
+BODY_BOTTOM = 0.30      # gap under the body for suspension travel
 
+
+def to_gltf(forward, right, up):
+    """Unreal axes -> glTF axes, inverse of the importer's (x, y, z) -> (x, z, y)."""
+    return (forward, up, right)
+
+
+# Unreal convention: left wheels at -Y.
 JOINTS = [
-    ("root", (0.0, 0.0, 0.0)),
-    ("PhysWheel_FL", (TRACK_HALF, WHEEL_RADIUS, WHEELBASE_HALF)),    # +X is left in glTF
-    ("PhysWheel_FR", (-TRACK_HALF, WHEEL_RADIUS, WHEELBASE_HALF)),
-    ("PhysWheel_RL", (TRACK_HALF, WHEEL_RADIUS, -WHEELBASE_HALF)),
-    ("PhysWheel_RR", (-TRACK_HALF, WHEEL_RADIUS, -WHEELBASE_HALF)),
+    ("root", to_gltf(0.0, 0.0, 0.0)),
+    ("PhysWheel_FL", to_gltf(WHEELBASE_HALF, -TRACK_HALF, WHEEL_RADIUS)),
+    ("PhysWheel_FR", to_gltf(WHEELBASE_HALF, TRACK_HALF, WHEEL_RADIUS)),
+    ("PhysWheel_RL", to_gltf(-WHEELBASE_HALF, -TRACK_HALF, WHEEL_RADIUS)),
+    ("PhysWheel_RR", to_gltf(-WHEELBASE_HALF, TRACK_HALF, WHEEL_RADIUS)),
 ]
 
 
 def box(width, height, length, bottom):
-    """24 vertices (4 per face, so normals are flat) and 36 indices."""
+    """Box in glTF space: width along x, height along y (from `bottom`), length along z.
+    24 vertices (4 per face, so normals are flat) and 36 indices."""
     hx, hz = width / 2, length / 2
     y0, y1 = bottom, bottom + height
     faces = [  # (normal, four corners counter-clockwise seen from outside)
@@ -62,7 +70,8 @@ def pad4(data: bytearray):
 
 def main():
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "SourceArt/Vehicles/Bike/SKM_BikeChassis.gltf")
-    positions, normals, indices = box(*BODY, BODY_BOTTOM)
+    # glTF x = Unreal forward, glTF z = Unreal right (see to_gltf).
+    positions, normals, indices = box(BODY_LENGTH, BODY_HEIGHT, BODY_WIDTH, BODY_BOTTOM)
     n = len(positions)
 
     buf = bytearray()

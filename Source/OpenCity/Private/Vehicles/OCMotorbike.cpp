@@ -94,9 +94,22 @@ void AOCMotorbike::Stabilise(float DeltaSeconds)
 	{
 		return; // fallen over: let it lie (reset puts it back up)
 	}
-	const float RollRate = FVector::DotProduct(M->GetPhysicsAngularVelocityInRadians(), Forward);
+	const FVector AngVel = M->GetPhysicsAngularVelocityInRadians();
+	const float RollRate = FVector::DotProduct(AngVel, Forward);
 	const float Correction = -(StabiliserStiffness * RollRad + StabiliserDamping * RollRate);
 	M->AddTorqueInRadians(Forward * Correction, NAME_None, /*bAccelChange*/ true);
+
+	// Yaw assist (kinematic bicycle model): yaw rate = v * tan(steer) / wheelbase.
+	const UChaosWheeledVehicleMovementComponent* V = GetWheeledMovement();
+	if (YawAssist > 0.f && V && V->Wheels.Num() >= 3 && V->Wheels[0])
+	{
+		const FVector Up = GetActorUpVector();
+		const float Wheelbase = FMath::Max(10.f, (FrontWheelLocation - RearWheelLocation).Size());
+		const float SteerRad = FMath::DegreesToRadians(V->Wheels[0]->GetSteerAngle());
+		const float DesiredYawRate = V->GetForwardSpeed() * FMath::Tan(SteerRad) / Wheelbase;
+		const float YawRate = FVector::DotProduct(AngVel, Up);
+		M->AddTorqueInRadians(Up * (YawAssist * (DesiredYawRate - YawRate)), NAME_None, /*bAccelChange*/ true);
+	}
 }
 
 void AOCMotorbike::UpdateVisuals(float DeltaSeconds)

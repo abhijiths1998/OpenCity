@@ -94,6 +94,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Stability", meta = (ClampMin = "0"))
 	float StabiliserDamping = 10.f;
 
+	/** Pulls the turn rate toward what the steering angle predicts (speed * tan(steer) / wheelbase),
+	 *  so the light, narrow chassis follows the front wheel instead of spinning out. 0 = off. */
+	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Stability", meta = (ClampMin = "0"))
+	float YawAssist = 8.f;
+
 	/** Beyond this roll the bike counts as crashed and the stabiliser lets go (use Reset). */
 	UPROPERTY(EditDefaultsOnly, Category = "Motorbike|Stability", meta = (Units = "deg"))
 	float CrashRollDegrees = 70.f;
