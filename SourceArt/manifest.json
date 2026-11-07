@@ -1,0 +1,4 @@
+{
+  "_comment": "External CC0 source files. Tools/fetch_assets.py (M4a) downloads these into SourceArt/Downloads/, which is not committed. Every entry also needs a row in LICENSES.csv.",
+  "assets": []
+}

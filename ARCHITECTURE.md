@@ -216,20 +216,24 @@ Lumen Lite is the basis of the Medium plan: it is reported at about 2x the speed
 
 ## 10. Plugin matrix
 
-Linux behaviour for all of these is verified by a load-and-run smoke test in M0. The maturity labels for PCG, Mass, ZoneGraph, Water and Chaos Vehicles couldn't be confirmed from what I read of the 5.8 release notes, so M0 records them from the Plugins browser.
+Maturity labels come from each plugin's `.uplugin` file in the installed 5.8.4 engine (checked 2026-11-07). None of these plugins restricts its platforms. The M0 smoke test checks each one actually loads on Linux.
 
-| Plugin | Needed at | At M0 |
-|---|---|---|
-| Enhanced Input | M1 | On |
-| Chaos Vehicles | M2 | On |
-| Python Editor Script Plugin, Editor Scripting Utilities | M0 | On |
-| PCG | M3 | On |
-| Water | M3 | Smoke test, then off |
-| Gameplay Abilities | M6 | On |
-| State Tree | M5 | On |
-| Mass and ZoneGraph | M5 spike | Smoke test, then off |
-| CommonUI | M9 | Smoke test, then off |
-| MetaSounds, Niagara | M2+ | On |
+| Plugin | Label in 5.8.4 | Needed at | At M0 |
+|---|---|---|---|
+| Enhanced Input | Stable | M1 | On |
+| Chaos Vehicles | **Experimental** | M2 | On |
+| Python Editor Script Plugin | Beta | M0 | On |
+| Editor Scripting Utilities | Beta | M0 | On |
+| PCG | Stable | M3 | On |
+| Water | **Experimental** | M3 | Smoke test, then off |
+| Gameplay Abilities | Stable | M6 | On |
+| State Tree, Gameplay State Tree | Stable | M5 | On |
+| Mass Gameplay, Mass AI, Mass Crowd | **Experimental** | M5 spike | Smoke test, then off |
+| ZoneGraph | **Experimental** | M5 spike | Smoke test, then off |
+| CommonUI | Stable | M9 | Smoke test, then off |
+| MetaSounds, Niagara | Stable | M2+ | On |
+
+Chaos Vehicles has carried the Experimental label for several releases and is the engine's only built-in vehicle system. We use it, but treat odd vehicle behaviour as a possible engine bug and keep vehicle code behind `AOCVehicle` so it can be swapped.
 
 The Fab plugin and Quixel Bridge are not needed.
 

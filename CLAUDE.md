@@ -98,6 +98,6 @@ Content/
 - `IgnorePkg` in `/etc/pacman.conf`: the NVIDIA driver is pinned deliberately.
 - Don't hand-edit `.uasset` or `.umap` files, or run asset-changing scripts while the editor has the same project open.
 - Don't commit `Binaries/`, `Intermediate/`, `Saved/`, `DerivedDataCache/`, or raw CC0 downloads.
-- Don't change the engine version or `r.Substrate`, or enable Experimental features (Mesh Terrain, Fast Geometry Streaming) without approval.
+- Don't change the engine version or `r.Substrate`, or enable Experimental features without approval. Approved exceptions are listed in `ARCHITECTURE.md` section 10 (Chaos Vehicles, Water, Mass, ZoneGraph). Mesh Terrain and Fast Geometry Streaming are not approved.
 - No `git push --force`, history rewrites or LFS pruning without approval.
 - No Fab, Bridge or Megascans dependency, and no asset without a row in `SourceArt/LICENSES.csv`.
