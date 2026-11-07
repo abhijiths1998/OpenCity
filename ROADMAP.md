@@ -76,13 +76,16 @@ These need your login or `sudo`, so they're yours to do:
 
 ## M3: Open world (L)
 
-**Build:** World Partition level, Landscape with coast and hills, road graph asset, PCG roads and building blockout, HLOD, ocean. The district layout follows `STORY.md`: five districts (Porto Vecchio, Città Alta, Lungomare, Le Fornaci, Le Colline) and a grey-box blockout of every story landmark.
+**Build:** World Partition level, Landscape with coast and hills, road graph asset, PCG roads and building blockout, HLOD, ocean. The district layout follows `STORY.md`: the districts, the water between them (Fiume Ardo, the estuary, the Darsena), the bridges, and a grey-box blockout of every story landmark. Area gates: `UOCProgressionSubsystem`, unlock data, Data Layer gates (raised bridge, cordon, checkpoint, swing bridge), locked-area volumes, and deep-water reset. Missions don't exist until M8, so gates are opened by `oc.dev.unlock` for now.
 
 **Acceptance:**
 
 - [ ] 2x2 km district drivable from end to end in grey-box
 - [ ] Road graph drives both road geometry and lane data
 - [ ] Every story landmark in `STORY.md` exists as a named grey-box in the right district
+- [ ] River, estuary and Darsena exist, with drivable bridges; falling into deep water resets you to the bank
+- [ ] A new game starts with only Città Alta and Le Fornaci open; each gate opens with `oc.dev.unlock <milestone>`, and the unlock schedule is data, not code
+- [ ] Entering a locked area warns, then pushes back; gates cost no Tick
 - [ ] Driving at top speed never reaches unloaded ground or visible pop-in of collision
 - [ ] HLODs build from a script and appear at distance
 - [ ] Water spike decided: Water plugin or custom ocean, with the reason written down
@@ -161,6 +164,7 @@ These need your login or `sudo`, so they're yours to do:
 **Acceptance:**
 
 - [ ] New missions are authored without C++ changes
+- [ ] Completing "Funerale", "Strada Costiera" and "La Fornace" opens Porto Vecchio, Le Colline and Lungomare as in `STORY.md`
 - [ ] Each sample mission can be completed, failed and restarted from a checkpoint
 - [ ] Automation tests cover the state machine
 
@@ -181,7 +185,7 @@ These need your login or `sudo`, so they're yours to do:
 
 **Acceptance:**
 
-- [ ] Save, quit and load restores player, world time, missions, money and owned vehicles
+- [ ] Save, quit and load restores player, world time, missions, story progress (open areas), money and owned vehicles
 - [ ] Old save versions upgrade or fail cleanly, with tests
 - [ ] Paint changes use Custom Primitive Data, with no new material per car
 

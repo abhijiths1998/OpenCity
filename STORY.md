@@ -41,15 +41,64 @@ He comes back to Marevia to find out who did it, and to make them pay.
 
 ## Places in Marevia
 
-The story sets the 2×2 km district layout. M3 blocks out every landmark below in grey-box.
+The story sets the 2×2 km layout. Water splits the city into separate pieces, and the bridges between them are the gates (see "Unlocking the city" below). M3 builds all of this in grey-box.
+
+```
+                 N   LE COLLINE (hills, villas)
+   ┌──────────────────────────╥───────────────────────────┐
+   │  Villa Salvi · lookout   ║   olive terraces          │
+   │        ╲ coast road      ║  ← Fiume Ardo (river)      │
+   │         ╲          checkpoint (hills gate)            │
+   │ CITTÀ ALTA        [Ponte San Rocco]    LE FORNACI    │
+   │ old town, church  ═══════╬═══════════  kilns, scrap  │
+   │                          ║                           │
+   │ PORTO VECCHIO            ║             LUNGOMARE     │
+   │ docks, fish market       ║  [Ponte Mobile]  clubs    │
+   │   ~~~ DARSENA ~~~   ═════╬═══════════  beach road    │
+   │ (inner harbour)          ║ river mouth / estuary     │
+   │   [swing bridge]         ║                           │
+   │   MOLO SALVI (terminal)  ║                           │
+   └────────────────────── sea ───────────────────────────┘
+```
+
+### Water
+
+| Water | What it is | Gameplay |
+|---|---|---|
+| **Fiume Ardo** | A river about 50 m wide, from the hills down to the sea, splitting the west bank (Città Alta, Porto Vecchio) from the east (Le Fornaci, Lungomare). | Two road bridges plus a footbridge: chokepoints for chases and police roadblocks (M7). |
+| **Estuary** | The river mouth widening into a sandy delta where it meets the beach. | Shallow edges you can wade; a scenic shortcut on foot. |
+| **Darsena** | The walled inner harbour, cutting into Porto Vecchio, full of moored fishing boats. | Separates the Salvi Terminal pier from the rest of the port. |
+| **The sea** | The southern edge of the map. | Map boundary. Boats are a possible post-v1 feature. |
+
+Deep water (river channel, Darsena, open sea) is not swimmable in v1. Falling in fades out and puts you back on the nearest bank. Vehicles that drive in are wrecked.
+
+### Districts
 
 | District | Feel | Story landmarks |
 |---|---|---|
-| **Porto Vecchio**: old port and docks | Cranes, warehouses, fish market, the ferry pier | **Salvi Terminal** (container yard, Salvi's office tower), **fish market**, **the burned shell of La Cala** on the waterfront |
-| **Città Alta**: old town on the hill | Narrow streets, stairs, churches, small squares | **Santa Lucia church and cemetery** (prologue), **Castrovanni townhouse** (sealed since the deal), **police headquarters** |
-| **Lungomare**: beach road | Promenade, beach clubs, hotels, nightlife | **Club Medusa** (Salvi's money laundering), **Hotel Riviera** (Dario's office) |
-| **Le Fornaci**: old kiln and industrial quarter | Brick chimneys, rail yard, scrap | **Beppe's scrapyard and garage** (the safehouse and vehicle shop for M10), **abandoned kiln** (shootout mission) |
-| **Le Colline**: the hills | Villas, olive terraces, winding road to the coast | **Villa Salvi**, the **coast road** (chase mission), the **lookout** over the bay (ending) |
+| **Porto Vecchio**: old port (west bank, south) | Cranes, warehouses, fish market, ferry pier. | **Fish market**, **the burned shell of La Cala** on the waterfront. |
+| **Molo Salvi**: terminal pier (across the Darsena) | Container stacks, gantry cranes, Salvi's glass office tower. | **Salvi Terminal**. |
+| **Città Alta**: old town (west bank, north) | Narrow streets, steep stairs, small squares, churches. | **Santa Lucia church and cemetery**, **Castrovanni townhouse**, **police headquarters**. |
+| **Le Fornaci**: industrial quarter (east bank, north) | Brick chimneys, disused rail yard, scrap. | **Beppe's scrapyard and garage** (safehouse), **the abandoned kiln**. |
+| **Lungomare**: beach road (east bank, south) | Promenade, beach clubs, hotels, neon at night. | **Club Medusa**, **Hotel Riviera**. |
+| **Le Colline**: hills (north edge) | Villas among olive terraces, one winding road down to the coast. | **Villa Salvi**, **the coast road**, **the lookout**. |
+
+## Unlocking the city
+
+You start with a small part of Marevia. Each locked area sits behind a gate with a reason that comes from the story. A gate opens when the story reaches a point named in the table.
+
+| Area | Gate while locked | In-story reason | Opens after |
+|---|---|---|---|
+| **Città Alta** | — | Start | Open from the start |
+| **Le Fornaci** (via Ponte San Rocco) | — | The road home from the funeral | Open from the start ("Funerale" drives across it) |
+| **Porto Vecchio** | Police cordon across the port road | The fire scene at La Cala is still taped off | Mission **"Funerale"** |
+| **Le Colline** | Private-road checkpoint, Hill families' security | Old money keeps the hills quiet | Opens *for* mission **"Strada Costiera"**, and stays open after |
+| **Lungomare** (via Ponte Mobile) | Lifting bridge kept raised | Salvi's port authority "maintenance" keeps Aurelio off his strip | Mission **"La Fornace"** (Act 1 finale: Mancuso forces it open) |
+| **Molo Salvi** (via the swing bridge) | Swing bridge turned open | Salvi controls the harbour | Start of **Act 2** |
+| **Interiors**: Villa Salvi, Hotel Riviera, the townhouse | Locked doors | — | Their story missions |
+| **Everything** | — | — | After the ending (free roam) |
+
+If you get round a gate, for example by wading the estuary on foot, you don't hit an invisible wall. You get a warning ("Salvi's territory. Not yet."), and if you stay too long the area pushes back: before M7, a fade back to the last open area; from M7 on, police heat. The city stays honest about where you are without feeling walled in.
 
 ## Structure
 

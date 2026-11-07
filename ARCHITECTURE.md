@@ -121,6 +121,14 @@ All C++ types use the `OC` prefix: `AOCCharacter`, `UOCWantedSubsystem`, `IOCDam
 - `AOCVehicle` derives from `AWheeledVehiclePawn` and adds `UOCVehicleDamageComponent`, `UOCVehicleCameraComponent` and `UOCRadioComponent`.
 - `AOCTrafficVehicle` is a separate cheap kinematic actor. It swaps to a pooled physics `AOCVehicle` on impact or when the player takes it.
 
+### Story progression and area gates
+
+- **`UOCProgressionSubsystem`** (GameInstance): the set of completed story milestones (gameplay tags such as `Story.Mission.Funerale`). It answers "is area X open?", broadcasts `OnMilestoneCompleted`, and is saved in M10. Missions (M8) complete milestones; dev builds have `oc.dev.unlock <tag|all>`.
+- **`UOCAreaUnlockData`** (data asset): each area's required milestone and its World Partition Data Layers. The unlock schedule lives in data, not code.
+- **World Partition Data Layers** hold each gate's two states, e.g. `Gate_PonteMobile_Raised` and `Gate_PonteMobile_Lowered`, plus each area's locked-only props (cordons, checkpoints). The subsystem switches layers at runtime, so gates cost nothing while closed and need no Tick.
+- **`AOCLockedAreaVolume`** covers each locked area. Entering it shows a warning; staying triggers the push-back (a fade back to the last open area before M7, police heat after).
+- **Water**: deep water is a physics volume that resets characters to the nearest bank and wrecks vehicles. No swimming in v1.
+
 ### Data assets
 
 `UOCWeaponData`, `UOCVehicleData`, `UOCNPCArchetype`, `UOCMissionData` (with instanced `UOCObjective` objects), `UOCRadioStationData` and `UOCWeatherPreset`. All derive from `UPrimaryDataAsset` and load through the Asset Manager. Balance values live in DataTables and data assets, never in C++.
