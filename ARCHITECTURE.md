@@ -207,7 +207,7 @@ CPU targets: game thread and render thread each under 12 ms.
 > | `L_PerfBaseline` (empty, volumetric clouds) | 63 | 15.4 to 15.6 | 2.2 to 2.3 | 1,209 |
 > | `L_DevDriving` (3 vehicles + character, no clouds; Development package) | 96 to 98 | 9.7 | 8.5 to 8.9 | 2,183 |
 >
-> **An empty daylight level already costs 15.5 ms GPU at Medium.** Volumetric clouds are the main cost, so cloud quality on Medium is the first M4 task and can't wait for final tuning.
+> **An empty daylight level cost 15.5 ms GPU at Medium.** Volumetric clouds were the main cost (~5.9 ms in an A/B test). Fixed the same day: no volumetric clouds on Low/Medium, cheap settings on High. **Shipping, Medium, empty level now: 127.5 FPS, GPU 7.5 ms, 1,199 MiB.**
 
 Empty lit level `L_PerfBaseline` (sky atmosphere, volumetric clouds, height fog, movable sun and sky light, 400 m ground plane), 1920x1026 window, GPU at 60 to 80 C. A browser was open, so whole-GPU VRAM is about 0.4 GB higher than with browsers closed.
 
@@ -236,7 +236,7 @@ The brief requires presets that really change the output. Low must be a true fal
 | GI | Screen-space plus sky ambient | **Lumen Lite** (Beta) | Lumen software | Lumen software, higher quality |
 | Reflections | Screen-space | Lumen Lite | Lumen | Lumen |
 | Shadows | Cascaded | VSM reduced, or cascaded if measured faster | VSM | VSM |
-| Clouds | Static sky | Volumetric, low cost | Volumetric | Volumetric, higher |
+| Clouds | None (painted sky layer in M4) | **None** (measured: clouds cost ~5.9 ms) | Volumetric, cheap settings | Volumetric, full |
 | Foliage density | 40% | 70% | 100% | 100% |
 | View distance scale | 0.6 | 0.8 | 1.0 | 1.2 |
 | Texture pool (MiB) | 1,200 | 2,000 | 2,400 | 2,800 |
