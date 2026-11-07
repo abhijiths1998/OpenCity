@@ -38,50 +38,58 @@ He comes back to Marevia to find out who did it, and to make them pay.
 - **The Castrovanni remnant:** a handful of loyal old men, a scrapyard and a lot of favours owed. This is Aurelio's starting position.
 - **City police:** mostly indifferent, some on Salvi's payroll, and Mancuso. This drives the heat system (M7).
 - **The Hill families:** old money in the villas above the city. They funded the deal twelve years ago and want quiet. This is a late-game reveal.
+- **Consorzio Levante:** an overseas shipping and property group that bankrolled Dario's hotel deal. It stays in the background all game, through money, lawyers and one quiet emissary. It's the bridge to Part 2.
 
 ## Places in Marevia
 
-The story sets the 2×2 km layout. Water splits the city into separate pieces, and the bridges between them are the gates (see "Unlocking the city" below). M3 builds all of this in grey-box.
+The playable map is **2 km wide × 2.8 km deep**: the city by the sea, plus a band of mountains to the north. Distant peaks behind the mountains, and an island offshore, are scenery you can see but not reach in Part 1. Water splits the city, and the bridges are the gates (see "Unlocking the city"). M3 builds all of this in grey-box.
 
 ```
-                 N   LE COLLINE (hills, villas)
-   ┌──────────────────────────╥───────────────────────────┐
-   │  Villa Salvi · lookout   ║   olive terraces          │
-   │        ╲ coast road      ║  ← Fiume Ardo (river)      │
-   │         ╲          checkpoint (hills gate)            │
-   │ CITTÀ ALTA        [Ponte San Rocco]    LE FORNACI    │
-   │ old town, church  ═══════╬═══════════  kilns, scrap  │
-   │                          ║                           │
-   │ PORTO VECCHIO            ║             LUNGOMARE     │
-   │ docks, fish market       ║  [Ponte Mobile]  clubs    │
-   │   ~~~ DARSENA ~~~   ═════╬═══════════  beach road    │
-   │ (inner harbour)          ║ river mouth / estuary     │
-   │   [swing bridge]         ║                           │
-   │   MOLO SALVI (terminal)  ║                           │
-   └────────────────────── sea ───────────────────────────┘
+        (distant peaks: scenery)        N
+   ┌────────────────────────────────────────────────────┐
+   │ MONTE FERRALE (mountains)  ── pass road ──╮         │
+   │  Eremo delle Aquile   quarry (La Cava)    │ radio   │
+   │        Diga del Ferrale ▓▓ reservoir ▓▓   │ mast    │
+   │                    ║ Fiume Ardo            │         │
+   ├──────── LE COLLINE (hills, villas) ────────────────┤
+   │  Villa Salvi · lookout   ║   olive terraces         │
+   │        ╲ coast road  checkpoint (hills gate)        │
+   │ CITTÀ ALTA        [Ponte San Rocco]   LE FORNACI    │
+   │ old town · hospital ═════╬═════════ kilns · station │
+   │ PORTO VECCHIO            ║            LUNGOMARE     │
+   │ docks, fish market  [Ponte Mobile]    clubs, hotels │
+   │   ~~~ DARSENA ~~~ ═══════╬═══════════ beach road    │
+   │   [swing bridge]  BORGO MARINO (estuary village)    │
+   │   MOLO SALVI ── breakwater ── FARO (lighthouse)     │
+   └──────────────────────── sea ───────────────────────┘
+                 ISOLA VENTURA (island, scenery: Part 2)
 ```
 
 ### Water
 
 | Water | What it is | Gameplay |
 |---|---|---|
-| **Fiume Ardo** | A river about 50 m wide, from the hills down to the sea, splitting the west bank (Città Alta, Porto Vecchio) from the east (Le Fornaci, Lungomare). | Two road bridges plus a footbridge: chokepoints for chases and police roadblocks (M7). |
+| **Fiume Ardo** | A river about 50 m wide, from the mountains down to the sea, splitting the west bank (Città Alta, Porto Vecchio) from the east (Le Fornaci, Lungomare). | Two road bridges plus a footbridge: chokepoints for chases and police roadblocks (M7). |
+| **Diga del Ferrale** | A concrete dam holding a mountain reservoir; the river starts here. | Drive across the top of the dam; mission location. |
 | **Estuary** | The river mouth widening into a sandy delta where it meets the beach. | Shallow edges you can wade; a scenic shortcut on foot. |
 | **Darsena** | The walled inner harbour, cutting into Porto Vecchio, full of moored fishing boats. | Separates the Salvi Terminal pier from the rest of the port. |
-| **The sea** | The southern edge of the map. | Map boundary. Boats are a possible post-v1 feature. |
+| **The sea** | The southern edge of the map, with Isola Ventura on the horizon. | Map boundary. Boats are a possible post-v1 feature. |
 
-Deep water (river channel, Darsena, open sea) is not swimmable in v1. Falling in fades out and puts you back on the nearest bank. Vehicles that drive in are wrecked.
+Deep water (river channel, reservoir, Darsena, open sea) is not swimmable in v1. Falling in fades out and puts you back on the nearest bank. Vehicles that drive in are wrecked.
 
 ### Districts
 
 | District | Feel | Story landmarks |
 |---|---|---|
-| **Porto Vecchio**: old port (west bank, south) | Cranes, warehouses, fish market, ferry pier. | **Fish market**, **the burned shell of La Cala** on the waterfront. |
-| **Molo Salvi**: terminal pier (across the Darsena) | Container stacks, gantry cranes, Salvi's glass office tower. | **Salvi Terminal**. |
-| **Città Alta**: old town (west bank, north) | Narrow streets, steep stairs, small squares, churches. | **Santa Lucia church and cemetery**, **Castrovanni townhouse**, **police headquarters**. |
-| **Le Fornaci**: industrial quarter (east bank, north) | Brick chimneys, disused rail yard, scrap. | **Beppe's scrapyard and garage** (safehouse), **the abandoned kiln**. |
+| **Porto Vecchio**: old port (west bank, south) | Cranes, warehouses, fish market, ferry pier. | **Fish market**, **the burned shell of La Cala**, **ferry pier** (the epilogue). |
+| **Molo Salvi**: terminal pier (across the Darsena) | Container stacks, gantry cranes, Salvi's glass office tower; a long breakwater to the lighthouse. | **Salvi Terminal**, **Faro** (lighthouse, Mancuso's meeting place). |
+| **Città Alta**: old town (west bank, north) | Narrow streets, steep stairs, small squares, churches. | **Santa Lucia church and cemetery**, **Castrovanni townhouse**, **police headquarters**, **Ospedale San Martino** (where Nina is found). |
+| **Le Fornaci**: industrial quarter (east bank, north) | Brick chimneys, the rail yard, scrap. | **Beppe's scrapyard and garage** (safehouse), **the abandoned kiln**, **Stazione Centrale** (the night train). |
 | **Lungomare**: beach road (east bank, south) | Promenade, beach clubs, hotels, neon at night. | **Club Medusa**, **Hotel Riviera**. |
-| **Le Colline**: hills (north edge) | Villas among olive terraces, one winding road down to the coast. | **Villa Salvi**, **the coast road**, **the lookout**. |
+| **Borgo Marino**: fishing village (estuary) | Low houses, boats on the sand, nets drying. | Small and quiet; somewhere to lie low. |
+| **Le Colline**: hills | Villas among olive terraces, one winding road down to the coast. | **Villa Salvi**, **the coast road**, **the lookout** (the finale). |
+| **Monte Ferrale**: mountains (north band) | Pine forest, hairpin pass road, bare rock above. Cold and windy compared with the coast. | **La Cava** (marble quarry), **Diga del Ferrale** (dam), **Eremo delle Aquile** (a hermitage on a ledge, the Hill families' meeting place), **radio mast** on the ridge. |
+| **Isola Ventura**: the island (offshore, scenery) | A rocky island with an old sea fortress, visible from the whole coast. | Unreachable in Part 1. **The setting of Part 2.** |
 
 ## Unlocking the city
 
@@ -95,7 +103,9 @@ You start with a small part of Marevia. Each locked area sits behind a gate with
 | **Le Colline** | Private-road checkpoint, Hill families' security | Old money keeps the hills quiet | Opens *for* mission **"Strada Costiera"**, and stays open after |
 | **Lungomare** (via Ponte Mobile) | Lifting bridge kept raised | Salvi's port authority "maintenance" keeps Aurelio off his strip | Mission **"La Fornace"** (Act 1 finale: Mancuso forces it open) |
 | **Molo Salvi** (via the swing bridge) | Swing bridge turned open | Salvi controls the harbour | Start of **Act 2** |
+| **Monte Ferrale** (pass road beyond Le Colline) | Rockfall barrier on the pass road | A "landslide" Salvi's people never cleared | Opens *for* mission **"La Cava"**, and stays open after |
 | **Interiors**: Villa Salvi, Hotel Riviera, the townhouse | Locked doors | — | Their story missions |
+| **Isola Ventura** | The sea | — | Never in Part 1 (seen in the epilogue) |
 | **Everything** | — | — | After the ending (free roam) |
 
 If you get round a gate, for example by wading the estuary on foot, you don't hit an invisible wall. You get a warning ("Salvi's territory. Not yet."), and if you stay too long the area pushes back: before M7, a fade back to the last open area; from M7 on, police heat. The city stays honest about where you are without feeling walled in.
@@ -119,7 +129,7 @@ Aurelio takes Salvi apart piece by piece: Club Medusa's money, the terminal's sm
 The evidence leads to Dario. He wanted Matteo's clean restaurant name to front a hotel deal with the Hill families, and Matteo said no. Aurelio has to decide what revenge on his own blood means.
 
 ### Ending
-A confrontation at the lookout above the bay. There are two endings, chosen by the player:
+A confrontation at the lookout above the bay (mission 19), followed by the epilogue (mission 20). There are two endings, chosen by the player:
 - **Revenge:** Aurelio kills Dario. He keeps the city and loses himself.
 - **Justice:** Aurelio hands Dario and the evidence to Mancuso, and gives up any claim to the port.
 
@@ -136,13 +146,48 @@ There's no ending where everyone is happy.
 | M10 economy | Rebuilding the family's businesses funds the war; Beppe's garage handles paint and repairs. |
 | Radio | Talk shows react to story events, such as "Fire on the waterfront ruled an accident". |
 
-## The three M8 sample missions
+## Missions
 
-| Mission | Type | Summary |
-|---|---|---|
-| **"Funerale"** | Drive | Prologue. Drive Beppe home from the cemetery while a Salvi car follows; lose it in the old town without drawing police attention. |
-| **"Strada Costiera"** | Chase | Act 1. Chase a terminal driver who saw the arson crew, from the port up the coast road, before he reaches Villa Salvi. |
-| **"La Fornace"** | Shootout | Act 1 finale. Fight through Rocco's crew in the abandoned kiln. Ends with the sniper shot. |
+The campaign has **20 missions**. **v1 builds the three marked ★** (in M8) to prove the mission framework; the others are the plan for after the core game works. Each "Opens" entry is a gate from "Unlocking the city".
+
+| # | Mission | Type | Where | What happens | Opens |
+|---|---|---|---|---|---|
+| **Prologue** | | | | | |
+| 1 ★ | **Funerale** | Drive | Città Alta → Le Fornaci | Drive Beppe home from the cemetery with a Salvi car behind you; lose it in the old town without drawing police attention. | Porto Vecchio |
+| **Act 1: Coming Home** | | | | | |
+| 2 | **La Casa Chiusa** | Explore, stealth | Città Alta | Re-open the sealed townhouse at night; find Matteo's ledger before Salvi's men do. | — |
+| 3 | **San Martino** | On-foot escape | Città Alta | Find Nina at the hospital under a false name; get her out past Salvi's watchers. | — |
+| 4 | **Il Mercato** | Tail | Porto Vecchio | Ask the right questions at the fish market, then tail a delivery van to the arson crew's lock-up without being seen. | — |
+| 5 ★ | **Strada Costiera** | Chase | Port → coast road | Chase a terminal driver who saw the arsonists, before he reaches Villa Salvi. | Le Colline |
+| 6 | **La Cava** | Ambush | Monte Ferrale | The accelerant came from the quarry. Drive the pass road up to it and survive the ambush waiting there. | Monte Ferrale |
+| 7 ★ | **La Fornace** | Shootout | Le Fornaci | Fight through Rocco's crew in the abandoned kiln. Rocco names Salvi and is shot by a sniper. | Lungomare |
+| **Act 2: The Port** | | | | | |
+| 8 | **Notte al Medusa** | Infiltration | Lungomare | A night at Club Medusa: get to the office, copy the books, walk out calmly. | — |
+| 9 | **Il Faro** | Defend | Molo breakwater | Meet Mancuso at the lighthouse. Someone tipped off Salvi; hold out until she gets you both out. | — |
+| 10 | **Ponte Girevole** | Heist | Darsena | Take the swing bridge control house and turn the bridge, to get onto Salvi's pier. | Molo Salvi |
+| 11 | **Container 47** | Truck escape | Molo Salvi | Find what Salvi really ships, then drive the evidence out in a lorry with the port locked down. | — |
+| 12 | **La Diga** | Mountain chase | Monte Ferrale | Salvi's men are dumping records in the reservoir. Catch them on the hairpins before they reach the dam. | — |
+| 13 | **Fuoco al Garage** | Defend | Le Fornaci | Salvi hits back at Beppe's garage. Hold it, and get Beppe out alive. | — |
+| 14 | **Villa Salvi** | Assault, interrogation | Le Colline | Corner Salvi in his villa. He swears he ordered a fire after closing, and that someone else changed the time. | — |
+| **Act 3: Family** | | | | | |
+| 15 | **Hotel Riviera** | Stealth | Lungomare | Follow the money to Dario's office; read what he signed with Consorzio Levante. | — |
+| 16 | **Il Treno di Notte** | Chase on foot | Stazione Centrale | Dario's alibi was a night train. Find the conductor before Dario's people do, through the station and along the tracks. | — |
+| 17 | **L'Eremo** | Meeting | Monte Ferrale | The Hill families meet at the hermitage. Talk; it can go very wrong. | — |
+| 18 | **Il Tradimento** | Escape | Whole city | Dario turns the city against you: maximum police heat, every bridge watched. Get out alive. | — |
+| 19 | **Il Belvedere** | Finale | The lookout | Face Dario above the bay. Choose: **Revenge** or **Justice**. | Free roam |
+| **Epilogue** | | | | | |
+| 20 | **L'Ultimo Traghetto** | Epilogue | Ferry pier → sea | One year later. The last ferry of the day, and a meeting nobody expected (see "Part 2"). | — |
+
+## Part 2: the opening
+
+Both endings lead to the same epilogue, seen from different eyes:
+
+- **After Revenge,** Aurelio rules the port, and he's alone. A lawyer from Consorzio Levante visits him with a polite offer and a photograph of Isola Ventura's fortress, newly lit. Aurelio takes the last ferry out to give his answer in person.
+- **After Justice,** Aurelio has left Marevia. Nina runs Beppe's garage. A parcel arrives: the melted brass key, and a ferry ticket to Isola Ventura, in Aurelio's handwriting.
+
+The last shot is the same in both: the ferry pulling into the island's harbour, and the fortress lights going on one by one. Someone has been running the Consorzio's business from there all along, and they knew the Castrovanni name long before the fire.
+
+**Part 2** is set on Isola Ventura and the mainland coast beyond it, with Nina or Aurelio (depending on the ending) as the lead. The island is visible from Marevia throughout Part 1, so the sequel is promised by the scenery from the first minute.
 
 ## Originality checklist
 

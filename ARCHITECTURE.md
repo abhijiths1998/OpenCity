@@ -17,7 +17,7 @@ Labels used below:
 | Game type | Single-player only. No replication code, no dedicated server |
 | Performance | 1080p output, 60 FPS on Medium, by upscaling. **When visuals and frame rate conflict, frame rate wins** |
 | VRAM | 5,000 MiB for the game, measured with browsers closed |
-| Setting | Present-day fictional Mediterranean-style coast: 2x2 km district with old town, hills, port and beach road |
+| Setting | Present-day fictional Mediterranean-style coast: 2 × 2.8 km playable (city, hills, a mountain band) plus non-playable distant peaks and an offshore island; see `STORY.md` |
 | Assets | CC0 sources plus original Blender work. Megascans/Fab are not part of the plan |
 | Rendering API | Vulkan SM6 only |
 
