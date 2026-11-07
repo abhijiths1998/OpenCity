@@ -15,6 +15,7 @@ class USplineComponent;
  * Runs when bAutoStart is set or the game is started with -ocperf. Options:
  *   -ocperfloops=N   laps to measure (0 = run forever, for stability runs)
  *   -ocperfquit      quit when measuring is finished
+ *   -ocperfprofilegpu  log a one-frame GPU pass breakdown (ProfileGPU) when measuring starts
  *
  * Each lap is logged, and a JSON report is written to Saved/Profiling/OCPerf/.
  */
@@ -90,4 +91,5 @@ private:
 	bool bActive = false;
 	bool bMeasuring = false;
 	bool bQuitWhenDone = false;
+	bool bProfileGpu = false;
 };

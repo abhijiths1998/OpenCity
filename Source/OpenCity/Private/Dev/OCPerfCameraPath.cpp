@@ -16,6 +16,7 @@
 #include "OCLog.h"
 #include "RenderTimer.h"
 #include "RHIGlobals.h"
+#include "Scalability.h"
 #include "UnrealEngine.h"
 
 AOCPerfCameraPath::AOCPerfCameraPath()
@@ -80,6 +81,7 @@ void AOCPerfCameraPath::BeginPlay()
 	FParse::Value(Cmd, TEXT("ocperfloops="), LapsWanted);
 	LapsWanted = FMath::Max(0, LapsWanted);
 	bQuitWhenDone = FParse::Param(Cmd, TEXT("ocperfquit"));
+	bProfileGpu = FParse::Param(Cmd, TEXT("ocperfprofilegpu"));
 
 	if (Path->GetSplineLength() < 1.f)
 	{
@@ -138,6 +140,10 @@ void AOCPerfCameraPath::Tick(float DeltaSeconds)
 			Distance = 0.f;
 			CurrentLap.Reset();
 			UE_LOG(LogOpenCity, Display, TEXT("OCPerf: warmup done, measuring."));
+			if (bProfileGpu && GEngine)
+			{
+				GEngine->Exec(GetWorld(), TEXT("ProfileGPU")); // breakdown goes to the log
+			}
 		}
 	}
 
@@ -213,10 +219,16 @@ void AOCPerfCameraPath::WriteReport() const
 			S.MaxFrameMs, S.OnePercentLowFps, S.AvgGameMs, S.AvgRenderMs, S.AvgGpuMs);
 	}
 
+	const Scalability::FQualityLevels Q = Scalability::GetQualityLevels();
+	const FString Quality = FString::Printf(
+		TEXT("{\"resolution\": %.1f, \"view_distance\": %d, \"shadow\": %d, \"gi\": %d, \"reflection\": %d, \"post\": %d, \"texture\": %d, \"effects\": %d}"),
+		Q.ResolutionQuality, Q.ViewDistanceQuality, Q.ShadowQuality, Q.GlobalIlluminationQuality,
+		Q.ReflectionQuality, Q.PostProcessQuality, Q.TextureQuality, Q.EffectsQuality);
+
 	const FString Json = FString::Printf(
-		TEXT("{\n  \"map\": \"%s\",\n  \"started\": \"%s\",\n  \"rhi\": \"%s\",\n  \"gpu\": \"%s\",\n  \"resolution\": \"%dx%d\",\n  \"laps\": [%s\n  ]\n}\n"),
+		TEXT("{\n  \"map\": \"%s\",\n  \"started\": \"%s\",\n  \"rhi\": \"%s\",\n  \"gpu\": \"%s\",\n  \"resolution\": \"%dx%d\",\n  \"scalability\": %s,\n  \"laps\": [%s\n  ]\n}\n"),
 		*GetWorld()->GetMapName(), *StartTimestamp, GDynamicRHI ? GDynamicRHI->GetName() : TEXT("none"),
-		*GRHIAdapterName, GSystemResolution.ResX, GSystemResolution.ResY, *Laps);
+		*GRHIAdapterName, GSystemResolution.ResX, GSystemResolution.ResY, *Quality, *Laps);
 
 	FFileHelper::SaveStringToFile(Json, *File);
 }

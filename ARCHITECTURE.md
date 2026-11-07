@@ -186,6 +186,25 @@ The desktop takes roughly 800 MiB of the remaining 1,144 (an estimate from the c
 
 CPU targets: game thread and render thread each under 12 ms.
 
+### M0 measured baseline (2026-11-07)
+
+Empty lit level `L_PerfBaseline` (sky atmosphere, volumetric clouds, height fog, movable sun and sky light, 400 m ground plane), 1920x1026 window, GPU at 60 to 80 C. A browser was open, so whole-GPU VRAM is about 0.4 GB higher than with browsers closed.
+
+| Build | Preset | Avg FPS | GPU ms | Render thread ms | Game VRAM (MiB) |
+|---|---|---:|---:|---:|---:|
+| Shipping (first-run default) | Medium | 80 to 82 | 12.0 to 12.2 | 2.2 to 2.3 | 1,202 |
+| Shipping (engine default, before fix) | Epic, 100% res | 51 | 19.2 | 7.7 | not sampled |
+| Editor `-game`, uncooked | Low | 129 to 143 | 6.5 to 7.4 | 7.0 to 7.7 | 1,161 |
+| Development package, `L_Stress` (900 Nanite meshes, 24 shadowed lights) | Medium | 77 | 12.7 | 13.1 | 2,277 |
+
+Findings:
+
+- **An empty level already costs 12 ms GPU at Medium**, leaving about 4.5 ms for the city. The budget table above is not reachable without cuts.
+- **Volumetric clouds cost about 3.5 to 4.5 ms** (interleaved on/off runs in a packaged Development build). Low now disables them. Medium cloud quality is the first M4 decision.
+- One profiled Medium frame also showed TSR at about 2.6 ms and the global distance field update at about 1.8 ms. Lumen GI runs on async compute, about 5 ms overlapped.
+- `RHIGetGPUFrameCycles` reports close to the full frame time when the render thread is the bottleneck. Only trust GPU ms when render-thread ms is clearly lower (Shipping).
+- Laptop heat moves results by 10 to 20%. Compare runs made back to back, and interleave A/B tests.
+
 ### Scalability presets
 
 The brief requires presets that really change the output. Low must be a true fallback.
