@@ -177,6 +177,18 @@ def vec2s(points):
     return [unreal.Vector2D(x, y) for x, y in points]
 
 
+def part(mesh_path, bone="None", rotation=(0, 0, 0)):
+    """Visual part; rotation as (roll, pitch, yaw)."""
+    p = unreal.OCVehiclePart()
+    L.set_props(p, mesh=unreal.load_asset(mesh_path), bone=bone, rotation=unreal.Rotator(*rotation))
+    return p
+
+
+def wheel_parts(mesh_path, bones):
+    """Four wheels; right-hand ones turned 180 degrees so the rim faces out."""
+    return [part(mesh_path, b, (0, 0, 180) if b.endswith(("FR", "BR", "RR")) else (0, 0, 0)) for b in bones]
+
+
 def make_vehicle_data(name, display, **props):
     d = L.data_asset(name, f"{VEH_DIR}/Data", unreal.OCVehicleData, TAG)
     L.set_props(d, display_name=unreal.Text(display), **props)
@@ -213,6 +225,9 @@ def main():
         "DA_Vehicle_Coupe", "Strada Coupe",
         mesh=unreal.load_asset(f"{VEH_DIR}/SportsCar/SKM_SportsCar"),
         anim_class=unreal.load_asset(f"{VEH_DIR}/SportsCar/ABP_SportsCar").generated_class(),
+        visual_parts=[part(f"{VEH_DIR}/SportsCar/SM_SportsCar"), part(f"{VEH_DIR}/SportsCar/SM_SportsCar_Glass")]
+        + wheel_parts(f"{VEH_DIR}/SportsCar/SM_SportsCar_Wheel",
+                      ["Phys_Wheel_FL", "Phys_Wheel_FR", "Phys_Wheel_BL", "Phys_Wheel_BR"]),
         mass=1400.0, drag_coefficient=0.3, chassis_width=180.0, chassis_height=120.0,
         wheel_setups=wheel_setups([(coupe_f, "Phys_Wheel_FL"), (coupe_f, "Phys_Wheel_FR"),
                                    (coupe_r, "Phys_Wheel_BL"), (coupe_r, "Phys_Wheel_BR")]),
@@ -227,6 +242,9 @@ def main():
         "DA_Vehicle_Offroad", "Terra 4x4",
         mesh=unreal.load_asset(f"{VEH_DIR}/OffroadCar/SKM_Offroad"),
         anim_class=unreal.load_asset(f"{VEH_DIR}/OffroadCar/Offroad_AnimBP").generated_class(),
+        visual_parts=[part(f"{VEH_DIR}/OffroadCar/SM_Offroad_Body")]
+        + wheel_parts(f"{VEH_DIR}/OffroadCar/SM_Offroad_Tire",
+                      ["VisWheel_FL", "VisWheel_FR", "VisWheel_BL", "VisWheel_BR"]),
         mass=2000.0, drag_coefficient=0.45, chassis_width=200.0, chassis_height=170.0,
         wheel_setups=wheel_setups([(off_f, "PhysWheel_FL"), (off_f, "PhysWheel_FR"),
                                    (off_r, "PhysWheel_BL"), (off_r, "PhysWheel_BR")]),

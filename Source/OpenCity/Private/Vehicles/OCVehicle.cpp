@@ -4,6 +4,8 @@
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
@@ -127,10 +129,45 @@ void AOCVehicle::ApplyVehicleData(bool bRebuildPhysics)
 		M->SetSkeletalMeshAsset(VehicleData->Mesh);
 	}
 
+	BuildVisualParts();
+
 	// The vehicle physics was created (if at all) before the data was copied: rebuild it.
 	if (bRebuildPhysics && GetWorld() && GetWorld()->IsGameWorld())
 	{
 		V->RecreatePhysicsState();
+	}
+}
+
+void AOCVehicle::BuildVisualParts()
+{
+	for (UStaticMeshComponent* Old : VisualPartComponents)
+	{
+		if (Old)
+		{
+			Old->DestroyComponent();
+		}
+	}
+	VisualPartComponents.Reset();
+	if (!VehicleData)
+	{
+		return;
+	}
+	for (const FOCVehiclePart& Part : VehicleData->VisualParts)
+	{
+		if (!Part.Mesh)
+		{
+			continue;
+		}
+		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this, NAME_None, RF_Transient);
+		C->CreationMethod = EComponentCreationMethod::UserConstructionScript; // editor re-runs clean it up
+		C->SetStaticMesh(Part.Mesh);
+		C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		C->SetGenerateOverlapEvents(false);
+		C->SetCanEverAffectNavigation(false);
+		C->SetupAttachment(GetMesh(), Part.Bone);
+		C->SetRelativeTransform(FTransform(Part.Rotation, Part.Offset, Part.Scale));
+		C->RegisterComponent();
+		VisualPartComponents.Add(C);
 	}
 }
 

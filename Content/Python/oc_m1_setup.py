@@ -244,6 +244,7 @@ def make_game_mode(player_bp):
 # --- Playground map -------------------------------------------------------------
 
 def spawn(cls, location=(0, 0, 0), rotation=(0, 0, 0), label=None, folder=None):
+    """rotation is (roll, pitch, yaw), the positional order of unreal.Rotator."""
     actor = actor_subsystem.spawn_actor_from_class(cls, unreal.Vector(*location), unreal.Rotator(*rotation))
     if actor is None:
         raise RuntimeError(f"failed to spawn {cls}")
@@ -267,7 +268,7 @@ def build_playground():
     import oc_lib
     oc_lib.new_level(MAP_PATH)
 
-    sun = spawn(unreal.DirectionalLight, (0, 0, 1000), (-40, 35, 0), "Sun", "Lighting")
+    sun = spawn(unreal.DirectionalLight, (0, 0, 1000), (0, -40, 35), "Sun", "Lighting")  # (roll, pitch, yaw)
     sc = sun.get_component_by_class(unreal.DirectionalLightComponent)
     sc.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
     sc.set_editor_property("atmosphere_sun_light", True)

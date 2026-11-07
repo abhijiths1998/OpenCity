@@ -15,7 +15,7 @@ MAP_DIR = "/Game/Maps/Test"
 DEV_MESH_DIR = "/Game/Dev/Meshes"
 NANITE_MESH = f"{DEV_MESH_DIR}/SM_Dev_NaniteSphere"
 SOURCE_MESH = "/Engine/EngineMeshes/Sphere"  # higher poly than BasicShapes, good for Nanite
-GROUND_MESH = "/Engine/BasicShapes/Plane"
+GROUND_MESH = "/Engine/BasicShapes/Cube"
 
 level_subsystem = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 actor_subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -27,6 +27,7 @@ def log(msg):
 
 
 def spawn(cls, location=(0, 0, 0), rotation=(0, 0, 0), label=None):
+    """rotation is (roll, pitch, yaw), the positional order of unreal.Rotator."""
     actor = actor_subsystem.spawn_actor_from_class(
         cls, unreal.Vector(*location), unreal.Rotator(*rotation)
     )
@@ -54,7 +55,7 @@ def ensure_nanite_mesh():
 
 def build_environment():
     """Sky, sun, fog, clouds, sky light, ground and the perf camera path."""
-    sun = spawn(unreal.DirectionalLight, (0, 0, 1000), (-35, 40, 0), "Sun")
+    sun = spawn(unreal.DirectionalLight, (0, 0, 1000), (0, -35, 40), "Sun")  # (roll, pitch, yaw): sun 35 deg up
     sun_comp = sun.get_component_by_class(unreal.DirectionalLightComponent)
     sun_comp.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
     sun_comp.set_editor_property("atmosphere_sun_light", True)
@@ -69,10 +70,12 @@ def build_environment():
     sky_comp.set_editor_property("mobility", unreal.ComponentMobility.MOVABLE)
     sky_comp.set_editor_property("real_time_capture", True)
 
-    ground = spawn(unreal.StaticMeshActor, label="Ground")
+    # A 400 m slab of the engine cube (top at z=0). The flat Plane mesh has no collision,
+    # so the walking player (default game mode since M1) fell through it.
+    ground = spawn(unreal.StaticMeshActor, (0, 0, -50), label="Ground")
     ground_comp = ground.get_component_by_class(unreal.StaticMeshComponent)
     ground_comp.set_static_mesh(unreal.load_asset(GROUND_MESH))
-    ground.set_actor_scale3d(unreal.Vector(400, 400, 1))  # 400 m square
+    ground.set_actor_scale3d(unreal.Vector(400, 400, 1))
 
     perf_cls = unreal.load_class(None, "/Script/OpenCity.OCPerfCameraPath")
     if perf_cls is None:
@@ -113,11 +116,9 @@ def build_stress_content(mesh):
 
 
 def make_map(name, with_stress, mesh):
+    import oc_lib
     path = f"{MAP_DIR}/{name}"
-    if assets.does_asset_exist(path):
-        assets.delete_asset(path)
-    if not level_subsystem.new_level(path):
-        raise RuntimeError(f"new_level failed for {path}")
+    oc_lib.new_level(path)
     build_environment()
     if with_stress:
         build_stress_content(mesh)

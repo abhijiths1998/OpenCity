@@ -68,7 +68,8 @@ Hard GPU freezes during games were unresolved at last record, on every kernel an
 - **Vehicles** copy `UOCVehicleData` into the Chaos component in `PostInitializeComponents`, then rebuild its physics. `AWheeledVehiclePawn` leaves simulation off, so `AOCVehicle` turns it on.
 - **Motorbike**: hidden 40 cm-track chassis, roll stabiliser, and a yaw assist (bicycle model) that stops spin-outs. Handling values live in `UOCVehicleData::Motorbike`; visual wheels follow the chassis wheel bones.
 - **Exit spots** need a clear line from the seat, ground below and room for the capsule. At speed, the vehicle brakes in its travel direction first.
-- **Driving map performance** (packaged Development, Medium, 3 vehicles + character, no volumetric clouds): 81 to 84 FPS, GPU 6.7 ms, game thread 5.1 ms, 1,201 MiB game VRAM.
+- **Driving map performance** (packaged Development, Medium, daylight, 3 vehicles + character, no volumetric clouds): 96 to 98 FPS, GPU 9.7 ms, game thread 2.5 ms, 2,183 MiB game VRAM.
+- **Vehicle art** is assembled from `UOCVehicleData::VisualParts` (body, glass, wheels attached to wheel bones), as Epic's template does. The chassis skeletal mesh alone shows only suspension.
 
 ## 4. Modules
 
@@ -198,6 +199,15 @@ The desktop takes roughly 800 MiB of the remaining 1,144 (an estimate from the c
 CPU targets: game thread and render thread each under 12 ms.
 
 ### M0 measured baseline (2026-11-07)
+
+> **Correction (later the same day):** the M0 numbers below were measured with the sun *below the horizon*. The setup scripts passed rotations to `unreal.Rotator` as (pitch, yaw, roll), but its Python order is (roll, pitch, yaw). Re-measured in daylight, Shipping, Medium, browsers closed:
+>
+> | Map | FPS | GPU ms | Render thread ms | Game VRAM (MiB) |
+> |---|---:|---:|---:|---:|
+> | `L_PerfBaseline` (empty, volumetric clouds) | 63 | 15.4 to 15.6 | 2.2 to 2.3 | 1,209 |
+> | `L_DevDriving` (3 vehicles + character, no clouds; Development package) | 96 to 98 | 9.7 | 8.5 to 8.9 | 2,183 |
+>
+> **An empty daylight level already costs 15.5 ms GPU at Medium.** Volumetric clouds are the main cost, so cloud quality on Medium is the first M4 task and can't wait for final tuning.
 
 Empty lit level `L_PerfBaseline` (sky atmosphere, volumetric clouds, height fog, movable sun and sky light, 400 m ground plane), 1920x1026 window, GPU at 60 to 80 C. A browser was open, so whole-GPU VRAM is about 0.4 GB higher than with browsers closed.
 

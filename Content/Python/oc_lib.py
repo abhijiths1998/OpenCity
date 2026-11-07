@@ -116,6 +116,8 @@ def mapping_context(name, folder, rows, tag="oc"):
 # --- Levels -------------------------------------------------------------------
 
 def spawn(cls, location=(0, 0, 0), rotation=(0, 0, 0), label=None, folder=None):
+    """rotation is (roll, pitch, yaw): the positional order of unreal.Rotator in Python.
+    (Not pitch/yaw/roll! A sun written as (-40, 35, 0) ends up below the horizon.)"""
     sub = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     actor = sub.spawn_actor_from_class(cls, unreal.Vector(*location), unreal.Rotator(*rotation))
     if actor is None:
@@ -137,7 +139,7 @@ def block(label, center, size, rotation=(0, 0, 0), folder="Course"):
 
 def daylight(folder="Lighting"):
     """Movable sun, sky atmosphere, fog and real-time sky light (no volumetric clouds: see M0 perf notes)."""
-    sun = spawn(unreal.DirectionalLight, (0, 0, 1000), (-40, 35, 0), "Sun", folder)
+    sun = spawn(unreal.DirectionalLight, (0, 0, 1000), (0, -40, 35), "Sun", folder)  # sun 40 deg up
     set_props(sun.get_component_by_class(unreal.DirectionalLightComponent),
               mobility=unreal.ComponentMobility.MOVABLE, atmosphere_sun_light=True, intensity=10.0)
     spawn(unreal.SkyAtmosphere, label="SkyAtmosphere", folder=folder)

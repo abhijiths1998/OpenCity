@@ -11,6 +11,7 @@ class UInputAction;
 class UInputMappingContext;
 class USkeletalMesh;
 class USoundBase;
+class UStaticMesh;
 
 /** One radio station. The stub plays no audio yet (M10 adds MetaSounds). */
 UCLASS(BlueprintType)
@@ -32,6 +33,30 @@ public:
 	/** Optional until M10. */
 	UPROPERTY(EditDefaultsOnly, Category = "Radio")
 	TObjectPtr<USoundBase> Sound;
+};
+
+/** A static mesh attached to the vehicle for looks only (body, glass, wheels). No collision. */
+USTRUCT(BlueprintType)
+struct OPENCITY_API FOCVehiclePart
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Part")
+	TObjectPtr<UStaticMesh> Mesh;
+
+	/** Bone or socket on the chassis mesh to follow (wheel bones spin and steer). None = root. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Part")
+	FName Bone;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Part")
+	FVector Offset = FVector::ZeroVector;
+
+	/** E.g. yaw 180 to mirror a wheel for the right-hand side. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Part")
+	FRotator Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Part")
+	FVector Scale = FVector::OneVector;
 };
 
 /** Motorbike-only handling (used by AOCMotorbike, ignored by cars). */
@@ -88,6 +113,10 @@ public:
 	/** Usually a VehicleAnimationInstance Blueprint that spins and steers the wheel bones. */
 	UPROPERTY(EditDefaultsOnly, Category = "Art")
 	TSubclassOf<UAnimInstance> AnimClass;
+
+	/** Body, glass and wheel meshes attached to the chassis (the template cars are built this way). */
+	UPROPERTY(EditDefaultsOnly, Category = "Art")
+	TArray<FOCVehiclePart> VisualParts;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Chassis", meta = (ClampMin = "1", Units = "kg"))
 	float Mass = 1500.f;

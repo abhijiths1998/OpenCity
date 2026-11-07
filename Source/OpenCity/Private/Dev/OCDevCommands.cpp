@@ -187,7 +187,16 @@ namespace OCDev
 				if (UWorld* W = WeakWorld.Get())
 				{
 					UE_LOG(LogOpenCity, Display, TEXT("OCDEV run: %s"), *Cmd);
-					GEngine->Exec(W, *Cmd);
+					// Through the player's console like a typed command, so viewport commands
+					// (HighResShot, stat ...) work too; fall back to the engine without a player.
+					if (APlayerController* PC = W->GetFirstPlayerController())
+					{
+						PC->ConsoleCommand(Cmd, /*bWriteToLog*/ true);
+					}
+					else
+					{
+						GEngine->Exec(W, *Cmd);
+					}
 				}
 			}), FMath::Max(0.01f, FCString::Atof(*When)), false);
 		}

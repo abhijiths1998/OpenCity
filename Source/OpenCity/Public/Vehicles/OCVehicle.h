@@ -13,6 +13,7 @@ class UOCVehicleDamageComponent;
 class UOCVehicleData;
 class UOCVehicleInputConfig;
 class USpringArmComponent;
+class UStaticMeshComponent;
 struct FInputActionValue;
 
 /**
@@ -97,6 +98,12 @@ protected:
 	virtual void OnDriverExited() {}
 
 	UChaosWheeledVehicleMovementComponent* GetWheeledMovement() const;
+
+	/** (Re)create the static mesh parts listed in VehicleData->VisualParts. */
+	void BuildVisualParts();
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> VisualPartComponents;
 
 private:
 	void HandleThrottle(const FInputActionValue& Value);
