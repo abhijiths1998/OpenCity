@@ -2,7 +2,7 @@
 
 Solo open-world action game. Unreal Engine 5.8.x, C++, native Linux, Vulkan SM6. Fully original: no names, assets, logos, story, characters, map or UI from any existing game, and no real brands.
 
-Read `ARCHITECTURE.md`, `ROADMAP.md` and `ART_PIPELINE.md` before making changes. Work on one milestone at a time, and don't start the next without approval.
+Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before making changes. World layout, mission content and radio text must follow `STORY.md`. Work on one milestone at a time, and don't start the next without approval.
 
 ## Environment
 

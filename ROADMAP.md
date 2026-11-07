@@ -76,12 +76,13 @@ These need your login or `sudo`, so they're yours to do:
 
 ## M3: Open world (L)
 
-**Build:** World Partition level, Landscape with coast and hills, road graph asset, PCG roads and building blockout, HLOD, ocean.
+**Build:** World Partition level, Landscape with coast and hills, road graph asset, PCG roads and building blockout, HLOD, ocean. The district layout follows `STORY.md`: five districts (Porto Vecchio, Città Alta, Lungomare, Le Fornaci, Le Colline) and a grey-box blockout of every story landmark.
 
 **Acceptance:**
 
 - [ ] 2x2 km district drivable from end to end in grey-box
 - [ ] Road graph drives both road geometry and lane data
+- [ ] Every story landmark in `STORY.md` exists as a named grey-box in the right district
 - [ ] Driving at top speed never reaches unloaded ground or visible pop-in of collision
 - [ ] HLODs build from a script and appear at distance
 - [ ] Water spike decided: Water plugin or custom ocean, with the reason written down
@@ -155,7 +156,7 @@ These need your login or `sudo`, so they're yours to do:
 
 ## M8: Missions (L)
 
-**Build:** data-driven framework for objectives, triggers, checkpoints, fail states and cutscene hooks, plus 3 missions (drive, chase, shootout).
+**Build:** data-driven framework for objectives, triggers, checkpoints, fail states and cutscene hooks, plus the 3 story missions from `STORY.md`: "Funerale" (drive), "Strada Costiera" (chase) and "La Fornace" (shootout).
 
 **Acceptance:**
 
