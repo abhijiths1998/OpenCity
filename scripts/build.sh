@@ -15,7 +15,7 @@ LOG="$LOG_DIR/${TARGET}-${CONFIG}-$(oc_timestamp).log"
 
 set +e
 "$UE_BUILD" "$TARGET" Linux "$CONFIG" -Project="$UPROJECT" -WaitMutex \
-  -MaxParallelActions="$OC_MAX_JOBS" "$@" 2>&1 | tee "$LOG"
+  -MaxParallelActions="$OC_MAX_JOBS" "${OC_UBT_ARGS[@]}" "$@" 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 set -e
 

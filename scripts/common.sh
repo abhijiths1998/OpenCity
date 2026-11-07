@@ -15,17 +15,17 @@ UE_EDITOR_CMD="$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd"
 # 4 cores / 8 threads and 24 GB RAM: leave headroom for the desktop.
 OC_MAX_JOBS="${OC_MAX_JOBS:-6}"
 
-# Shared DDC outside the repo, so it survives cleans and is never committed.
-OC_DDC_DIR="${OC_DDC_DIR:-$HOME/.cache/OpenCity/DDC}"
-mkdir -p "$OC_DDC_DIR"
+# DDC: UE 5.8 uses a local Zen server at ~/.config/Epic/UnrealEngine/Common/Zen/Data,
+# outside the repo and shared by all projects on this machine. Nothing to configure.
 
 # Environment for anything that runs the engine.
 # SDL_VIDEODRIVER=x11: the editor must run through XWayland; Epic calls pure Wayland unusable.
-# The DDC variable name contains a hyphen, so it can only be passed with `env`.
 OC_ENV=(
   "SDL_VIDEODRIVER=x11"
-  "UE-SharedDataCachePath=$OC_DDC_DIR"
 )
+
+# Build accelerator (UBA) listens on 0.0.0.0 by default: keep it local-only.
+OC_UBT_ARGS=(-UBAHost=127.0.0.1 -UBADisableRemote)
 
 oc_require_engine() {
   if [[ ! -x "$UE_EDITOR" ]]; then

@@ -14,7 +14,7 @@ set +e
 env "${OC_ENV[@]}" "$UE_UAT" BuildCookRun \
   -project="$UPROJECT" -platform=Linux -clientconfig="$CONFIG" \
   -build -cook -stage -pak -iostore -compressed -archive -archivedirectory="$OUT" \
-  -unattended -utf8output -nop4 2>&1 | tee "$LOG"
+  -ubtargs="${OC_UBT_ARGS[*]}" -unattended -utf8output -nop4 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 set -e
 

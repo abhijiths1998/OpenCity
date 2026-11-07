@@ -3,5 +3,5 @@
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 oc_require_engine
 "$UE_BUILD" -mode=GenerateClangDatabase -Project="$UPROJECT" \
-  "${PROJECT_NAME}Editor" Linux Development -OutputDir="$PROJECT_ROOT"
+  "${PROJECT_NAME}Editor" Linux Development -OutputDir="$PROJECT_ROOT" "${OC_UBT_ARGS[@]}"
 ls -l "$PROJECT_ROOT/compile_commands.json"

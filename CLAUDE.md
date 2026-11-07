@@ -14,8 +14,6 @@ Read `ARCHITECTURE.md`, `ROADMAP.md` and `ART_PIPELINE.md` before making changes
 
 ## Commands
 
-The `scripts/` folder is created in M0. These commands don't exist until then.
-
 | Task | Command |
 |---|---|
 | Build editor target | `scripts/build.sh` |
@@ -24,12 +22,24 @@ The `scripts/` folder is created in M0. These commands don't exist until then.
 | Run editor Python | `scripts/run_python.sh <script> [args]` |
 | Package Linux Shipping | `scripts/package.sh` |
 | Generate clangd database | `scripts/gen_clangd.sh` |
+| Perf run (fixed camera path) | `scripts/perf_run.sh [Map] [Preset 0-3] [Laps]` |
+| Plugin load check | `scripts/plugin_smoke.sh [Plugin,...]` |
+| Stability gate (60 min) | `scripts/stability/stress_gate.sh [minutes]` |
+| Freeze capture (sudo) | `sudo scripts/stability/install_freeze_capture.sh [--remove]` |
+| Recreate M0 test maps | `scripts/run_python.sh Content/Python/oc_m0_create_test_maps.py` |
 
 Underlying tools:
 
 - `Engine/Build/BatchFiles/Linux/GenerateProjectFiles.sh`
 - `Engine/Build/BatchFiles/Linux/Build.sh OpenCityEditor Linux Development -Project=<path>.uproject`
 - `Engine/Build/BatchFiles/RunUAT.sh`
+
+Notes:
+
+- Scripts share settings in `scripts/common.sh`: engine path, 6 parallel compile jobs, build accelerator bound to localhost.
+- DDC is the engine's local Zen server at `~/.config/Epic/UnrealEngine/Common/Zen/Data`, outside the repo and shared by all projects. The first cook compiles every shader (about 11 min); later ones reuse it.
+- `build.sh` fails on any compiler warning in project code. Tests write reports to `Saved/Automation/`.
+- Later-milestone plugins (Water, Mass, ZoneGraph, CommonUI) are absent from `OpenCity.uproject` on purpose. Add them in their milestone.
 
 ## Code conventions
 
