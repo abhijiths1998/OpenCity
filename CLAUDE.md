@@ -29,6 +29,7 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 | Recreate M0 test maps | `scripts/run_python.sh Content/Python/oc_m0_create_test_maps.py` |
 | Rebuild M1 / M2 assets and maps | `scripts/run_python.sh Content/Python/oc_m1_setup.py` (then `oc_m2_setup.py`) |
 | Verify M1 / M2 assets after reload | `scripts/run_python.sh Content/Python/oc_m1_verify.py` (and `oc_m2_verify.py`) |
+| Regenerate the Marevia layout (roads, districts, water, landmarks, gates, heightmap, preview) | `python3 -I Tools/make_marevia_layout.py` → `SourceArt/World/` |
 | Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |
 
 Underlying tools:

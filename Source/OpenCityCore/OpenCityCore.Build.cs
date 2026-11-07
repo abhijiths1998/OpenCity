@@ -9,5 +9,6 @@ public class OpenCityCore : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json" }); // road graph layout loading
 	}
 }
