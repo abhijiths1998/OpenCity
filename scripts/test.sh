@@ -27,14 +27,21 @@ try:
         r = json.load(f)
 except FileNotFoundError:
     sys.exit(f"TESTS DID NOT RUN: no report at {path} (editor exit {ue_exit})")
-ok, failed, skipped = r.get("succeeded", 0), r.get("failed", 0), r.get("notRun", 0)
+ok = r.get("succeeded", 0) + r.get("succeededWithWarnings", 0)
+failed, skipped = r.get("failed", 0), r.get("notRun", 0)
+warnings = set()
 for t in r.get("tests", []):
-    if t.get("state") != "Success":
-        print(f"  {t.get('state')}: {t.get('fullTestPath')}")
-        for e in t.get("entries", []):
-            ev = e.get("event", {})
-            if ev.get("type") in ("Error", "Warning"):
-                print(f"      {ev.get('type')}: {ev.get('message')}")
+    entries = [e.get("event", {}) for e in t.get("entries", [])]
+    if t.get("state") == "Fail":
+        print(f"  FAIL: {t.get('fullTestPath')}")
+        for ev in entries:
+            if ev.get("type") == "Error":
+                print(f"      Error: {ev.get('message')}")
+    for ev in entries:
+        if ev.get("type") == "Warning":
+            warnings.add(ev.get("message", ""))
+for w in sorted(warnings):
+    print(f"  warning (attached to tests): {w[:200]}")
 total = ok + failed + skipped
 print(f"TESTS: {ok} passed, {failed} failed, {skipped} not run (of {total})")
 if total == 0:
