@@ -33,7 +33,7 @@ These need your login or `sudo`, so they're yours to do:
 **Acceptance:**
 
 - [x] `scripts/build.sh` compiles with zero warnings
-- [ ] `scripts/run_editor.sh` opens the editor under XWayland, and menus and clicks work reliably
+- [x] `scripts/run_editor.sh` opens the editor under XWayland, and menus and clicks work reliably
 - [x] `scripts/test.sh` runs one sample automation test headless and reports a pass (3 tests)
 - [x] Every plugin in the matrix passes its smoke test, and maturity labels are recorded in `ARCHITECTURE.md`
 - [x] `r.Substrate` state confirmed, and SM6 on Vulkan confirmed in the log
