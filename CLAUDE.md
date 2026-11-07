@@ -30,6 +30,7 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 | Rebuild M1 / M2 assets and maps | `scripts/run_python.sh Content/Python/oc_m1_setup.py` (then `oc_m2_setup.py`) |
 | Verify M1 / M2 assets after reload | `scripts/run_python.sh Content/Python/oc_m1_verify.py` (and `oc_m2_verify.py`) |
 | Regenerate the Marevia layout (roads, districts, water, landmarks, gates, heightmap, preview) | `python3 -I Tools/make_marevia_layout.py` → `SourceArt/World/` |
+| Rebuild the Marevia world map from SourceArt/World | `scripts/build_world.sh [--regen]` (deletes and recreates the map; needs the GPU, about 80 s with warm shaders) |
 | Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |
 
 Underlying tools:
@@ -45,6 +46,9 @@ Notes:
 - `build.sh` fails on any compiler warning in project code. Tests write reports to `Saved/Automation/`.
 - Later-milestone plugins (Water, Mass, ZoneGraph, CommonUI) are absent from `OpenCity.uproject` on purpose. Add them in their milestone.
 - Scripted runtime checks: non-Shipping builds have `oc.dev.*` console commands (`status`, `goto X Y Z`, `interact`, `exitvehicle`, `drive T S B`, `impact KMH`, `radio`, `resetvehicle`, `flip`, `tilt DEG`). `-ocdevscript="2:oc.dev.status;3:oc.dev.interact;9:quit"` runs them on a timeline and the results land in the log. Use these to verify gameplay changes headfully without input.
+- World checks: `oc.dev.viewfrom X Y Z Pitch Yaw [FOV]` places a camera (cm); `oc.dev.ground X Y` logs terrain height at layout metres. World Partition streams around the *camera*, so for overview shots first run `wp.Runtime.OverrideRuntimeLoadingRange -grid=MainPartition -range=600000` (not via `-dpcvars`: that crashes at startup).
+- Landscapes must be built with a GPU renderer (`OC_PY_RENDER=1` adds `-AllowCommandletRendering`). Without it collision gets the heights but the terrain renders flat.
+- Don't combine `rm` with `bash -c` scripts: Claude Code's safety check blocks it. To pick out new screenshots, `touch` a marker file and use `find -newer`.
 - Editor runs need about 4 GiB free RAM. Browsers and Claude Code's own `clangd` (`--background-index`) can starve them: kill it with `pkill -f '^clangd '` (an unanchored pattern kills the calling shell).
 
 ## Code conventions

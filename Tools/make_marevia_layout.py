@@ -119,6 +119,40 @@ def district_at(x, y):
 
 # --- Terrain ----------------------------------------------------------------------
 
+def value_noise(shape, cell, rng):
+    """Smooth value noise in [0, 1]: random lattice every `cell` metres, smoothstep-interpolated."""
+    ny, nx = shape
+    gy, gx = ny // cell + 3, nx // cell + 3
+    lattice = rng.random((gy, gx))
+    oy, ox = rng.random() * cell, rng.random() * cell  # random offset per octave
+    y = (np.arange(ny) + oy) / cell
+    x = (np.arange(nx) + ox) / cell
+    y0, x0 = np.floor(y).astype(int), np.floor(x).astype(int)
+    fy, fx = y - y0, x - x0
+    fy, fx = fy * fy * (3 - 2 * fy), fx * fx * (3 - 2 * fx)  # smoothstep
+    a = lattice[y0][:, x0]
+    b = lattice[y0][:, x0 + 1]
+    c = lattice[y0 + 1][:, x0]
+    d = lattice[y0 + 1][:, x0 + 1]
+    top = a + (b - a) * fx[None, :]
+    bot = c + (d - c) * fx[None, :]
+    return top + (bot - top) * fy[:, None]
+
+
+def fbm(shape, base_cell, octaves, rng, ridged=False):
+    """Fractal sum of value noise, normalised to about [-1, 1] (ridged: [0, 1], sharp crests)."""
+    total, amp, norm = np.zeros(shape, dtype=np.float32), 1.0, 0.0
+    cell = base_cell
+    for _ in range(octaves):
+        n = value_noise(shape, max(4, int(cell)), rng)
+        n = (1.0 - np.abs(2.0 * n - 1.0)) ** 1.3 if ridged else 2.0 * n - 1.0
+        total += amp * n
+        norm += amp
+        amp *= 0.5
+        cell /= 2.0
+    return total / norm
+
+
 def make_heightmap(rng):
     """Heights in metres on a 1 m grid, shape (H+1, W+1), row 0 = south edge."""
     ys, xs = np.mgrid[0:H + 1, 0:W + 1].astype(np.float32)
@@ -132,16 +166,23 @@ def make_heightmap(rng):
     # Le Colline ramp, then Monte Ferrale.
     h += np.clip((ys - 1650) / 450.0, 0, 1) ** 1.3 * 110.0
     h += np.clip((ys - 2150) / 620.0, 0, 1) ** 1.5 * 330.0
-    # Ridged noise for the mountains (cheap fractal from random sine waves).
-    noise = np.zeros_like(xs)
-    for octave in range(5):
-        f = 0.004 * (2 ** octave)
-        a = 1.0 / (1.6 ** octave)
-        ang = rng.uniform(0, math.pi)
-        ph = rng.uniform(0, 100)
-        noise += a * np.sin((xs * math.cos(ang) + ys * math.sin(ang)) * f + ph)
-    mountain_mask = np.clip((ys - 2050) / 400.0, 0, 1)
-    h += noise * (6.0 + 70.0 * mountain_mask)
+    # Natural relief: gentle rolling noise everywhere, ridged mountains in the north.
+    gentle = fbm(xs.shape, 400, 5, rng)
+    ridges = 0.75 * fbm(xs.shape, 700, 4, rng, ridged=True) + 0.25 * (fbm(xs.shape, 350, 4, rng) * 0.5 + 0.5)
+    mountain_mask = np.clip((ys - 2050) / 400.0, 0, 1) ** 1.2
+    h += gentle * (2.0 + 10.0 * np.clip((ys - 1500) / 600.0, 0, 1))  # flat-ish city, rolling hills
+    h += ridges * 170.0 * mountain_mask
+    # Weathering: soften the mountains with a box blur (two passes, 15 m), keep the lowlands sharp.
+    soft = h.copy()
+    for _ in range(2):
+        k = 15
+        c = np.cumsum(np.pad(soft, ((0, 0), (k, k)), mode="edge"), axis=1)
+        soft = (c[:, 2 * k:] - c[:, :-2 * k]) / (2 * k)
+        soft = np.pad(soft, ((0, 0), (0, h.shape[1] - soft.shape[1])), mode="edge")
+        c = np.cumsum(np.pad(soft, ((k, k), (0, 0)), mode="edge"), axis=0)
+        soft = (c[2 * k:, :] - c[:-2 * k, :]) / (2 * k)
+        soft = np.pad(soft, ((0, h.shape[0] - soft.shape[0]), (0, 0)), mode="edge")
+    h = h * (1 - mountain_mask) + soft * mountain_mask
     # West cliffs drop to the sea.
     h = np.where(xs < WEST_CLIFF_X + 25, np.minimum(h, (xs - WEST_CLIFF_X) * 1.5), h)
     # Carve water: sea floor, Darsena, river channel, reservoir basin.
@@ -151,20 +192,57 @@ def make_heightmap(rng):
     dx0, dy0, dx1, dy1 = DARSENA
     darsena = (xs >= dx0) & (xs <= dx1) & (ys >= dy0) & (ys <= dy1)
     h = np.where(darsena, -6.0, h)
-    rx = np.interp(ys, [p[1] for p in RIVER], [p[0] for p in RIVER])
+    # River: the bed follows the valley and must (a) always run downhill to the sea and
+    # (b) sit below the land beside it. Sample the terrain along the centreline, take
+    # bed(y) = min over everything upstream of (terrain - 4 m), clamp at the sea.
+    rows = np.arange(H + 1) + Y_MIN
+    rx_row = np.interp(rows, [p[1] for p in RIVER], [p[0] for p in RIVER])
+    hc = h[np.arange(H + 1), np.clip(np.round(rx_row).astype(int), 0, W)]
+    bed_row = np.minimum.accumulate((hc - 4.0)[::-1])[::-1]  # min over upstream (larger y)
+    bed_row = np.maximum(bed_row, -3.0)
+    bed_row = np.where(rows < coast_y(1000) + 30, -3.0, bed_row)
+    rx = rx_row[:, None]
+    bed = bed_row[:, None]
     rhw = np.where(ys < 260, 25.0 + (260 - ys) * 0.45, np.where(ys < 2100, 25.0, 14.0))
     dist = np.abs(xs - rx)
-    river_bed = np.interp(ys, [0, 2440], [-3.0, 250.0])  # follows the valley down
     channel = (dist < rhw + 12) & (ys < DAM_Y)
     bank = np.clip((dist - rhw) / 12.0, 0, 1)
-    h = np.where(channel, np.minimum(h, river_bed + bank * (h - river_bed)), h)
+    h = np.where(channel, np.minimum(h, bed + bank * (np.maximum(h, bed) - bed)), h)
+    # Reservoir: the water level comes from the natural terrain around the basin, so the land
+    # contains the lake by itself; only the southern outlet (the river valley) is closed by the
+    # dam. No raised rim, so no artificial cliffs.
+    dam_row = int(DAM_Y - Y_MIN) - 2
+    bed_at_dam = float(bed_row[dam_row])
     rx0, ry0, rx1, ry1 = RESERVOIR
-    res = (xs >= rx0) & (xs <= rx1) & (ys >= ry0) & (ys <= ry1)
-    h = np.where(res, np.minimum(h, 255.0), h)
+    cx, cy = (rx0 + rx1) / 2.0, (ry0 + ry1) / 2.0
+    ax, ay = (rx1 - rx0) / 2.0, (ry1 - ry0) / 2.0
+    shore = []
+    for deg in range(0, 360, 3):
+        if abs(((deg - 270) + 180) % 360 - 180) < 40:   # skip the southern outlet arc
+            continue
+        bx, by = cx + ax * 1.15 * math.cos(math.radians(deg)), cy + ay * 1.15 * math.sin(math.radians(deg))
+        shore.append(float(h[int(round(by - Y_MIN)), int(round(bx))]))
+    level = max(min(shore) - 2.0, bed_at_dam + 12.0)    # dam at least 12 m high
+    r = np.hypot((xs - cx) / ax, (ys - cy) / ay)          # 1 at the shore
+    # Bowl under the water, and valley sides rising ~80 m per oval-radius beyond the shore,
+    # so the lake sits in a natural basin instead of a pit with sheer walls.
+    basin = level - 0.5 - 12.0 * np.clip(1.0 - r * r, 0, 1)
+    sides = level + 80.0 * np.clip(r - 1.0, 0, None)
+    h = np.minimum(h, np.where(r < 1.0, basin, sides))
+    make_heightmap.dam_height = round(level + 3.0 - bed_at_dam, 1)
+    make_heightmap.river_profile = [(float(rows[i]), float(rx_row[i]), round(float(bed_row[i]), 2))
+                                    for i in range(0, H + 1, 20) if rows[i] < DAM_Y]
+    make_heightmap.reservoir_level = round(level, 2)
     # Molo Salvi: flat concrete pier just above the sea.
     mx0, my0, mx1, my1 = MOLO
-    molo = (xs >= mx0) & (xs <= mx1) & (ys >= my0 - 0) & (ys <= my1) & (ys >= 0)
+    molo = (xs >= mx0) & (xs <= mx1) & (ys >= my0) & (ys <= my1)
     h = np.where(molo, 2.5, h)
+    # Breakwater out to the lighthouse: a 14 m wide causeway, plus a pad around the light.
+    (bx0, by0), (bx1, by1) = BREAKWATER
+    t = np.clip(((xs - bx0) * (bx1 - bx0) + (ys - by0) * (by1 - by0)) / ((bx1 - bx0) ** 2 + (by1 - by0) ** 2), 0, 1)
+    dist_bw = np.hypot(xs - (bx0 + t * (bx1 - bx0)), ys - (by0 + t * (by1 - by0)))
+    h = np.where((dist_bw < 7.0) & (h < 2.5), 2.5, h)
+    h = np.where((np.hypot(xs - bx1, ys - by1) < 12.0) & (h < 2.5), 2.5, h)
     return h
 
 
@@ -454,6 +532,11 @@ def main():
                 stack.append(n)
     unreachable = [i for i in adj if i not in seen and adj[i]]
 
+    def ground(x, y):
+        xi = int(min(max(round(x), 0), W))
+        yi = int(min(max(round(y - Y_MIN), 0), H))
+        return round(float(terrain[yi, xi]), 2)
+
     layout = {
         "version": 1,
         "seed": SEED,
@@ -464,14 +547,17 @@ def main():
         "sea_level": SEA_LEVEL,
         "districts": [{"name": n, "rect": r, "unlock": u, "style": st} for n, r, u, st in DISTRICTS],
         "water": {
-            "river": {"name": "FiumeArdo", "centerline": RIVER, "half_width_lowland": 25.0, "dam_y": DAM_Y},
+            "river": {"name": "FiumeArdo", "centerline": RIVER, "half_width_lowland": 25.0, "dam_y": DAM_Y,
+                      "depth": 2.5, "profile_y_x_bed": make_heightmap.river_profile},
+            "reservoir_level": make_heightmap.reservoir_level,
+            "dam_height": make_heightmap.dam_height,
             "darsena": DARSENA, "reservoir": RESERVOIR, "molo": MOLO, "breakwater": BREAKWATER,
         },
-        "landmarks": [{"name": n, "district": dst, "pos": p, "footprint": f, "height": h, "kind": k}
-                      for n, dst, p, f, h, k in LANDMARKS],
+        "landmarks": [{"name": n, "district": dst, "pos": p, "footprint": f, "height": h, "kind": k,
+                       "ground_z": ground(p[0], p[1])} for n, dst, p, f, h, k in LANDMARKS],
         "gates": [{"tag": t, "opens_with": m, "while_locked": w} for t, m, w in GATES],
         "roads": {"kinds": ROAD_KINDS, "nodes": g.nodes, "segments": g.segments},
-        "start": {"pos": [520, 1290], "district": "CittaAlta"},
+        "start": {"pos": [520, 1290], "district": "CittaAlta", "ground_z": ground(520, 1290)},
     }
     (out / "marevia_layout.json").write_text(json.dumps(layout, indent=1))
 

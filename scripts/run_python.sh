@@ -12,7 +12,10 @@ mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/$(basename "$SCRIPT" .py)-$(oc_timestamp).log"
 
 set +e
-env "${OC_ENV[@]}" "$UE_EDITOR_CMD" "$UPROJECT" -run=pythonscript -script="$SCRIPT $*" \
+# OC_PY_RENDER=1 gives the commandlet a real GPU renderer (needed to build landscapes).
+EXTRA=()
+[[ "${OC_PY_RENDER:-0}" == "1" ]] && EXTRA+=(-AllowCommandletRendering)
+env "${OC_ENV[@]}" "$UE_EDITOR_CMD" "$UPROJECT" -run=pythonscript -script="$SCRIPT $*" "${EXTRA[@]}" \
   -unattended -nopause -nosplash -nosound -stdout -FullStdOutLogOutput 2>&1 | tee "$LOG" \
   | grep -E "LogPython|Error:|Fatal"
 EXIT=${PIPESTATUS[0]}

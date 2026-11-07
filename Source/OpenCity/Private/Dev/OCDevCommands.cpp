@@ -8,6 +8,8 @@
 
 #if !UE_BUILD_SHIPPING
 
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -148,6 +150,50 @@ namespace OCDev
 		}
 	}
 
+	/** View the world from a fixed camera: X Y Z (cm) Pitch Yaw. "oc.dev.viewfrom off" returns to the pawn. */
+	void ViewFrom(const TArray<FString>& Args, UWorld* World)
+	{
+		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		if (!PC)
+		{
+			return;
+		}
+		if (Args.IsValidIndex(0) && Args[0] == TEXT("off"))
+		{
+			PC->SetViewTarget(PC->GetPawn());
+			return;
+		}
+		if (Args.Num() < 5)
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV viewfrom: X Y Z Pitch Yaw"));
+			return;
+		}
+		const FVector Loc(FCString::Atof(*Args[0]), FCString::Atof(*Args[1]), FCString::Atof(*Args[2]));
+		const FRotator Rot(FCString::Atof(*Args[3]), FCString::Atof(*Args[4]), 0.f);
+		ACameraActor* Cam = World->SpawnActor<ACameraActor>(Loc, Rot);
+		if (Cam)
+		{
+			Cam->GetCameraComponent()->SetFieldOfView(Args.IsValidIndex(5) ? FCString::Atof(*Args[5]) : 70.f);
+			PC->SetViewTarget(Cam);
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV viewfrom %s %s"), *Loc.ToCompactString(), *Rot.ToCompactString());
+		}
+	}
+
+	/** Trace straight down at layout metres (x east, y north) and log the ground height. */
+	void Ground(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World || Args.Num() < 2)
+		{
+			return;
+		}
+		const double X = FCString::Atod(*Args[0]) * 100.0;
+		const double Y = -FCString::Atod(*Args[1]) * 100.0;
+		FHitResult Hit;
+		const bool bHit = World->LineTraceSingleByChannel(Hit, FVector(X, Y, 200000.0), FVector(X, Y, -200000.0), ECC_Visibility);
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV ground %s %s: %s"), *Args[0], *Args[1],
+			bHit ? *FString::Printf(TEXT("%.2f m (%s)"), Hit.ImpactPoint.Z / 100.0, *GetNameSafe(Hit.GetActor())) : TEXT("no hit"));
+	}
+
 	void Radio(const TArray<FString>& Args, UWorld* World)
 	{
 		if (AOCVehicle* V = Cast<AOCVehicle>(PlayerPawn(World)))
@@ -165,6 +211,8 @@ namespace OCDev
 	FAutoConsoleCommandWithWorldAndArgs CmdReset(TEXT("oc.dev.resetvehicle"), TEXT("Press reset vehicle."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ResetVehicle));
 	FAutoConsoleCommandWithWorldAndArgs CmdFlip(TEXT("oc.dev.flip"), TEXT("Roll the driven vehicle over: [deg/s]."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Flip));
 	FAutoConsoleCommandWithWorldAndArgs CmdTilt(TEXT("oc.dev.tilt"), TEXT("Tilt the driven vehicle to a roll angle at rest: [deg]."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Tilt));
+	FAutoConsoleCommandWithWorldAndArgs CmdViewFrom(TEXT("oc.dev.viewfrom"), TEXT("View from a fixed camera: X Y Z Pitch Yaw [FOV], or 'off'."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ViewFrom));
+	FAutoConsoleCommandWithWorldAndArgs CmdGround(TEXT("oc.dev.ground"), TEXT("Log ground height at layout metres: X Y."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Ground));
 	FAutoConsoleCommandWithWorldAndArgs CmdRadio(TEXT("oc.dev.radio"), TEXT("Radio next (or 'prev')."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Radio));
 
 	/** Runs -ocdevscript once, on the first tick of the first game world that has begun play. */

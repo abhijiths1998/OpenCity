@@ -143,7 +143,9 @@ def daylight(folder="Lighting"):
     set_props(sun.get_component_by_class(unreal.DirectionalLightComponent),
               mobility=unreal.ComponentMobility.MOVABLE, atmosphere_sun_light=True, intensity=10.0)
     spawn(unreal.SkyAtmosphere, label="SkyAtmosphere", folder=folder)
-    spawn(unreal.ExponentialHeightFog, label="HeightFog", folder=folder)
+    fog = spawn(unreal.ExponentialHeightFog, label="HeightFog", folder=folder)
+    # Light haze only: the default density washes distant grey-box terrain into the sky. M4 tunes this.
+    set_props(fog.get_component_by_class(unreal.ExponentialHeightFogComponent), fog_density=0.004, fog_height_falloff=0.05)
     sky = spawn(unreal.SkyLight, (0, 0, 500), label="SkyLight", folder=folder)
     set_props(sky.get_component_by_class(unreal.SkyLightComponent),
               mobility=unreal.ComponentMobility.MOVABLE, real_time_capture=True)
