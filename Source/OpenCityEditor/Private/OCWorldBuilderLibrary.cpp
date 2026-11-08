@@ -613,9 +613,16 @@ int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& Layou
 	FRandomStream Random(20261108);
 	for (const TSharedPtr<FJsonValue>& V : *Buildings)
 	{
-		const TSharedPtr<FJsonObject>& B = V->AsObject();
-		const TArray<TSharedPtr<FJsonValue>>& Pos = B->GetArrayField(TEXT("pos"));
-		const TArray<TSharedPtr<FJsonValue>>& Size = B->GetArrayField(TEXT("size"));
+		const TSharedPtr<FJsonObject> B = V.IsValid() ? V->AsObject() : nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* PosPtr = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* SizePtr = nullptr;
+		if (!B || !B->TryGetArrayField(TEXT("pos"), PosPtr) || !B->TryGetArrayField(TEXT("size"), SizePtr) || PosPtr->Num() < 2 || SizePtr->Num() < 2)
+		{
+			UE_LOG(LogOpenCity, Warning, TEXT("BuildBuildings: skipping a malformed building entry"));
+			continue;
+		}
+		const TArray<TSharedPtr<FJsonValue>>& Pos = *PosPtr;
+		const TArray<TSharedPtr<FJsonValue>>& Size = *SizePtr;
 		const double Base = B->GetNumberField(TEXT("base")), Top = B->GetNumberField(TEXT("top"));
 		// Layout metres (x east, y north, yaw counter-clockwise) to Unreal cm (Y south, yaw clockwise).
 		const FVector Centre(Pos[0]->AsNumber() * 100.0, -Pos[1]->AsNumber() * 100.0, (Base + Top) * 50.0);
@@ -635,6 +642,11 @@ int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& Layou
 		}
 		const FVector Origin(Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.Min.Z);
 		AOCBlockoutActor* Actor = World->SpawnActor<AOCBlockoutActor>(Origin, FRotator::ZeroRotator);
+		if (!Actor)
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("BuildBuildings: could not spawn chunk %s"), *Pair.Key.ToString());
+			continue;
+		}
 		UInstancedStaticMeshComponent* ISM = Actor->GetInstances();
 		ISM->SetStaticMesh(Mesh);
 		ISM->SetMaterial(0, Material);

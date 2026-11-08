@@ -24,6 +24,7 @@ AOCLockedAreaVolume::AOCLockedAreaVolume()
 	Box->ShapeColor = FColor(255, 80, 40);
 	Box->SetLineThickness(40.f);
 	RootComponent = Box;
+	bGenerateOverlapEventsDuringLevelStreaming = true;
 }
 
 void AOCLockedAreaVolume::BeginPlay()
@@ -34,6 +35,13 @@ void AOCLockedAreaVolume::BeginPlay()
 	if (UOCProgressionSubsystem* Prog = OCAreaVolume::Progression(this))
 	{
 		Prog->RegisterAreaBounds(this, Area, Box->Bounds.GetBox());
+	}
+	// Anyone already inside (e.g. spawned or teleported in before this bound its events).
+	TArray<AActor*> Inside;
+	Box->GetOverlappingActors(Inside, APawn::StaticClass());
+	for (AActor* A : Inside)
+	{
+		HandleBeginOverlap(Box, A, nullptr, 0, false, FHitResult());
 	}
 }
 

@@ -82,10 +82,10 @@ These need your login or `sudo`, so they're yours to do:
 
 - [ ] 2 × 2.8 km map drivable from end to end in grey-box, including the mountain pass road and over the dam
 - [ ] Road graph drives both road geometry and lane data
-- [ ] Every story landmark in `STORY.md` exists as a named grey-box in the right district
+- [x] Every story landmark in `STORY.md` exists as a named grey-box in the right district
 - [ ] River, estuary and Darsena exist, with drivable bridges; falling into deep water resets you to the bank
-- [ ] A new game starts with only Città Alta and Le Fornaci open; each gate opens with `oc.dev.unlock <milestone>`, and the unlock schedule is data, not code
-- [ ] Entering a locked area warns, then pushes back; gates cost no Tick
+- [x] A new game starts with only Città Alta and Le Fornaci open; each gate opens with `oc.dev.unlock <milestone>`, and the unlock schedule is data, not code
+- [x] Entering a locked area warns, then pushes back; gates cost no Tick
 - [ ] Driving at top speed never reaches unloaded ground or visible pop-in of collision
 - [ ] HLODs build from a script and appear at distance
 - [ ] Water spike decided: Water plugin or custom ocean, with the reason written down

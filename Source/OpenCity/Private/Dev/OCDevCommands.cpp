@@ -172,16 +172,16 @@ namespace OCDev
 			}
 			return;
 		}
+		if (Args.Num() < 5)
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV viewfrom: X Y Z Pitch Yaw [FOV] | off"));
+			return;
+		}
 		if (Body)
 		{
 			// World Partition streams around the camera: hold the player still so they don't fall
 			// through ground that unloads while the camera is elsewhere.
 			Body->GetCharacterMovement()->DisableMovement();
-		}
-		if (Args.Num() < 5)
-		{
-			UE_LOG(LogOpenCity, Display, TEXT("OCDEV viewfrom: X Y Z Pitch Yaw"));
-			return;
 		}
 		const FVector Loc(FCString::Atof(*Args[0]), FCString::Atof(*Args[1]), FCString::Atof(*Args[2]));
 		const FRotator Rot(FCString::Atof(*Args[3]), FCString::Atof(*Args[4]), 0.f);

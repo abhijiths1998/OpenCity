@@ -181,11 +181,11 @@ void UOCProgressionSubsystem::ReturnPlayerToOpenRoad(APlayerController* PC, cons
 
 	if (bWreckVehicle)
 	{
-		if (IOCDrivable* Vehicle = Cast<IOCDrivable>(PC->GetPawn()))
+		IOCDrivable* Vehicle = Cast<IOCDrivable>(PC->GetPawn());
+		APawn* VehiclePawn = PC->GetPawn();
+		if (Vehicle && Vehicle->EjectDriverTo(VehiclePawn->GetActorLocation() + FVector(0.0, 0.0, 250.0)))
 		{
-			APawn* VehiclePawn = PC->GetPawn();
-			Vehicle->EjectDriverTo(VehiclePawn->GetActorLocation() + FVector(0.0, 0.0, 250.0));
-			Vehicle->Wreck();
+			Vehicle->Wreck(); // only once the driver is out: otherwise the vehicle itself is returned
 			UE_LOG(LogOpenCity, Display, TEXT("Progression: %s sank"), *VehiclePawn->GetName());
 		}
 	}
@@ -243,6 +243,7 @@ void UOCProgressionSubsystem::HandleWorldActorsInitialized(const FActorsInitiali
 {
 	if (Params.World && Params.World->IsGameWorld() && Params.World->GetGameInstance() == GetGameInstance())
 	{
+		bReturning = false; // a return cut short by the previous world's teardown never finished
 		ApplyToWorld(Params.World);
 	}
 }
@@ -266,11 +267,17 @@ void UOCProgressionSubsystem::ApplyToWorld(UWorld* World) const
 		Open += bOpen;
 		for (const UDataLayerAsset* L : A.LayersWhileLocked)
 		{
-			Layers->SetDataLayerRuntimeState(L, bOpen ? EDataLayerRuntimeState::Unloaded : EDataLayerRuntimeState::Activated);
+			if (L)
+			{
+				Layers->SetDataLayerRuntimeState(L, bOpen ? EDataLayerRuntimeState::Unloaded : EDataLayerRuntimeState::Activated);
+			}
 		}
 		for (const UDataLayerAsset* L : A.LayersWhenOpen)
 		{
-			Layers->SetDataLayerRuntimeState(L, bOpen ? EDataLayerRuntimeState::Activated : EDataLayerRuntimeState::Unloaded);
+			if (L)
+			{
+				Layers->SetDataLayerRuntimeState(L, bOpen ? EDataLayerRuntimeState::Activated : EDataLayerRuntimeState::Unloaded);
+			}
 		}
 	}
 	UE_LOG(LogOpenCity, Display, TEXT("Progression: %s has %d of %d areas and gates open"), *World->GetName(), Open, UnlockData->Areas.Num());

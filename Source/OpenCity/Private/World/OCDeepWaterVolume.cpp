@@ -13,12 +13,19 @@ AOCDeepWaterVolume::AOCDeepWaterVolume()
 	Box->SetCanEverAffectNavigation(false);
 	Box->ShapeColor = FColor(40, 120, 255);
 	RootComponent = Box;
+	bGenerateOverlapEventsDuringLevelStreaming = true;
 }
 
 void AOCDeepWaterVolume::BeginPlay()
 {
 	Super::BeginPlay();
 	Box->OnComponentBeginOverlap.AddUniqueDynamic(this, &AOCDeepWaterVolume::HandleBeginOverlap);
+	TArray<AActor*> Inside; // anyone already in the water when this streamed in
+	Box->GetOverlappingActors(Inside, APawn::StaticClass());
+	for (AActor* A : Inside)
+	{
+		HandleBeginOverlap(Box, A, nullptr, 0, false, FHitResult());
+	}
 }
 
 void AOCDeepWaterVolume::HandleBeginOverlap(UPrimitiveComponent*, AActor* Other, UPrimitiveComponent*, int32, bool, const FHitResult&)
