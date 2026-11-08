@@ -219,7 +219,8 @@ def main():
             param = SPEC[suffix]["param"]
             set_texture_parameter(mi, param, texture)
         L.save(mi)
-        L.log(TAG, f"instance MI_{base}: {', '.join(f'{s} -> {SPEC[s][\"param\"]}' for s in sorted(textures))}")
+        parts = [f"{s} -> {SPEC[s]['param']}" for s in sorted(textures)]
+        L.log(TAG, f"instance MI_{base}: {', '.join(parts)}")
 
     L.log(TAG, f"done: {len(imported)} texture sets imported into {dest}")
 

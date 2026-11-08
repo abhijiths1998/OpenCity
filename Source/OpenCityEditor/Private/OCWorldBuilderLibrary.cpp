@@ -639,7 +639,8 @@ int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& Layou
 		const float TotalH = FMath::Max(static_cast<float>(Top - Base), 1.0f);
 		const int32 Storeys = FMath::Max(1, FMath::RoundToInt(TotalH / StoreyHeightCm));
 		const float SnapH = Storeys * StoreyHeightCm;
-		const FTransform T(FRotator(0.0, -B->GetNumberField(TEXT("yaw")), 0.0), FVector(SnapX, SnapY, (Base * 100.0) + SnapH * 0.5f),
+		const FTransform T(FRotator(0.0, -B->GetNumberField(TEXT("yaw")), 0.0),
+			FVector(static_cast<float>(SnapX), static_cast<float>(SnapY), static_cast<float>(Base * 100.0) + SnapH * 0.5f),
 			FVector(SnapW, SnapD, SnapH));
 		const FIntPoint Key(FMath::FloorToInt32(SnapX / ChunkSizeCm), FMath::FloorToInt32(SnapY / ChunkSizeCm));
 		Chunks.FindOrAdd(Key).Add({ T, FVector2f(static_cast<float>(B->GetNumberField(TEXT("style"))), Random.FRand()) });

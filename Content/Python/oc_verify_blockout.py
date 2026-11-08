@@ -48,7 +48,7 @@ def main():
     L.log(TAG, f"{len(descs)} actor descriptors in {MAP_PATH}")
 
     # --- Buildings -------------------------------------------------------
-    building_descs = [d for d in descs if str(d.label).startswith("Buildings_")]
+    building_descs = [d for d in descs if str(d.label).startswith("BLOCKOUT_Buildings_")]
     check("building chunks exist", len(building_descs) > 0, str(len(building_descs)))
 
     for d in building_descs:
@@ -82,22 +82,22 @@ def main():
             count = comp.get_instance_count()
             total_instances += count
             for i in range(count):
-                t = comp.get_instance_transform(i, /*bWorldSpace*/ True)
+                t = comp.get_instance_transform(i, True)  # bWorldSpace=True
                 loc = t.get_translation()
-                # centre snapped to 100 cm grid
-                if (abs(loc.x % GRID_CM) > 0.5 or abs(loc.y % GRID_CM) > 0.5 or
-                        abs(loc.z % GRID_CM) > 0.5):
+                # centre snapped to 100 cm grid (X and Y)
+                if abs(loc.x % GRID_CM) > 0.5 or abs(loc.y % GRID_CM) > 0.5:
                     off_grid += 1
                 scale = t.get_scale3d()
-                # width/depth snapped to 100 cm increments; height to 320 cm storeys
-                if (abs(scale.x % GRID_CM) > 0.5 or abs(scale.y % GRID_CM) > 0.5):
-                    off_storey += 1  # reused counter for grid violations
+                # width/depth snapped to 100 cm increments
+                if abs(scale.x % GRID_CM) > 0.5 or abs(scale.y % GRID_CM) > 0.5:
+                    off_grid += 1
+                # height snapped to whole 320 cm storeys
                 if abs(scale.z % STOREY_CM) > 0.5:
                     off_storey += 1
 
     check("blockout instances", total_instances > 0, str(total_instances))
     check("instances on 100 cm grid", off_grid == 0, f"{off_grid} off-grid")
-    check("heights on 320 cm storeys", off_storey == 0, f"{off_storey} off-grid/off-storey")
+    check("heights on 320 cm storeys", off_storey == 0, f"{off_storey} off-storey")
 
     # --- Roads (from descriptor labels, since road mesh data is baked) ---
     road_descs = [d for d in descs if str(d.label).startswith("Roads_")]
