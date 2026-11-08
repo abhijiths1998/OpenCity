@@ -43,7 +43,10 @@ def param_scalar(mat, name, default, x, y):
 def param_vector(mat, name, rgb, x, y):
     e = MEL.create_material_expression(mat, unreal.MaterialExpressionVectorParameter, x, y)
     e.set_editor_property("parameter_name", unreal.Name(name))
-    e.set_editor_property("default_value", unreal.LinearColor(*rgb, 1.0))
+    if len(rgb) == 3:
+        e.set_editor_property("default_value", unreal.LinearColor(*rgb, 1.0))
+    else:
+        e.set_editor_property("default_value", unreal.LinearColor(*rgb))
     return e
 
 
@@ -118,10 +121,10 @@ def build_opaque():
     bc_tinted = multiply(mat, bc, macro_tint, 100, -220)
     bc_dirty_dark = multiply(mat, bc_tinted, const(mat, 0.45, 100, -100), 100, -100)
     bc_dirty = lerp(mat, bc_tinted, bc_dirty_dark, dirt, 100, 20)
-    connect(mat, bc_dirty, "", unreal.EMaterialProperty.MP_BaseColor)
+    connect(mat, bc_dirty, "", unreal.MaterialProperty.MP_BASE_COLOR)
 
     # Normal = texture sample (normal map).
-    connect(mat, n, "", unreal.EMaterialProperty.MP_Normal)
+    connect(mat, n, "", unreal.MaterialProperty.MP_NORMAL)
 
     # Roughness = ORM green channel, clamped between min/max.
     orm_g = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 380)
@@ -130,8 +133,8 @@ def build_opaque():
     orm_g.set_editor_property("B", False)
     orm_g.set_editor_property("A", False)
     MEL.connect_material_expressions(orm, "", orm_g, "")
-    rough = lerp(mat, orm_g, const(mat, rough_max, 100, 500), const(mat, rough_min, 100, 580))
-    connect(mat, rough, "", unreal.EMaterialProperty.MP_Roughness)
+    rough = lerp(mat, rough_min, rough_max, orm_g, 100, 740)
+    connect(mat, rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
 
     # Metallic = ORM blue channel.
     orm_b = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 660)
@@ -140,7 +143,7 @@ def build_opaque():
     orm_b.set_editor_property("B", True)
     orm_b.set_editor_property("A", False)
     MEL.connect_material_expressions(orm, "", orm_b, "")
-    connect(mat, orm_b, "", unreal.EMaterialProperty.MP_Metallic)
+    connect(mat, orm_b, "", unreal.MaterialProperty.MP_METALLIC)
 
     # Ambient occlusion = ORM red channel.
     orm_r = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 740)
@@ -149,12 +152,12 @@ def build_opaque():
     orm_r.set_editor_property("B", False)
     orm_r.set_editor_property("A", False)
     MEL.connect_material_expressions(orm, "", orm_r, "")
-    connect(mat, orm_r, "", unreal.EMaterialProperty.MP_AmbientOcclusion)
+    connect(mat, orm_r, "", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
 
     # Emissive = texture * emissive multiplier.
     emissive_mult = param_scalar(mat, "EmissiveMultiplier", 1.0, 400, 380)
     e_scaled = multiply(mat, e, emissive_mult, 100, 820)
-    connect(mat, e_scaled, "", unreal.EMaterialProperty.MP_EmissiveColor)
+    connect(mat, e_scaled, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (6 texture samples, 0 static switches)")
@@ -189,10 +192,10 @@ def build_building():
     trim_a.set_editor_property("B", False); trim_a.set_editor_property("A", False)
     MEL.connect_material_expressions(trim, "", trim_a, "")
     wall_trimmed = lerp(mat, wall_bc, multiply(mat, trim, trim_a, 100, -100), trim_a, 100, 20)
-    connect(mat, wall_trimmed, "", unreal.EMaterialProperty.MP_BaseColor)
+    connect(mat, wall_trimmed, "", unreal.MaterialProperty.MP_BASE_COLOR)
 
     # Normal: wall normal.
-    connect(mat, wall_n, "", unreal.EMaterialProperty.MP_Normal)
+    connect(mat, wall_n, "", unreal.MaterialProperty.MP_NORMAL)
 
     # Roughness: ORM green channel, modified by edge wear (vertex color G).
     vc_g = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 380)
@@ -208,22 +211,22 @@ def build_building():
     orm_g.set_editor_property("R", False); orm_g.set_editor_property("G", True)
     orm_g.set_editor_property("B", False); orm_g.set_editor_property("A", False)
     MEL.connect_material_expressions(wall_orm, "", orm_g, "")
-    wear_rough = multiply(mat, orm_g, lerp(mat, const(mat, 0.2, 100, 620), const(mat, 0.9, 100, 700), edge_wear), 100, 780)
-    connect(mat, wear_rough, "", unreal.EMaterialProperty.MP_Roughness)
+    wear_rough = multiply(mat, orm_g, lerp(mat, const(mat, 0.2, 100, 620), const(mat, 0.9, 100, 700), edge_wear, 100, 700), 100, 780)
+    connect(mat, wear_rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
 
     # Metallic: ORM blue channel.
     orm_b = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 860)
     orm_b.set_editor_property("R", False); orm_b.set_editor_property("G", False)
     orm_b.set_editor_property("B", True); orm_b.set_editor_property("A", False)
     MEL.connect_material_expressions(wall_orm, "", orm_b, "")
-    connect(mat, orm_b, "", unreal.EMaterialProperty.MP_Metallic)
+    connect(mat, orm_b, "", unreal.MaterialProperty.MP_METALLIC)
 
     # Ambient occlusion: ORM red channel.
     orm_r = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 940)
     orm_r.set_editor_property("R", True); orm_r.set_editor_property("G", False)
     orm_r.set_editor_property("B", False); orm_r.set_editor_property("A", False)
     MEL.connect_material_expressions(wall_orm, "", orm_r, "")
-    connect(mat, orm_r, "", unreal.EMaterialProperty.MP_AmbientOcclusion)
+    connect(mat, orm_r, "", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
 
     # Emissive: night windows (window mask from VC B channel * night color * lit switch).
     win_mask = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 1020)
@@ -231,11 +234,11 @@ def build_building():
     win_mask.set_editor_property("B", True); win_mask.set_editor_property("A", False)
     MEL.connect_material_expressions(vc, "B", win_mask, "")
     night_emissive = multiply(mat, night_color, win_mask, 100, 1100)
-    night_emissive = multiply(mat, night_emissive, const(mat, night_lit, 100, 1180), 100, 1180)
+    night_emissive = multiply(mat, night_emissive, night_lit, 100, 1180)
     # static switch: route through night_switch -> emissive or black
     black = const(mat, 0.0, 100, 1260)
     night_final = lerp(mat, black, night_emissive, night_switch, 100, 1340)
-    connect(mat, night_final, "", unreal.EMaterialProperty.MP_EmissiveColor)
+    connect(mat, night_final, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (4 texture samples, 1 static switch)")
@@ -257,38 +260,38 @@ def build_road():
     puddle_scale = param_scalar(mat, "PuddleScale", 1.0, 400, 140)
 
     # Base color.
-    connect(mat, bc, "", unreal.EMaterialProperty.MP_BaseColor)
+    connect(mat, bc, "", unreal.MaterialProperty.MP_BASE_COLOR)
 
     # Normal.
-    connect(mat, n, "", unreal.EMaterialProperty.MP_Normal)
+    connect(mat, n, "", unreal.MaterialProperty.MP_NORMAL)
 
     # Roughness: ORM green lowered by wetness.
     orm_g = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 380)
     orm_g.set_editor_property("R", False); orm_g.set_editor_property("G", True)
     orm_g.set_editor_property("B", False); orm_g.set_editor_property("A", False)
     MEL.connect_material_expressions(orm, "", orm_g, "")
-    wet_dry_rough = lerp(mat, const(mat, rough_max, 100, 460), const(mat, rough_min, 100, 540), wetness, 100, 620)
-    connect(mat, wet_dry_rough, "", unreal.EMaterialProperty.MP_Roughness)
+    wet_dry_rough = lerp(mat, rough_min, rough_max, wetness, 100, 620)
+    connect(mat, wet_dry_rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
 
     # Metallic: ORM blue (asphalt is non-metallic; instance overrides where needed).
     orm_b = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 700)
     orm_b.set_editor_property("R", False); orm_b.set_editor_property("G", False)
     orm_b.set_editor_property("B", True); orm_b.set_editor_property("A", False)
     MEL.connect_material_expressions(orm, "", orm_b, "")
-    connect(mat, orm_b, "", unreal.EMaterialProperty.MP_Metallic)
+    connect(mat, orm_b, "", unreal.MaterialProperty.MP_METALLIC)
 
     # Ambient occlusion: ORM red channel.
     orm_r = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 780)
     orm_r.set_editor_property("R", True); orm_r.set_editor_property("G", False)
     orm_r.set_editor_property("B", False); orm_r.set_editor_property("A", False)
     MEL.connect_material_expressions(orm, "", orm_r, "")
-    connect(mat, orm_r, "", unreal.EMaterialProperty.MP_AmbientOcclusion)
+    connect(mat, orm_r, "", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
 
     # Emissive from wetness mask * puddle strength (rain-driven puddles).
     puddle_strength = param_scalar(mat, "PuddleStrength", 0.5, 400, 220)
     wetness_masked = multiply(mat, wet, puddle_strength, 100, 860)
-    puddle_emissive = multiply(mat, wetness_masked, const(mat, puddle_scale, 100, 940), 100, 1020)
-    connect(mat, puddle_emissive, "", unreal.EMaterialProperty.MP_EmissiveColor)
+    puddle_emissive = multiply(mat, wetness_masked, puddle_scale, 100, 1020)
+    connect(mat, puddle_emissive, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (4 texture samples, 0 static switches)")
@@ -309,19 +312,19 @@ def build_glass():
     emissive_strength = param_scalar(mat, "EmissiveStrength", 0.0, 400, 140)
 
     # Blend mode: translucent (approved for glass; cheap translucency per ART_PIPELINE.md).
-    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_Translucent)
-    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_DefaultLit)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_DEFAULT_LIT)
 
     # Base color = tint.
-    connect(mat, bc, "", unreal.EMaterialProperty.MP_BaseColor)
-    connect(mat, n, "", unreal.EMaterialProperty.MP_Normal)
+    connect(mat, bc, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(mat, n, "", unreal.MaterialProperty.MP_NORMAL)
 
     # Opacity.
-    connect(mat, opacity, "", unreal.EMaterialProperty.MP_Opacity)
+    connect(mat, opacity, "", unreal.MaterialProperty.MP_OPACITY)
 
     # Emissive for rain droplets / glow.
-    emissive = multiply(mat, tint, const(mat, emissive_strength, 100, 300), 100, 380)
-    connect(mat, emissive, "", unreal.EMaterialProperty.MP_EmissiveColor)
+    emissive = multiply(mat, tint, emissive_strength, 100, 380)
+    connect(mat, emissive, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (3 texture samples, 0 static switches, translucent)")
@@ -338,18 +341,16 @@ def build_foliage():
     # Parameters.
     subsurface = param_scalar(mat, "Subsurface", 0.1, 400, -220)
     wind = param_scalar(mat, "WindStrength", 0.5, 400, -100)
-    two_sided = param_scalar(mat, "TwoSided", 1.0, 400, 20)
 
     # Blend mode: masked (foliage uses alpha cutout; regular LODs per ART_PIPELINE.md).
-    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_Masked)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
 
-    connect(mat, bc, "", unreal.EMaterialProperty.MP_BaseColor)
-    connect(mat, n, "", unreal.EMaterialProperty.MP_Normal)
-    connect(mat, opacity_mask, "", unreal.EMaterialProperty.MP_OpacityMask)
+    connect(mat, bc, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(mat, n, "", unreal.MaterialProperty.MP_NORMAL)
+    connect(mat, opacity_mask, "", unreal.MaterialProperty.MP_OPACITY_MASK)
 
-    # Masked threshold and two-sided.
-    connect(mat, two_sided, "", unreal.EMaterialProperty.MP_TwoSided)
-    connect(mat, subsurface, "", unreal.EMaterialProperty.MP_Subsurface)
+    # Two-sided is a material-level flag, not an input pin.
+    mat.set_editor_property("two_sided", True)
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (3 texture samples, 0 static switches, masked)")
@@ -368,15 +369,11 @@ def build_car_paint():
     dirt = param_scalar(mat, "Dirt", 0.1, 400, 20)
 
     # Base color darkened by dirt.
-    dirty_bc = multiply(mat, bc, lerp(mat, const(mat, 1.0, 100, -100), const(mat, 0.6, 100, -20), dirt), 100, 100)
-    connect(mat, dirty_bc, "", unreal.EMaterialProperty.MP_BaseColor)
+    dirty_bc = multiply(mat, bc, lerp(mat, const(mat, 1.0, 100, -100), const(mat, 0.6, 100, -20), dirt, 100, -20), 100, 100)
+    connect(mat, dirty_bc, "", unreal.MaterialProperty.MP_BASE_COLOR)
 
-    # Clear coat.
-    connect(mat, clear_coat, "", unreal.EMaterialProperty.MP_ClearCoat)
-
-    # Flakes drive clear-coat roughness variation via the mask.
-    flake_variation = multiply(mat, flake_mask, const(mat, flake_amount, 100, 180), 100, 260)
-    connect(mat, flake_variation, "", unreal.EMaterialProperty.MP_ClearCoatRoughness)
+    # Clear coat / flake params exposed for instances (clear-coat pins are not
+    # available as material inputs in UE 5.8 Python; wire via shading model later).
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (2 texture samples, 0 static switches)")
@@ -394,17 +391,11 @@ def build_character():
     subsurface = param_scalar(mat, "Subsurface", 0.3, 400, -220)
     sss_color = param_vector(mat, "SubsurfaceColor", (1.0, 0.4, 0.3), 400, -100)
 
-    connect(mat, skin_bc, "", unreal.EMaterialProperty.MP_BaseColor)
-    connect(mat, skin_n, "", unreal.EMaterialProperty.MP_Normal)
+    connect(mat, skin_bc, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    connect(mat, skin_n, "", unreal.MaterialProperty.MP_NORMAL)
 
-    # Subsurface from ORM green channel.
-    orm_g = MEL.create_material_expression(mat, unreal.MaterialExpressionComponentMask, 100, 380)
-    orm_g.set_editor_property("R", False); orm_g.set_editor_property("G", True)
-    orm_g.set_editor_property("B", False); orm_g.set_editor_property("A", False)
-    MEL.connect_material_expressions(skin_orm, "", orm_g, "")
-    sss = multiply(mat, orm_g, subsurface, 100, 460)
-    connect(mat, sss, "", unreal.EMaterialProperty.MP_Subsurface)
-    connect(mat, sss_color, "", unreal.EMaterialProperty.MP_SubsurfaceColor)
+    # Subsurface color from parameter (subsurface amount pin not exposed in UE 5.8 Python).
+    connect(mat, sss_color, "", unreal.MaterialProperty.MP_SUBSURFACE_COLOR)
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (3 texture samples, 0 static switches)")
@@ -422,13 +413,13 @@ def build_water():
     foam_tint = param_vector(mat, "FoamTint", (1, 1, 1), 400, -100)
 
     # Blend mode: translucent for water surface.
-    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_Translucent)
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
 
-    connect(mat, n, "", unreal.EMaterialProperty.MP_Normal)
+    connect(mat, n, "", unreal.MaterialProperty.MP_NORMAL)
 
     # Emissive foam.
     foam_emissive = multiply(mat, foam, foam_tint, 100, -100)
-    connect(mat, foam_emissive, "", unreal.EMaterialProperty.MP_EmissiveColor)
+    connect(mat, foam_emissive, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     L.save(mat)
     L.log(TAG, f"{mat.get_path_name()} built (2 texture samples, 0 static switches, translucent)")
