@@ -596,6 +596,9 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	return Built;
 }
 
+constexpr float BlockoutGridCm = 100.f;   // WORLD_METRICS.md: modular grid 100 / 200 / 400 cm
+constexpr float StoreyHeightCm = 320.f;   // WORLD_METRICS.md: floor-to-floor height
+
 int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& LayoutJsonPath, UStaticMesh* Mesh, UMaterialInterface* Material, float ChunkSizeCm)
 {
 	FString Text;
@@ -625,10 +628,20 @@ int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& Layou
 		const TArray<TSharedPtr<FJsonValue>>& Size = *SizePtr;
 		const double Base = B->GetNumberField(TEXT("base")), Top = B->GetNumberField(TEXT("top"));
 		// Layout metres (x east, y north, yaw counter-clockwise) to Unreal cm (Y south, yaw clockwise).
-		const FVector Centre(Pos[0]->AsNumber() * 100.0, -Pos[1]->AsNumber() * 100.0, (Base + Top) * 50.0);
-		const FTransform T(FRotator(0.0, -B->GetNumberField(TEXT("yaw")), 0.0), Centre,
-			FVector(Size[0]->AsNumber(), Size[1]->AsNumber(), FMath::Max(Top - Base, 1.0)));
-		const FIntPoint Key(FMath::FloorToInt32(Centre.X / ChunkSizeCm), FMath::FloorToInt32(Centre.Y / ChunkSizeCm));
+		const double CentreX = Pos[0]->AsNumber() * 100.0;
+		const double CentreY = -Pos[1]->AsNumber() * 100.0;
+		// Snap centre and half-extents to the 100 cm modular grid (WORLD_METRICS.md).
+		const double SnapX = FMath::RoundToDouble(CentreX / BlockoutGridCm) * BlockoutGridCm;
+		const double SnapY = FMath::RoundToDouble(CentreY / BlockoutGridCm) * BlockoutGridCm;
+		const float SnapW = FMath::RoundToFloat(Size[0]->AsNumber() * 100.0 / BlockoutGridCm) * BlockoutGridCm;
+		const float SnapD = FMath::RoundToFloat(Size[1]->AsNumber() * 100.0 / BlockoutGridCm) * BlockoutGridCm;
+		// Floor-to-floor 320 cm: snap total height to whole storeys.
+		const float TotalH = FMath::Max(static_cast<float>(Top - Base), 1.0f);
+		const int32 Storeys = FMath::Max(1, FMath::RoundToInt(TotalH / StoreyHeightCm));
+		const float SnapH = Storeys * StoreyHeightCm;
+		const FTransform T(FRotator(0.0, -B->GetNumberField(TEXT("yaw")), 0.0), FVector(SnapX, SnapY, (Base * 100.0) + SnapH * 0.5f),
+			FVector(SnapW, SnapD, SnapH));
+		const FIntPoint Key(FMath::FloorToInt32(SnapX / ChunkSizeCm), FMath::FloorToInt32(SnapY / ChunkSizeCm));
 		Chunks.FindOrAdd(Key).Add({ T, FVector2f(static_cast<float>(B->GetNumberField(TEXT("style"))), Random.FRand()) });
 	}
 
@@ -657,7 +670,7 @@ int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& Layou
 			ISM->SetCustomDataValue(Index, 1, I.Value.Y);
 			++Count;
 		}
-		Actor->SetActorLabel(FString::Printf(TEXT("Buildings_%d_%d"), Pair.Key.X, Pair.Key.Y));
+		Actor->SetActorLabel(FString::Printf(TEXT("BLOCKOUT_Buildings_%d_%d"), Pair.Key.X, Pair.Key.Y));
 		Actor->SetFolderPath(TEXT("Buildings"));
 	}
 	UE_LOG(LogOpenCity, Display, TEXT("BuildBuildings: %d buildings in %d chunks"), Count, Chunks.Num());

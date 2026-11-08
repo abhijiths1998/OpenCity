@@ -9,7 +9,7 @@ The pipeline runs in ten steps. **Step 1 (audit → AUDIT.md), Step 2 (art bible
 | 1 — Audit | `AUDIT.md` + `oc_audit.py` | Done (baseline = 100% grey-box) |
 | 2 — Art bible | `ART_BIBLE.md` | Done |
 | 3 — World metrics | `WORLD_METRICS.md` | Done |
-| 4 — Blockout | grey-box district via road splines + PCG | Pending approval |
+| 4 — Blockout | grey-box district via road splines + PCG | In progress (WORLD_METRICS alignment done; editor validation pending) |
 | 5 — Modular kits + trim sheets | per-district `SM_*` kit, trim sheets | Pending approval |
 | 6 — Blender kitbash pipeline | headless Blender scripts + UE import script | Pending approval |
 | 7 — Roads, ground, landscape | splines, ground layers, auto-material | Pending approval |
