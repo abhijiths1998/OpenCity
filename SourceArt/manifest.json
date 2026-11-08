@@ -1,4 +1,50 @@
 {
   "_comment": "External CC0 source files. Tools/fetch_assets.py (M4a) downloads these into SourceArt/Downloads/, which is not committed. Every entry also needs a row in LICENSES.csv.",
-  "assets": []
+  "assets": [
+    {
+      "slug": "plastered_wall",
+      "size": 1024,
+      "maps": ["bc", "n", "orm", "e"],
+      "source_url": "https://polyhaven.com/a/plastered_wall",
+      "author": "Poly Haven / CC0",
+      "license": "CC0",
+      "notes": "Sun-faded plaster walls for Mediterranean buildings (Building kit, walls)"
+    },
+    {
+      "slug": "worn_concrete_floor",
+      "size": 1024,
+      "maps": ["bc", "n", "orm"],
+      "source_url": "https://polyhaven.com/a/worn_concrete_floor",
+      "author": "Poly Haven / CC0",
+      "license": "CC0",
+      "notes": "Sidewalks and curbs"
+    },
+    {
+      "slug": "clean_asphalt",
+      "size": 1024,
+      "maps": ["bc", "n", "orm"],
+      "source_url": "https://polyhaven.com/a/clean_asphalt",
+      "author": "Poly Haven / CC0",
+      "license": "CC0",
+      "notes": "Road surface"
+    },
+    {
+      "slug": "terracotta_floor_tiles",
+      "size": 1024,
+      "maps": ["bc", "n", "orm"],
+      "source_url": "https://polyhaven.com/a/terracotta_floor_tiles",
+      "author": "Poly Haven / CC0",
+      "license": "CC0",
+      "notes": "Terracotta roof and floor tiles"
+    },
+    {
+      "slug": "cobblestone_01",
+      "size": 1024,
+      "maps": ["bc", "n", "orm"],
+      "source_url": "https://polyhaven.com/a/cobblestone_01",
+      "author": "Poly Haven / CC0",
+      "license": "CC0",
+      "notes": "Street / plaza paving"
+    }
+  ]
 }
