@@ -515,34 +515,48 @@ SIDEWALK_KINDS = {"avenue", "street"}   # get 2.5 m sidewalks on both sides in t
 SIDEWALK_W = 2.5
 
 
+SHOULDER = 10.0  # m of smooth blend from a road's graded corridor back into the land
+BLEND = 1.5      # m: soft-minimum scale where road corridors meet
+
+
 def flatten_roads(h, g):
-    """Flatten a corridor under every road (not bridges): the surface runs straight between its
-    junction heights, with sidewalks included and a soft 6 m shoulder blending into the land."""
+    """Grade a corridor under every road (not bridges): the surface runs straight between its
+    junction heights, sidewalks included, with a smooth shoulder blending into the land.
+
+    Where corridors meet, their grades are blended with a soft minimum over the distance to each
+    road's edge (scale BLEND m): inside one road its own grade dominates, and two roads of
+    different slope meet without a step. (Applying roads one after another let a later shoulder
+    bend an earlier road; picking only the nearest road left steps where two grades met.)
+    """
+    best = np.full(h.shape, np.inf, dtype=np.float32)   # distance past the nearest road edge (m), < 0 inside
+    wsum = np.zeros(h.shape, dtype=np.float32)
+    tsum = np.zeros(h.shape, dtype=np.float32)
     for s in g.segments:
         if s["bridge"]:
             continue
         ax, ay, az = g.nodes[s["a"]]
         bx, by, bz = g.nodes[s["b"]]
         half = s["width"] / 2.0 + (SIDEWALK_W if s["kind"] in SIDEWALK_KINDS else 0.0) + 1.0
-        reach = half + 6.0
+        reach = half + SHOULDER
         x0, x1 = int(max(0, min(ax, bx) - reach)), int(min(W, max(ax, bx) + reach)) + 1
         y0, y1 = int(max(0, min(ay, by) - reach - Y_MIN)), int(min(H, max(ay, by) + reach - Y_MIN)) + 1
-        if x1 <= x0 or y1 <= y0:
+        dx, dy = bx - ax, by - ay
+        L2 = dx * dx + dy * dy
+        if x1 <= x0 or y1 <= y0 or L2 < 1e-6:
             continue
         yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
         yy += Y_MIN
-        dx, dy = bx - ax, by - ay
-        L2 = dx * dx + dy * dy
-        if L2 < 1e-6:
-            continue
         t = np.clip(((xx - ax) * dx + (yy - ay) * dy) / L2, 0.0, 1.0)
-        dist = np.hypot(xx - (ax + t * dx), yy - (ay + t * dy))
+        edge = np.hypot(xx - (ax + t * dx), yy - (ay + t * dy)) - half
+        k = np.exp(-np.clip(edge, -half, SHOULDER) / BLEND)
+        best[y0:y1, x0:x1] = np.minimum(best[y0:y1, x0:x1], edge)
+        wsum[y0:y1, x0:x1] += k
         # 20 cm below the road surface, so distant (coarser) landscape LODs never poke through.
-        target = az + t * (bz - az) - 0.2
-        w = np.clip((reach - dist) / (reach - half), 0.0, 1.0)  # 1 inside the road, fades over the shoulder
-        w = w * w * (3 - 2 * w)
-        region = h[y0:y1, x0:x1]
-        h[y0:y1, x0:x1] = np.where(w > 0, region * (1 - w) + target * w, region)
+        tsum[y0:y1, x0:x1] += k * (az + t * (bz - az) - 0.2)
+    target = np.where(wsum > 0, tsum / np.maximum(wsum, 1e-12), h)
+    w = np.clip(1.0 - best / SHOULDER, 0.0, 1.0)  # 1 inside a road, fades to 0 over the shoulder
+    w = w * w * (3 - 2 * w)
+    h[:] = h * (1 - w) + target * w
 
 
 def main():

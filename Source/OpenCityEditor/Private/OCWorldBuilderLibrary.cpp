@@ -13,6 +13,9 @@
 #include "RHIGlobals.h"
 #include "ImageCore.h"
 #include "ImageUtils.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Landscape.h"
 #include "LandscapeInfo.h"
 #include "LandscapeSubsystem.h"
@@ -157,23 +160,86 @@ int32 UOCWorldBuilderLibrary::ConfigureStreaming(UWorld* World, int32 CellSizeCm
 
 namespace OCRoadMesh
 {
+	/** The layout heightmap, sampled in world cm: roads drape over exactly what the landscape imported. */
+	struct FHeightField
+	{
+		FImage Image;
+		double OriginX = 0.0, NorthEdge = 0.0, MinM = 0.0, RangeM = 1.0;
+
+		bool Load(const FString& Png, const TSharedPtr<FJsonObject>& Root)
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Origin;
+			const TArray<TSharedPtr<FJsonValue>>* Size;
+			const TArray<TSharedPtr<FJsonValue>>* Range;
+			if (!Root || !Root->TryGetArrayField(TEXT("origin"), Origin) || !Root->TryGetArrayField(TEXT("size"), Size)
+				|| !Root->TryGetArrayField(TEXT("height_range"), Range) || !FImageUtils::LoadImage(*Png, Image))
+			{
+				return false;
+			}
+			Image.ChangeFormat(ERawImageFormat::G16, EGammaSpace::Linear);
+			OriginX = (*Origin)[0]->AsNumber();
+			NorthEdge = (*Origin)[1]->AsNumber() + (*Size)[1]->AsNumber(); // PNG row 0 is the north edge
+			MinM = (*Range)[0]->AsNumber();
+			RangeM = (*Range)[1]->AsNumber() - MinM;
+			return true;
+		}
+
+		double Pixel(int32 Col, int32 Row) const
+		{
+			Col = FMath::Clamp(Col, 0, Image.SizeX - 1);
+			Row = FMath::Clamp(Row, 0, Image.SizeY - 1);
+			return Image.AsG16()[static_cast<int64>(Row) * Image.SizeX + Col];
+		}
+
+		/** Bilinear height in cm at world X, Y (cm). Layout metres: x = X/100, y = -Y/100. */
+		double HeightCm(double X, double Y) const
+		{
+			const double Col = X / 100.0 - OriginX;
+			const double Row = NorthEdge + Y / 100.0;
+			const int32 C0 = FMath::FloorToInt32(Col), R0 = FMath::FloorToInt32(Row);
+			const double FX = Col - C0, FY = Row - R0;
+			const double V = FMath::Lerp(FMath::Lerp(Pixel(C0, R0), Pixel(C0 + 1, R0), FX),
+				FMath::Lerp(Pixel(C0, R0 + 1), Pixel(C0 + 1, R0 + 1), FX), FY);
+			return 100.0 * (MinM + V / 65535.0 * RangeM);
+		}
+
+		FVector3f NormalAt(double X, double Y) const
+		{
+			const double DX = HeightCm(X + 100.0, Y) - HeightCm(X - 100.0, Y);
+			const double DY = HeightCm(X, Y + 100.0) - HeightCm(X, Y - 100.0);
+			return FVector3f(FVector(-DX, -DY, 200.0).GetSafeNormal());
+		}
+	};
+
+	/** One polygon: positions (world cm), per-vertex normals and UV0, and a per-polygon UV1. */
+	struct FRoadPoly
+	{
+		TArray<FVector> P;
+		TArray<FVector3f> N;
+		TArray<FVector2f> UV0;
+		FVector2f UV1 = FVector2f::ZeroVector;
+		int32 Group = 0;
+	};
+
 	/** Geometry for one chunk, in world space until it is built. */
 	struct FChunk
 	{
-		struct FPoly { TArray<FVector> Points; int32 Group; };
-		TArray<FPoly> Polys;
+		TArray<FRoadPoly> Polys;
 		FBox Bounds = FBox(ForceInit);
 
-		void Add(TArray<FVector> Points, int32 Group)
+		/** Facing: the side the polygon's front should face (Up for surfaces). Two-sided materials
+		 * shade back faces with the flipped normal, so the winding must match it. */
+		void Add(FRoadPoly Poly, const FVector& Facing)
 		{
-			// Normalise winding so every polygon faces up (measured: front faces have a
-			// negative Z cross product here); a down-facing one renders black when two-sided.
-			if (Points.Num() >= 3 && FVector::CrossProduct(Points[1] - Points[0], Points[2] - Points[0]).Z > 0.0)
+			// Measured: front faces have a negative cross product of the first two edges here.
+			if (Poly.P.Num() >= 3 && FVector::DotProduct(-FVector::CrossProduct(Poly.P[1] - Poly.P[0], Poly.P[2] - Poly.P[0]), Facing) < 0.0)
 			{
-				Algo::Reverse(Points);
+				Algo::Reverse(Poly.P);
+				Algo::Reverse(Poly.N);
+				Algo::Reverse(Poly.UV0);
 			}
-			for (const FVector& P : Points) { Bounds += P; }
-			Polys.Add({ MoveTemp(Points), Group });
+			for (const FVector& V : Poly.P) { Bounds += V; }
+			Polys.Add(MoveTemp(Poly));
 		}
 	};
 
@@ -186,6 +252,20 @@ namespace OCRoadMesh
 		return 4.f; // alley
 	}
 
+	/** Lanes per direction for the road material's markings (0 = none: alleys, piers, junctions). */
+	float MarkedLanes(const FOCRoadSegment& S)
+	{
+		return (S.Kind == TEXT("alley") || S.Kind == TEXT("pier")) ? 0.f : static_cast<float>(FMath::Max(S.LanesPerDirection, 1));
+	}
+
+	constexpr double StepCm = 200.0;     // drape resolution along roads
+	constexpr double ColumnCm = 150.0;   // drape resolution across roads and junctions
+	// Everything sits BaseLift above the heightmap: the generator grades the ground 20 cm under the
+	// road, and distant landscape LODs drift by a few cm. Kinds add 3-6 cm so overlaps never z-fight.
+	constexpr float BaseLift = 15.f;
+	constexpr float SidewalkLift = BaseLift + 15.f; // 9-12 cm curbs above the road
+	constexpr float SkirtDepth = 40.f;              // road edges without sidewalks drop this far below the surface
+
 	UStaticMesh* BuildMesh(const FChunk& Chunk, const FVector& Origin, const FString& PackagePath, const FString& Name,
 		UMaterialInterface* RoadMat, UMaterialInterface* SidewalkMat)
 	{
@@ -197,24 +277,28 @@ namespace OCRoadMesh
 		TVertexInstanceAttributesRef<FVector3f> Tangents = Attr.GetVertexInstanceTangents();
 		TVertexInstanceAttributesRef<float> BinormalSigns = Attr.GetVertexInstanceBinormalSigns();
 		TVertexInstanceAttributesRef<FVector2f> UVs = Attr.GetVertexInstanceUVs();
+		Desc.SetNumUVChannels(2); // the description's own channel count; the build trims UVs to it
+		UVs.SetNumChannels(2);
 		TPolygonGroupAttributesRef<FName> SlotNames = Attr.GetPolygonGroupMaterialSlotNames();
 
 		const FPolygonGroupID Groups[2] = { Desc.CreatePolygonGroup(), Desc.CreatePolygonGroup() };
 		SlotNames[Groups[0]] = TEXT("Road");
 		SlotNames[Groups[1]] = TEXT("Sidewalk");
 
-		for (const FChunk::FPoly& Poly : Chunk.Polys)
+		for (const FRoadPoly& Poly : Chunk.Polys)
 		{
 			TArray<FVertexInstanceID> Instances;
-			for (const FVector& World : Poly.Points)
+			for (int32 i = 0; i < Poly.P.Num(); ++i)
 			{
 				const FVertexID V = Desc.CreateVertex();
-				Positions[V] = FVector3f(World - Origin);
+				Positions[V] = FVector3f(Poly.P[i] - Origin);
 				const FVertexInstanceID I = Desc.CreateVertexInstance(V);
-				Normals[I] = FVector3f::UpVector;
-				Tangents[I] = FVector3f::ForwardVector;
+				Normals[I] = Poly.N[i];
+				const FVector3f T = FVector3f::CrossProduct(FVector3f::RightVector, Poly.N[i]).GetSafeNormal();
+				Tangents[I] = T.IsNearlyZero() ? FVector3f::ForwardVector : T;
 				BinormalSigns[I] = 1.f;
-				UVs.Set(I, 0, FVector2f(World.X / 400.f, World.Y / 400.f)); // 4 m texture tiles
+				UVs.Set(I, 0, Poly.UV0[i]);
+				UVs.Set(I, 1, Poly.UV1);
 				Instances.Add(I);
 			}
 			Desc.CreatePolygon(Groups[Poly.Group], Instances);
@@ -225,8 +309,10 @@ namespace OCRoadMesh
 		Mesh->GetStaticMaterials().Add(FStaticMaterial(RoadMat, TEXT("Road"), TEXT("Road")));
 		Mesh->GetStaticMaterials().Add(FStaticMaterial(SidewalkMat, TEXT("Sidewalk"), TEXT("Sidewalk")));
 		Mesh->SetNumSourceModels(1);
-		Mesh->GetSourceModel(0).BuildSettings.bRecomputeNormals = false;
-		Mesh->GetSourceModel(0).BuildSettings.bRecomputeTangents = false;
+		FMeshBuildSettings& Build = Mesh->GetSourceModel(0).BuildSettings;
+		Build.bRecomputeNormals = false;
+		Build.bRecomputeTangents = false;
+		Build.bGenerateLightmapUVs = false; // UV1 carries road data for the material; Lumen needs no lightmaps
 		Mesh->CreateMeshDescription(0, MoveTemp(Desc));
 		Mesh->CommitMeshDescription(0);
 		FMeshNaniteSettings Nanite = Mesh->GetNaniteSettings();
@@ -239,16 +325,19 @@ namespace OCRoadMesh
 	}
 }
 
-int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& LayoutJsonPath, const FString& AssetFolder,
-	UMaterialInterface* RoadMaterial, UMaterialInterface* SidewalkMaterial, const TArray<FName>& SidewalkKinds,
-	float SidewalkWidthCm, float ChunkSizeCm)
+int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+	const FString& AssetFolder, UMaterialInterface* RoadMaterial, UMaterialInterface* SidewalkMaterial,
+	const TArray<FName>& SidewalkKinds, float SidewalkWidthCm, float ChunkSizeCm)
 {
 	using namespace OCRoadMesh;
 	FString Text, Error;
 	FOCRoadGraph Graph;
-	if (!World || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath) || !Graph.LoadFromLayoutJson(Text, Error))
+	TSharedPtr<FJsonObject> Root;
+	FHeightField Ground;
+	if (!World || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath) || !Graph.LoadFromLayoutJson(Text, Error)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Ground.Load(HeightmapPng, Root))
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildRoadMeshes: cannot load %s %s"), *LayoutJsonPath, *Error);
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRoadMeshes: cannot load %s / %s %s"), *LayoutJsonPath, *HeightmapPng, *Error);
 		return 0;
 	}
 	const TArray<FOCRoadNode>& Nodes = Graph.GetNodes();
@@ -276,6 +365,68 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	{
 		return FIntPoint(FMath::FloorToInt32(P.X / ChunkSizeCm), FMath::FloorToInt32(P.Y / ChunkSizeCm));
 	};
+	auto Drape = [&Ground](const FVector& P, float Lift)
+	{
+		return FVector(P.X, P.Y, Ground.HeightCm(P.X, P.Y) + Lift);
+	};
+
+	/**
+	 * A strip from P0 to P1 between lateral offsets In and Out (cm, along Side), split every
+	 * StepCm and draped on the ground. Road strips get UV0 = (lateral m, along m) for markings;
+	 * sidewalks get world-planar metres.
+	 */
+	auto AddStrip = [&](FChunk& C, const FVector& P0, const FVector& P1, const FVector& Side, float In, float Out,
+		float Lift, int32 Group, double AlongStartM, const FVector2f& UV1)
+	{
+		const double Len = FVector::Dist2D(P0, P1);
+		const int32 Steps = FMath::Max(1, FMath::CeilToInt32(Len / StepCm));
+		const int32 Cols = FMath::Max(1, FMath::CeilToInt32(FMath::Abs(Out - In) / ColumnCm));
+		for (int32 i = 0; i < Steps; ++i)
+		{
+			const double T0 = double(i) / Steps, T1 = double(i + 1) / Steps;
+			const FVector A = FMath::Lerp(P0, P1, T0), B = FMath::Lerp(P0, P1, T1);
+			const float AlongA = static_cast<float>(AlongStartM + T0 * Len / 100.0);
+			const float AlongB = static_cast<float>(AlongStartM + T1 * Len / 100.0);
+			for (int32 c = 0; c < Cols; ++c)
+			{
+				const float L0 = FMath::Lerp(In, Out, float(c) / Cols), L1 = FMath::Lerp(In, Out, float(c + 1) / Cols);
+				FRoadPoly Poly;
+				Poly.Group = Group;
+				Poly.UV1 = UV1;
+				for (const FVector& Corner : { A + Side * L0, A + Side * L1, B + Side * L1, B + Side * L0 })
+				{
+					const FVector V = Drape(Corner, Lift);
+					Poly.P.Add(V);
+					Poly.N.Add(Ground.NormalAt(V.X, V.Y));
+					Poly.UV0.Add(FVector2f(static_cast<float>(V.X / 100.0), static_cast<float>(V.Y / 100.0)));
+				}
+				if (Group == 0)
+				{
+					Poly.UV0 = { FVector2f(L0 / 100.f, AlongA), FVector2f(L1 / 100.f, AlongA), FVector2f(L1 / 100.f, AlongB), FVector2f(L0 / 100.f, AlongB) };
+				}
+				C.Add(MoveTemp(Poly), FVector::UpVector);
+			}
+		}
+	};
+
+	/** Vertical face along a strip edge from Bottom to Top lift, facing Facing (curbs, skirts). */
+	auto AddWall = [&](FChunk& C, const FVector& P0, const FVector& P1, const FVector& Edge, const FVector& Facing,
+		float Bottom, float Top, int32 Group)
+	{
+		const double Len = FVector::Dist2D(P0, P1);
+		const int32 Steps = FMath::Max(1, FMath::CeilToInt32(Len / StepCm));
+		for (int32 i = 0; i < Steps; ++i)
+		{
+			const FVector A = FMath::Lerp(P0, P1, double(i) / Steps) + Edge, B = FMath::Lerp(P0, P1, double(i + 1) / Steps) + Edge;
+			FRoadPoly Poly;
+			Poly.Group = Group;
+			Poly.P = { Drape(A, Bottom), Drape(A, Top), Drape(B, Top), Drape(B, Bottom) };
+			Poly.N.Init(FVector3f(Facing), 4);
+			const float UA = static_cast<float>(i * Len / Steps / 100.0), UB = static_cast<float>((i + 1) * Len / Steps / 100.0);
+			Poly.UV0 = { FVector2f(UA, 0.3f), FVector2f(UA, 0.4f), FVector2f(UB, 0.4f), FVector2f(UB, 0.3f) };
+			C.Add(MoveTemp(Poly), Facing);
+		}
+	};
 
 	for (const FOCRoadSegment& S : Segments)
 	{
@@ -292,47 +443,133 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 		}
 		const FVector Side(-Dir.Y, Dir.X, 0.f);
 		const float Half = S.WidthCm * 0.5f;
-		const FVector Lift(0.f, 0.f, KindLift(S.Kind));
+		const float Lift = BaseLift + KindLift(S.Kind);
 		FChunk& C = Chunks.FindOrAdd(ChunkOf((A + B) * 0.5));
-		// Run each strip half its width past junctions, so neighbouring strips always overlap
-		// (no wedge gaps where streets meet at an angle).
-		const FVector EA = Degree[S.A] > 1 ? A - Dir * Half : A;
-		const FVector EB = Degree[S.B] > 1 ? B + Dir * Half : B;
-		C.Add({ EA - Side * Half + Lift, EA + Side * Half + Lift, EB + Side * Half + Lift, EB - Side * Half + Lift }, 0);
+		// Junctions (3+ roads): the strip stops at the junction polygon, which is built below.
+		// Bends (2 roads): run the strip half its width past the node so the two overlap and the
+		// markings continue; an underlay fills the outer corner.
+		auto EndOffset = [&](int32 N) { return Degree[N] >= 3 ? -RoadHalf[N] : Degree[N] == 2 ? Half : 0.f; };
+		const float ExtA = EndOffset(S.A), ExtB = EndOffset(S.B);
+		AddStrip(C, A - Dir * ExtA, B + Dir * ExtB, Side, -Half, Half, Lift, 0, -ExtA / 100.0,
+			FVector2f(Half / 100.f, MarkedLanes(S)));
 
-		if (SidewalkKinds.Contains(S.Kind))
+		if (!SidewalkKinds.Contains(S.Kind))
+		{
+			for (const float Sign : { -1.f, 1.f }) // skirts hide the gap under a road's edge on uneven ground
+			{
+				AddWall(C, A - Dir * ExtA, B + Dir * ExtB, Side * (Sign * Half), Side * Sign, Lift - SkirtDepth, Lift, 0);
+			}
+		}
+		else
 		{
 			const float Len = FVector::Dist2D(A, B);
 			const float TrimA = Degree[S.A] > 1 ? OuterHalf[S.A] : 0.f;
 			const float TrimB = Degree[S.B] > 1 ? OuterHalf[S.B] : 0.f;
 			if (Len > TrimA + TrimB + 100.f)
 			{
-				const FVector SA = A + (B - A) * (TrimA / Len);
-				const FVector SB = B + (A - B) * (TrimB / Len);
-				const FVector Kerb(0.f, 0.f, 12.f);
+				const FVector SA = A + Dir * TrimA;
+				const FVector SB = B - Dir * TrimB;
 				for (const float Sign : { -1.f, 1.f })
 				{
-					const FVector In = Side * (Sign * Half), Out = Side * (Sign * (Half + SidewalkWidthCm));
-					C.Add({ SA + In + Kerb, SA + Out + Kerb, SB + Out + Kerb, SB + In + Kerb }, 1);
+					AddStrip(C, SA, SB, Side, Sign * Half, Sign * (Half + SidewalkWidthCm), SidewalkLift, 1, 0.0, FVector2f::ZeroVector);
+					AddWall(C, SA, SB, Side * (Sign * Half), Side * -Sign, Lift, SidewalkLift, 1);
+					AddWall(C, SA, SB, Side * (Sign * (Half + SidewalkWidthCm)), Side * Sign, SidewalkLift - SkirtDepth, SidewalkLift, 1);
 				}
 			}
 		}
 	}
 
-	// Junction discs (12-sided) over the overlapping road ends.
+	// Junction polygons: the convex hull of every incident road's corners at the junction edge
+	// (RoadHalf from the node), draped and fanned from the centre. At 3+ roads it sits above the
+	// strips (no markings inside the junction); at bends it is an underlay filling the outer corner.
+	TArray<TArray<TPair<FVector, float>>> Incident; // per node: (direction away from node, half width)
+	Incident.SetNum(Nodes.Num());
+	for (const FOCRoadSegment& S : Segments)
+	{
+		const FVector D = (Nodes[S.B].Location - Nodes[S.A].Location).GetSafeNormal2D();
+		if (S.Bridge.IsNone() && !D.IsNearlyZero())
+		{
+			Incident[S.A].Add({ D, S.WidthCm * 0.5f });
+			Incident[S.B].Add({ -D, S.WidthCm * 0.5f });
+		}
+	}
 	for (int32 N = 0; N < Nodes.Num(); ++N)
 	{
-		if (Degree[N] < 2 || RoadHalf[N] <= 0.f)
+		if (Incident[N].Num() < 2)
 		{
 			continue;
 		}
-		TArray<FVector> Ring;
-		for (int32 i = 0; i < 12; ++i)
+		const FVector Centre = Nodes[N].Location;
+		TArray<FVector2D> Pts;
+		for (const TPair<FVector, float>& R : Incident[N])
 		{
-			const float Ang = 2.f * PI * i / 12.f;
-			Ring.Add(Nodes[N].Location + FVector(FMath::Cos(Ang), FMath::Sin(Ang), 0.f) * RoadHalf[N] + FVector(0.f, 0.f, 7.f));
+			const FVector Side(-R.Key.Y, R.Key.X, 0.f);
+			for (const float Sign : { -1.f, 1.f })
+			{
+				const FVector P = Centre + R.Key * RoadHalf[N] + Side * (Sign * R.Value);
+				Pts.Add(FVector2D(P.X, P.Y));
+			}
 		}
-		Chunks.FindOrAdd(ChunkOf(Nodes[N].Location)).Add(MoveTemp(Ring), 0);
+		// Andrew's monotone chain.
+		Pts.Sort([](const FVector2D& L, const FVector2D& R) { return L.X < R.X || (L.X == R.X && L.Y < R.Y); });
+		auto Cross = [](const FVector2D& O, const FVector2D& A, const FVector2D& B) { return (A.X - O.X) * (B.Y - O.Y) - (A.Y - O.Y) * (B.X - O.X); };
+		TArray<FVector2D> Hull;
+		for (int32 Pass = 0; Pass < 2; ++Pass)
+		{
+			const int32 Start = Hull.Num();
+			for (int32 k = 0; k < Pts.Num(); ++k)
+			{
+				const FVector2D& P = Pass == 0 ? Pts[k] : Pts[Pts.Num() - 1 - k];
+				while (Hull.Num() >= Start + 2 && Cross(Hull[Hull.Num() - 2], Hull.Last(), P) <= 0.0)
+				{
+					Hull.Pop();
+				}
+				Hull.Add(P);
+			}
+			Hull.Pop();
+		}
+		if (Hull.Num() < 3)
+		{
+			continue;
+		}
+		const float JunctionLift = BaseLift + (Incident[N].Num() >= 3 ? 7.f : 2.5f); // bends: an underlay below every road kind
+		const FVector2f JunctionUV1(RoadHalf[N] / 100.f, 0.f); // surface as the widest road, no markings
+		FChunk& C = Chunks.FindOrAdd(ChunkOf(Centre));
+		// Fan from the centre, each triangle split into a grid of small ones so it follows the ground.
+		for (int32 i = 0; i < Hull.Num(); ++i)
+		{
+			const FVector P0 = Centre, P1(Hull[i].X, Hull[i].Y, 0.0), P2(Hull[(i + 1) % Hull.Num()].X, Hull[(i + 1) % Hull.Num()].Y, 0.0);
+			const double Edge = FMath::Max3(FVector::Dist2D(P0, P1), FVector::Dist2D(P1, P2), FVector::Dist2D(P2, P0));
+			const int32 Div = FMath::Max(1, FMath::CeilToInt32(Edge / ColumnCm));
+			auto At = [&](int32 a, int32 b) // barycentric grid point: a steps towards P1, b towards P2
+			{
+				return P0 + (P1 - P0) * (double(a) / Div) + (P2 - P0) * (double(b) / Div);
+			};
+			auto Tri = [&](const FVector& X, const FVector& Y, const FVector& Z)
+			{
+				FRoadPoly T;
+				T.UV1 = JunctionUV1;
+				for (const FVector& Q : { X, Y, Z })
+				{
+					const FVector V = Drape(Q, JunctionLift);
+					T.P.Add(V);
+					T.N.Add(Ground.NormalAt(V.X, V.Y));
+					T.UV0.Add(FVector2f(static_cast<float>(V.X / 100.0), static_cast<float>(V.Y / 100.0)));
+				}
+				C.Add(MoveTemp(T), FVector::UpVector);
+			};
+			for (int32 a = 0; a < Div; ++a)
+			{
+				for (int32 b = 0; a + b < Div; ++b)
+				{
+					Tri(At(a, b), At(a + 1, b), At(a, b + 1));
+					if (a + b + 2 <= Div)
+					{
+						Tri(At(a + 1, b), At(a + 1, b + 1), At(a, b + 1));
+					}
+				}
+			}
+		}
 	}
 
 	int32 Built = 0;

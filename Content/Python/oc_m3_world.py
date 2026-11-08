@@ -43,7 +43,7 @@ def setup_streaming(world):
 def build_roads(world, layout):
     roads = layout["roads"]
     n = unreal.OCWorldBuilderLibrary.build_road_meshes(
-        world, os.path.join(WORLD_DIR, "marevia_layout.json"), "/Game/World/Roads",
+        world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"), "/Game/World/Roads",
         unreal.load_asset("/Game/Dev/Materials/M_Dev_Road"), unreal.load_asset("/Game/Dev/Materials/M_Dev_Sidewalk"),
         [unreal.Name(k) for k in roads["sidewalk_kinds"]], roads["sidewalk_width"] * 100.0, 25200.0)
     if n == 0:
