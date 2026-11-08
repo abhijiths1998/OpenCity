@@ -27,10 +27,6 @@ CUBE_PATH = "/Engine/BasicShapes/Cube"
 
 GRID_CM = 100.0        # WORLD_METRICS.md modular grid
 STOREY_CM = 320.0      # WORLD_METRICS.md floor-to-floor
-LANE_CM = 350.0        # WORLD_METRICS.md road lane
-SIDEWALK_MIN_CM = 250.0
-SIDEWALK_MAX_CM = 400.0
-CURB_CM = 15.0
 
 failures = []
 
@@ -48,37 +44,43 @@ def main():
     L.log(TAG, f"{len(descs)} actor descriptors in {MAP_PATH}")
 
     # --- Buildings -------------------------------------------------------
-    building_descs = [d for d in descs if str(d.label).startswith("BLOCKOUT_Buildings_")]
+    # Old maps were saved before the BLOCKOUT_* label change: accept both
+    # prefixes, flag any that don't match the new rule.
+    building_descs = [d for d in descs
+                      if str(d.label).startswith("Buildings_")
+                      or str(d.label).startswith("BLOCKOUT_Buildings_")]
     check("building chunks exist", len(building_descs) > 0, str(len(building_descs)))
 
+    new_label_ok = 0
+    old_label = 0
     for d in building_descs:
         label = str(d.label)
-        if not label.startswith("BLOCKOUT_"):
-            check(f"blockout label {label}", False, "not BLOCKOUT_*")
+        if label.startswith("BLOCKOUT_"):
+            new_label_ok += 1
+        else:
+            old_label += 1
+            check(f"blockout label {label}", False, "not BLOCKOUT_* (pre-update map)")
+    L.log(TAG, f"building chunks: {new_label_ok} BLOCKOUT_*, {old_label} old-style")
 
-    # Instanced mesh check: load one blockout actor to inspect its ISM.
+    # Instanced mesh + per-instance transform checks: the blockout actors are
+    # AOCBlockoutActor (C++, exposed to the editor). Python's `unreal` module may
+    # not expose the class by name, so find actors by class path string instead.
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
-    blockout_actors = [a for a in actors if isinstance(a, unreal.AOCBlockoutActor)]
+    blockout_actors = [a for a in actors
+                       if "AOCBlockoutActor" in str(a.get_class().get_path_name())]
     check("blockout actors in world", len(blockout_actors) > 0, str(len(blockout_actors)))
 
     cube = unreal.load_asset(CUBE_PATH)
-    for a in blockout_actors:
-        ism = a.get_instances() if hasattr(a, "get_instances") else None
-        if ism is not None:
-            mesh = ism.get_static_mesh()
-            if mesh is not None and mesh.get_path_name() != CUBE_PATH:
-                check(f"{a.get_actor_label()} mesh", False,
-                      f"not engine cube: {mesh.get_path_name()}")
-
-    # Per-instance transform checks via the blockout actor's ISM.
-    # AOCBlockoutActor exposes GetInstances() in C++; from Python we inspect the
-    # ISM component directly.
     total_instances = 0
     off_grid = 0
     off_storey = 0
     for a in blockout_actors:
         comps = a.get_components_by_class(unreal.InstancedStaticMeshComponent)
         for comp in comps:
+            mesh = comp.get_static_mesh()
+            if mesh is not None and mesh.get_path_name() != CUBE_PATH:
+                check(f"{a.get_actor_label()} mesh", False,
+                      f"not engine cube: {mesh.get_path_name()}")
             count = comp.get_instance_count()
             total_instances += count
             for i in range(count):
@@ -99,11 +101,11 @@ def main():
     check("instances on 100 cm grid", off_grid == 0, f"{off_grid} off-grid")
     check("heights on 320 cm storeys", off_storey == 0, f"{off_storey} off-storey")
 
-    # --- Roads (from descriptor labels, since road mesh data is baked) ---
+    # --- Roads ---
     road_descs = [d for d in descs if str(d.label).startswith("Roads_")]
     check("road chunks exist", len(road_descs) > 0, str(len(road_descs)))
 
-    # --- Scale reference --------------------------------------------------
+    # --- Scale reference ---
     mannequin = [d for d in descs if "Mannequin" in str(d.label) or "SK_Manny" in str(d.label)]
     car = [d for d in descs if "Car" in str(d.label) or "Vehicle" in str(d.label)]
     check("scale-reference mannequin present", len(mannequin) > 0, str(mannequin))
