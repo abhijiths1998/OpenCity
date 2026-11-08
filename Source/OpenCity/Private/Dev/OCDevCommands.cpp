@@ -202,6 +202,34 @@ namespace OCDev
 		}
 	}
 
+	/** Spawn a vehicle 6 m in front of the player, on the ground: coupe | offroad | bike. */
+	void Spawn(const TArray<FString>& Args, UWorld* World)
+	{
+		APawn* P = PlayerPawn(World);
+		const FString Name = Args.IsValidIndex(0) ? Args[0].ToLower() : FString(TEXT("coupe"));
+		const FString Bp = Name == TEXT("bike") ? TEXT("Bike") : Name == TEXT("offroad") ? TEXT("Offroad") : TEXT("Coupe");
+		UClass* Class = LoadClass<AOCVehicle>(nullptr,
+			*FString::Printf(TEXT("/Game/Vehicles/Blueprints/BP_OCVehicle_%s.BP_OCVehicle_%s_C"), *Bp, *Bp));
+		if (!P || !Class)
+		{
+			UE_LOG(LogOpenCity, Warning, TEXT("OCDEV spawn %s: %s"), *Name, P ? TEXT("class not found") : TEXT("no player pawn"));
+			return;
+		}
+		const FRotator Yaw(0.f, P->GetActorRotation().Yaw, 0.f);
+		FVector Loc = P->GetActorLocation() + Yaw.Vector() * 600.0;
+		FHitResult Hit;
+		FCollisionQueryParams Q(TEXT("OCDevSpawn"), false, P);
+		if (World->LineTraceSingleByChannel(Hit, Loc + FVector(0, 0, 500), Loc - FVector(0, 0, 2000), ECC_Visibility, Q))
+		{
+			Loc = Hit.ImpactPoint + FVector(0, 0, 60);
+		}
+		FActorSpawnParameters SP;
+		SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		const AActor* V = World->SpawnActor<AActor>(Class, Loc, Yaw + FRotator(0.f, 90.f, 0.f), SP);
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV spawn %s: %s"), *Name, V ? *V->GetActorLocation().ToCompactString() : TEXT("failed"));
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdSpawn(TEXT("oc.dev.spawn"), TEXT("Spawn a vehicle in front of the player: coupe | offroad | bike."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Spawn));
 	FAutoConsoleCommandWithWorldAndArgs CmdStatus(TEXT("oc.dev.status"), TEXT("Log player pawn state."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Status));
 	FAutoConsoleCommandWithWorldAndArgs CmdGoto(TEXT("oc.dev.goto"), TEXT("Teleport the player pawn: X Y Z."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Goto));
 	FAutoConsoleCommandWithWorldAndArgs CmdInteract(TEXT("oc.dev.interact"), TEXT("Press interact."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Interact));

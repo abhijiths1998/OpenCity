@@ -35,3 +35,15 @@ oc_require_engine() {
 }
 
 oc_timestamp() { date +%Y%m%d-%H%M%S; }
+
+# Resolve a map name (L_Marevia) or /Game path to "<name> <path>" by finding its .umap under Content/Maps.
+oc_resolve_map() {
+  local map="$1" umap rel
+  if [[ "$map" == /Game/* ]]; then
+    echo "${map##*/} $map"; return
+  fi
+  umap=$(find "$PROJECT_ROOT/Content/Maps" -name "$map.umap" | head -1)
+  [[ -n "$umap" ]] || { echo "error: map $map not found under Content/Maps" >&2; return 1; }
+  rel="${umap#"$PROJECT_ROOT/Content/"}"
+  echo "$map /Game/${rel%.umap}"
+}

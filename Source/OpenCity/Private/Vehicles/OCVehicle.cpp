@@ -132,8 +132,11 @@ void AOCVehicle::ApplyVehicleData(bool bRebuildPhysics)
 	BuildVisualParts();
 
 	// The vehicle physics was created (if at all) before the data was copied: rebuild it.
+	// A vehicle spawned at runtime registers its components (creating physics) before any data
+	// is copied; Chaos then sees an empty torque curve and switches the engine off for good.
 	if (bRebuildPhysics && GetWorld() && GetWorld()->IsGameWorld())
 	{
+		V->bMechanicalSimEnabled = true;
 		V->RecreatePhysicsState();
 	}
 }

@@ -17,7 +17,8 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 | Task | Command |
 |---|---|
 | Build editor target | `scripts/build.sh` |
-| Launch editor | `scripts/run_editor.sh` |
+| Launch editor | `scripts/run_editor.sh` (starts at Medium quality: Epic ran out of VRAM on Play in L_Marevia) |
+| Play a map as the game (no editor UI) | `scripts/play.sh [Map]` (default L_Marevia) |
 | Run headless tests | `scripts/test.sh [filter]` |
 | Run editor Python | `scripts/run_python.sh <script> [args]` |
 | Package Linux Shipping | `scripts/package.sh` |
@@ -45,7 +46,7 @@ Notes:
 - DDC is the engine's local Zen server at `~/.config/Epic/UnrealEngine/Common/Zen/Data`, outside the repo and shared by all projects. The first cook compiles every shader (about 11 min); later ones reuse it.
 - `build.sh` fails on any compiler warning in project code. Tests write reports to `Saved/Automation/`.
 - Later-milestone plugins (Water, Mass, ZoneGraph, CommonUI) are absent from `OpenCity.uproject` on purpose. Add them in their milestone.
-- Scripted runtime checks: non-Shipping builds have `oc.dev.*` console commands (`status`, `goto X Y Z`, `interact`, `exitvehicle`, `drive T S B`, `impact KMH`, `radio`, `resetvehicle`, `flip`, `tilt DEG`). `-ocdevscript="2:oc.dev.status;3:oc.dev.interact;9:quit"` runs them on a timeline and the results land in the log. Use these to verify gameplay changes headfully without input.
+- Scripted runtime checks: non-Shipping builds have `oc.dev.*` console commands (`status`, `goto X Y Z`, `interact`, `exitvehicle`, `drive T S B`, `impact KMH`, `radio`, `resetvehicle`, `flip`, `tilt DEG`, `spawn coupe|offroad|bike`). `-ocdevscript="2:oc.dev.status;3:oc.dev.interact;9:quit"` runs them on a timeline and the results land in the log. Use these to verify gameplay changes headfully without input.
 - World checks: `oc.dev.viewfrom X Y Z Pitch Yaw [FOV]` places a camera (cm); `oc.dev.ground X Y` logs terrain height at layout metres. World Partition streams around the *camera*, so for overview shots first run `wp.Runtime.OverrideRuntimeLoadingRange -grid=MainPartition -range=600000` (not via `-dpcvars`: that crashes at startup).
 - Landscapes must be built with a GPU renderer (`OC_PY_RENDER=1` adds `-AllowCommandletRendering`). Without it collision gets the heights but the terrain renders flat.
 - Don't combine `rm` with `bash -c` scripts: Claude Code's safety check blocks it. To pick out new screenshots, `touch` a marker file and use `find -newer`.
