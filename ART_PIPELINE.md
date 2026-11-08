@@ -9,13 +9,13 @@ The pipeline runs in ten steps. **Step 1 (audit → AUDIT.md), Step 2 (art bible
 | 1 — Audit | `AUDIT.md` + `oc_audit.py` | Done (baseline = 100% grey-box) |
 | 2 — Art bible | `ART_BIBLE.md` | Done |
 | 3 — World metrics | `WORLD_METRICS.md` | Done |
-| 4 — Blockout | grey-box district via road splines + PCG | In progress (WORLD_METRICS alignment done; editor validation pending) |
-| 5 — Modular kits + trim sheets | per-district `SM_*` kit, trim sheets | Pending approval |
-| 6 — Blender kitbash pipeline | headless Blender scripts + UE import script | Pending approval |
-| 7 — Roads, ground, landscape | splines, ground layers, auto-material | Pending approval |
-| 8 — Set dressing | three layers per street | Pending approval |
-| 9 — Lighting + atmosphere | sky, sun, fog, exposure, LUT, night | Pending approval |
-| 10 — Visual QA loop | camera bookmarks + screenshot script | Pending approval |
+| 4 — Blockout | grey-box district via road splines + PCG | Documented (STEP4_BLOCKOUT.md); validator `oc_verify_blockout.py`; map regeneration pending (needs GPU) |
+| 5 — Modular kits + trim sheets | per-district `SM_*` kit, trim sheets | Documented (STEP5_KITS.md); pending textures + master materials |
+| 6 — Blender kitbash pipeline | headless Blender scripts + UE import script | Documented (STEP6_BLENDER.md); blocked: Blender broken (openjph 0.33) |
+| 7 — Roads, ground, landscape | splines, ground layers, auto-material | Documented (STEP7_ROADS_GROUND.md); pending textures + master materials |
+| 8 — Set dressing | three layers per street | Documented (STEP8_SET_DRESSING.md); pending hero models |
+| 9 — Lighting + atmosphere | sky, sun, fog, exposure, LUT, night | Documented (STEP9_LIGHTING.md); pending editor access |
+| 10 — Visual QA loop | camera bookmarks + screenshot script | Documented (STEP10_QA.md); pending `DA_CameraBookmarks` + script |
 
 See `ASSET_SOURCES.md` for the asset download ledger (hard rule 3).
 
