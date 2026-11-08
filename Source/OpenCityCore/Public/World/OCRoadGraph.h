@@ -60,6 +60,12 @@ public:
 	/** Number of nodes reachable from Start with ClosedGates closed. */
 	int32 CountReachable(int32 Start, const TSet<FName>& ClosedGates = TSet<FName>()) const;
 
+	/** Per node: reachable from Start with ClosedGates closed (all false if Start is invalid). */
+	TBitArray<> ReachableFrom(int32 Start, const TSet<FName>& ClosedGates = TSet<FName>()) const;
+
+	/** Closest node among those with Allowed[i] set (INDEX_NONE if none). */
+	int32 FindNearestNode(const FVector& Location, const TBitArray<>& Allowed) const;
+
 private:
 	void RebuildAdjacency();
 	double SegmentTime(const FOCRoadSegment& S) const;

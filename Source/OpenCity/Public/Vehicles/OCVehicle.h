@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "WheeledVehiclePawn.h"
 #include "Interaction/OCInteractable.h"
+#include "Vehicles/OCDrivable.h"
 #include "OCVehicle.generated.h"
 
 class UCameraComponent;
@@ -23,7 +24,7 @@ struct FInputActionValue;
  * No Tick: input, hits and a short exit timer drive everything.
  */
 UCLASS()
-class OPENCITY_API AOCVehicle : public AWheeledVehiclePawn, public IOCInteractable
+class OPENCITY_API AOCVehicle : public AWheeledVehiclePawn, public IOCInteractable, public IOCDrivable
 {
 	GENERATED_BODY()
 
@@ -34,6 +35,11 @@ public:
 	virtual bool CanInteract(const APawn* Instigator) const override;
 	virtual bool Interact(APawn* Instigator) override;
 	virtual FText GetInteractionText() const override;
+
+	// IOCDrivable
+	virtual APawn* GetDriverPawn() const override { return Driver.Get(); }
+	virtual APawn* EjectDriverTo(const FVector& Location) override;
+	virtual void Wreck() override;
 
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Vehicle")
 	bool HasDriver() const { return Driver.IsValid(); }

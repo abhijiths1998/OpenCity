@@ -23,6 +23,11 @@
 #include "OCLog.h"
 #include "WorldPartition/RuntimeHashSet/RuntimePartition.h"
 #include "WorldPartition/WorldPartition.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "DataLayer/DataLayerEditorSubsystem.h"
+#include "WorldPartition/DataLayer/DataLayerAsset.h"
+#include "WorldPartition/DataLayer/DataLayerInstance.h"
+#include "World/OCBlockoutActor.h"
 
 ALandscape* UOCWorldBuilderLibrary::CreateLandscapeFromHeightmap(UWorld* World, const FString& HeightmapPng,
 	FVector Location, FVector Scale, int32 SectionsPerComponent, int32 QuadsPerSection, int32 GridSizeInComponents,
@@ -589,4 +594,106 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	}
 	UE_LOG(LogOpenCity, Display, TEXT("BuildRoadMeshes: %d segments, %d junctions -> %d chunks"), Segments.Num(), Nodes.Num(), Built);
 	return Built;
+}
+
+int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& LayoutJsonPath, UStaticMesh* Mesh, UMaterialInterface* Material, float ChunkSizeCm)
+{
+	FString Text;
+	TSharedPtr<FJsonObject> Root;
+	const TArray<TSharedPtr<FJsonValue>>* Buildings = nullptr;
+	if (!World || !Mesh || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root->TryGetArrayField(TEXT("buildings"), Buildings))
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildBuildings: no buildings in %s (run Tools/make_marevia_layout.py)"), *LayoutJsonPath);
+		return 0;
+	}
+
+	// Group per chunk first, so each chunk actor sits at its buildings' centre.
+	TMap<FIntPoint, TArray<TPair<FTransform, FVector2f>>> Chunks;
+	FRandomStream Random(20261108);
+	for (const TSharedPtr<FJsonValue>& V : *Buildings)
+	{
+		const TSharedPtr<FJsonObject>& B = V->AsObject();
+		const TArray<TSharedPtr<FJsonValue>>& Pos = B->GetArrayField(TEXT("pos"));
+		const TArray<TSharedPtr<FJsonValue>>& Size = B->GetArrayField(TEXT("size"));
+		const double Base = B->GetNumberField(TEXT("base")), Top = B->GetNumberField(TEXT("top"));
+		// Layout metres (x east, y north, yaw counter-clockwise) to Unreal cm (Y south, yaw clockwise).
+		const FVector Centre(Pos[0]->AsNumber() * 100.0, -Pos[1]->AsNumber() * 100.0, (Base + Top) * 50.0);
+		const FTransform T(FRotator(0.0, -B->GetNumberField(TEXT("yaw")), 0.0), Centre,
+			FVector(Size[0]->AsNumber(), Size[1]->AsNumber(), FMath::Max(Top - Base, 1.0)));
+		const FIntPoint Key(FMath::FloorToInt32(Centre.X / ChunkSizeCm), FMath::FloorToInt32(Centre.Y / ChunkSizeCm));
+		Chunks.FindOrAdd(Key).Add({ T, FVector2f(static_cast<float>(B->GetNumberField(TEXT("style"))), Random.FRand()) });
+	}
+
+	int32 Count = 0;
+	for (const TPair<FIntPoint, TArray<TPair<FTransform, FVector2f>>>& Pair : Chunks)
+	{
+		FBox Bounds(ForceInit);
+		for (const TPair<FTransform, FVector2f>& I : Pair.Value)
+		{
+			Bounds += I.Key.GetLocation();
+		}
+		const FVector Origin(Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.Min.Z);
+		AOCBlockoutActor* Actor = World->SpawnActor<AOCBlockoutActor>(Origin, FRotator::ZeroRotator);
+		UInstancedStaticMeshComponent* ISM = Actor->GetInstances();
+		ISM->SetStaticMesh(Mesh);
+		ISM->SetMaterial(0, Material);
+		for (const TPair<FTransform, FVector2f>& I : Pair.Value)
+		{
+			const int32 Index = ISM->AddInstance(I.Key, /*bWorldSpace*/ true);
+			ISM->SetCustomDataValue(Index, 0, I.Value.X);
+			ISM->SetCustomDataValue(Index, 1, I.Value.Y);
+			++Count;
+		}
+		Actor->SetActorLabel(FString::Printf(TEXT("Buildings_%d_%d"), Pair.Key.X, Pair.Key.Y));
+		Actor->SetFolderPath(TEXT("Buildings"));
+	}
+	UE_LOG(LogOpenCity, Display, TEXT("BuildBuildings: %d buildings in %d chunks"), Count, Chunks.Num());
+	return Count;
+}
+
+UDataLayerAsset* UOCWorldBuilderLibrary::CreateRuntimeDataLayer(UWorld* World, const FString& PackagePath, const FString& Name, bool bInitiallyActivated)
+{
+	UDataLayerEditorSubsystem* Layers = UDataLayerEditorSubsystem::Get();
+	if (!World || !Layers)
+	{
+		return nullptr;
+	}
+	const FString ObjectPath = PackagePath / Name + TEXT(".") + Name;
+	UDataLayerAsset* Asset = LoadObject<UDataLayerAsset>(nullptr, *ObjectPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!Asset)
+	{
+		UPackage* Package = CreatePackage(*(PackagePath / Name));
+		Asset = NewObject<UDataLayerAsset>(Package, *Name, RF_Public | RF_Standalone);
+		FAssetRegistryModule::AssetCreated(Asset);
+	}
+	Asset->SetType(EDataLayerType::Runtime);
+	Asset->MarkPackageDirty();
+
+	UDataLayerInstance* Instance = Layers->GetDataLayerInstance(Asset);
+	if (!Instance)
+	{
+		FDataLayerCreationParameters Params;
+		Params.DataLayerAsset = Asset;
+		Instance = Layers->CreateDataLayerInstance(Params);
+	}
+	if (!Instance)
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("CreateRuntimeDataLayer: no instance for %s"), *Name);
+		return nullptr;
+	}
+	Instance->SetInitialRuntimeState(bInitiallyActivated ? EDataLayerRuntimeState::Activated : EDataLayerRuntimeState::Unloaded);
+	return Asset;
+}
+
+bool UOCWorldBuilderLibrary::AddActorToDataLayer(AActor* Actor, UDataLayerAsset* DataLayer)
+{
+	UDataLayerEditorSubsystem* Layers = UDataLayerEditorSubsystem::Get();
+	UDataLayerInstance* Instance = Layers && DataLayer ? Layers->GetDataLayerInstance(DataLayer) : nullptr;
+	return Actor && Instance && Layers->AddActorToDataLayer(Actor, Instance);
+}
+
+FGameplayTag UOCWorldBuilderLibrary::MakeTag(FName TagName)
+{
+	return FGameplayTag::RequestGameplayTag(TagName, /*ErrorIfNotFound*/ true);
 }

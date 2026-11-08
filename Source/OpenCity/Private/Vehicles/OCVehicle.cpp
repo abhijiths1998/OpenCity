@@ -277,6 +277,21 @@ FText AOCVehicle::GetInteractionText() const
 	return LOCTEXT("Enter", "Enter vehicle");
 }
 
+APawn* AOCVehicle::EjectDriverTo(const FVector& Location)
+{
+	APawn* D = Driver.Get();
+	if (D)
+	{
+		ExitAt(Location);
+	}
+	return D;
+}
+
+void AOCVehicle::Wreck()
+{
+	Damage->ApplyImpact(1.0e5f); // damage is capped at the remaining health
+}
+
 bool AOCVehicle::Interact(APawn* Instigator)
 {
 	if (!CanInteract(Instigator))

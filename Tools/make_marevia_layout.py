@@ -20,6 +20,7 @@ import json
 import math
 import random
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -281,6 +282,15 @@ class RoadGraph:
         return ids
 
 
+def grade_chain(g, ids, z0, z1):
+    """Set the heights along a chain of nodes to a steady grade from z0 to z1 (by distance)."""
+    d = [0.0]
+    for a, b in zip(ids, ids[1:]):
+        d.append(d[-1] + math.hypot(g.nodes[b][0] - g.nodes[a][0], g.nodes[b][1] - g.nodes[a][1]))
+    for i, dist in zip(ids, d):
+        g.nodes[i][2] = round(z0 + (z1 - z0) * dist / max(d[-1], 1e-6), 2)
+
+
 ROAD_KINDS = {  # lanes per direction, width m, speed km/h
     "avenue": (2, 14.0, 60),
     "street": (1, 9.0, 50),
@@ -358,13 +368,20 @@ def build_roads(terrain, rng):
     # Hills roads and gates (checkpoints where roads leave the open districts).
     g.path([(520, 1660), (540, 1760), (480, 1900), (450, 1960)], "street", gate="Gate.Colline")  # to Villa Salvi
     g.path([(1400, 1660), (1380, 1800), (1300, 1900), (1180, 1905)], "street", gate="Gate.Colline")
-    # Monte Ferrale pass road: hairpins up to the dam, spur to the quarry and the hermitage.
-    pass_pts = [(1300, 1905), (1420, 2050), (1300, 2150), (1450, 2250), (1300, 2350), (1200, 2440),
-                (1020, 2455), (860, 2460)]  # across the top of the dam at y ~ 2455
-    g.path(pass_pts, "pass", gate="Gate.Ferrale")
-    g.path([(1450, 2250), (1600, 2320), (1700, 2380)], "pass")        # quarry spur
-    g.path([(860, 2460), (700, 2520), (560, 2600), (500, 2640)], "pass")  # hermitage
-    g.path([(1700, 2380), (1800, 2560), (1820, 2680)], "pass")        # radio mast
+    # Monte Ferrale pass road: long hairpins up the hillside to the dam, then along the dam crest.
+    # Heights follow a steady grade (grade_chain), not the steep mountain terrain; the corridor
+    # grading cuts and fills the ground to match, which also raises the dam's embankment.
+    crest = make_heightmap.reservoir_level + 2.0
+    pass_ids = g.path([(1300, 1905), (1750, 1990), (1300, 2110), (1800, 2230), (1430, 2340), (1395, DAM_Y),
+                       (1130, DAM_Y), (870, DAM_Y)], "pass", gate="Gate.Ferrale")
+    grade_chain(g, pass_ids[:6], g.nodes[pass_ids[0]][2], crest)
+    for i in pass_ids[5:]:
+        g.nodes[i][2] = round(crest, 2)                               # along the dam crest
+    quarry = g.path([(1800, 2230), (1700, 2380)], "pass")              # quarry spur
+    mast = g.path([(1700, 2380), (1960, 2440), (1600, 2520), (1960, 2600), (1820, 2680)], "pass")  # radio mast
+    grade_chain(g, mast, g.nodes[quarry[-1]][2], g.nodes[mast[-1]][2])
+    hermitage = g.path([(870, DAM_Y), (600, 2480), (820, 2560), (560, 2600), (500, 2640)], "pass")
+    grade_chain(g, hermitage, crest, g.nodes[hermitage[-1]][2])
 
     # Stitch: join every road end that is still loose (bridge ends, arterial ends) and the
     # edge nodes of each district to the nearest node of a neighbouring district or grid.
@@ -467,7 +484,7 @@ DISTRICT_COLORS = {
 }
 
 
-def render_preview(path, terrain, g):
+def render_preview(path, terrain, g, buildings=()):
     scale = 0.5  # px per metre
     pw, ph = int(W * scale), int(H * scale)
     t = terrain[::2, ::2][: ph, : pw]
@@ -499,6 +516,12 @@ def render_preview(path, terrain, g):
         if s["gate"]:
             col = gate_color
         d.line([to_px(a[0], a[1]), to_px(b[0], b[1])], fill=col, width=max(1, int(s["width"] * scale * 0.6)))
+    for b in buildings:
+        c, sn = math.cos(math.radians(b["yaw"])), math.sin(math.radians(b["yaw"]))
+        hw, hd = b["size"][0] / 2, b["size"][1] / 2
+        d.polygon([to_px(b["pos"][0] + u * c - v * sn, b["pos"][1] + u * sn + v * c)
+                   for u, v in ((-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd))],
+                  fill=(150, 150, 155), outline=(105, 105, 110))
     for name, _, (x, y), (fw, fd), _, _ in LANDMARKS:
         px, py = to_px(x, y)
         d.rectangle([px - fw * scale / 2, py - fd * scale / 2, px + fw * scale / 2, py + fd * scale / 2], outline=(0, 0, 0), fill=(255, 230, 0))
@@ -557,6 +580,135 @@ def flatten_roads(h, g):
     w = np.clip(1.0 - best / SHOULDER, 0.0, 1.0)  # 1 inside a road, fades to 0 over the shoulder
     w = w * w * (3 - 2 * w)
     h[:] = h * (1 - w) + target * w
+    return best
+
+
+# --- Buildings -----------------------------------------------------------------------------
+
+BUILDING_STYLES = ["oldtown", "grid90", "grid120", "beach", "village", "terminal", "hills"]
+# w, d, h ranges (m), gap range along the road, slope limit (m), extra setback (m)
+BUILDING_PARAMS = {
+    "oldtown":  dict(w=(7, 12), d=(9, 14), h=(9, 18), gap=(0, 0.5), slope=8, setback=(1.5, 1.5), extra=0),
+    "grid90":   dict(w=(10, 20), d=(12, 20), h=(10, 24), gap=(0.5, 2), slope=5, setback=(1.5, 3), extra=0),
+    "grid120":  dict(w=(20, 45), d=(20, 35), h=(7, 14), gap=(3, 8), slope=4, setback=(1.5, 3), extra=0),
+    "beach":    dict(w=(15, 30), d=(12, 20), h=(12, 30), gap=(3, 8), slope=5, setback=(1.5, 3), extra=0),
+    "village":  dict(w=(6, 10), d=(8, 12), h=(6, 10), gap=(0.5, 3), slope=6, setback=(1.5, 3), extra=0),
+    "terminal": dict(w=(25, 50), d=(15, 30), h=(8, 16), gap=(6, 15), slope=3, setback=(1.5, 3), extra=0),
+    "hills":    dict(w=(12, 20), d=(10, 16), h=(6, 9), gap=(25, 60), slope=6, setback=(1.5, 3), extra=6),
+}
+
+
+def rect_mask(cx, cy, w, d, yaw, grow=0.0):
+    """Pixels (centres at integer m) inside a rotated rectangle: (y0, y1, x0, x1, bool mask) or None."""
+    c, sn = math.cos(yaw), math.sin(yaw)
+    hw, hd = w / 2 + grow, d / 2 + grow
+    r = abs(c) * hw + abs(sn) * hd, abs(sn) * hw + abs(c) * hd
+    x0, x1 = max(0, int(math.floor(cx - r[0]))), min(W, int(math.ceil(cx + r[0])) + 1)
+    y0, y1 = max(0, int(math.floor(cy - r[1] - Y_MIN))), min(H, int(math.ceil(cy + r[1] - Y_MIN)) + 1)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    yy, xx = np.mgrid[y0:y1, x0:x1]
+    px, py = xx - cx, (yy + Y_MIN) - cy
+    u, v = px * c + py * sn, -px * sn + py * c
+    return y0, y1, x0, x1, (np.abs(u) <= hw) & (np.abs(v) <= hd)
+
+
+def place_buildings(terrain, best, g, rng):
+    ground_ok = terrain >= 1.5
+    ys = np.arange(terrain.shape[0]) + Y_MIN
+    rx = np.array([river_x(float(y)) for y in ys])
+    rhw = np.array([river_half_width(float(y)) for y in ys]) + 6.0
+    xs = np.arange(terrain.shape[1])
+    ground_ok &= ~((np.abs(xs[None, :] - rx[:, None]) <= rhw[:, None]) & (ys[:, None] < DAM_Y + 30))
+    for (x0, y0, x1, y1) in (DARSENA, RESERVOIR):
+        ground_ok[max(0, int(y0 - Y_MIN)):int(y1 - Y_MIN) + 1, max(0, int(x0)):int(x1) + 1] = False
+    blocked = ~ground_ok | (best < 1.5)
+    for _, _, (x, y), (fw, fd), _, _ in LANDMARKS:
+        blocked[max(0, int(y - fd / 2 - 8 - Y_MIN)):int(y + fd / 2 + 8 - Y_MIN) + 2,
+                max(0, int(x - fw / 2 - 8)):int(x + fw / 2 + 8) + 2] = True
+    # Bridges are not in `best` (their corridors aren't graded): keep their decks and approaches clear.
+    for seg in g.segments:
+        if not seg["bridge"]:
+            continue
+        ax, ay, _ = g.nodes[seg["a"]]
+        bx, by, _ = g.nodes[seg["b"]]
+        reach = seg["width"] / 2.0 + 6.0
+        x0, x1 = int(max(0, min(ax, bx) - reach - 6)), int(min(W, max(ax, bx) + reach + 6)) + 1
+        y0, y1 = int(max(0, min(ay, by) - reach - 6 - Y_MIN)), int(min(H, max(ay, by) + reach + 6 - Y_MIN)) + 1
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        yy += Y_MIN
+        dx, dy = bx - ax, by - ay
+        t = np.clip(((xx - ax) * dx + (yy - ay) * dy) / (dx * dx + dy * dy), -0.05, 1.05)
+        blocked[y0:y1, x0:x1] |= np.hypot(xx - (ax + t * dx), yy - (ay + t * dy)) < reach
+    occ = np.zeros(terrain.shape, dtype=bool)
+    rects = {n: (r, st) for n, r, _, st in DISTRICTS}
+    out = []
+    for seg in g.segments:
+        if seg["bridge"]:
+            continue
+        ax, ay, _ = g.nodes[seg["a"]]
+        bx, by, _ = g.nodes[seg["b"]]
+        dist = district_at((ax + bx) / 2, (ay + by) / 2)
+        if seg["kind"] == "pier" and dist != "MoloSalvi":  # the terminal's own road grid is pier segments
+            continue
+        if dist is None or rects[dist][1] == "mountain":
+            continue
+        style = rects[dist][1]
+        P = BUILDING_PARAMS[style]
+        rect = rects[dist][0]
+        L = math.hypot(bx - ax, by - ay)
+        if L < 1e-6:
+            continue
+        ux, uy = (bx - ax) / L, (by - ay) / L
+        yaw = math.atan2(uy, ux)
+        edge = seg["width"] / 2 + (SIDEWALK_W if seg["kind"] in SIDEWALK_KINDS else 0.0) + 1.0
+        for side in (1, -1):
+            s = rng.uniform(0, 3)
+            while s < L:
+                w, d = rng.uniform(*P["w"]), rng.uniform(*P["d"])
+                gap = rng.uniform(*P["gap"])
+                if s + w > L:
+                    break
+                off = edge + rng.uniform(*P["setback"]) + P["extra"] + d / 2
+                cx = ax + ux * (s + w / 2) - uy * off * side
+                cy = ay + uy * (s + w / 2) + ux * off * side
+                ok = rect[0] <= cx <= rect[2] and rect[1] <= cy <= rect[3]
+                if ok:
+                    m = rect_mask(cx, cy, w, d, yaw)
+                    if m is None:
+                        ok = False
+                    else:
+                        y0, y1, x0, x1, mk = m
+                        if not mk.any() or blocked[y0:y1, x0:x1][mk].any():
+                            ok = False
+                        else:
+                            gr = terrain[y0:y1, x0:x1][mk]
+                            if gr.max() - gr.min() > P["slope"]:
+                                ok = False
+                            else:
+                                gm = min(gap * 0.5, 1.0)
+                                m2 = rect_mask(cx, cy, w, d, yaw, gm) if gm > 0 else m
+                                a0, a1, b0, b1, mk2 = m2
+                                if occ[a0:a1, b0:b1][mk2].any():
+                                    ok = False
+                if ok:
+                    occ[y0:y1, x0:x1] |= mk
+                    ci = terrain[int(round(cy - Y_MIN)), int(round(cx))]
+                    out.append({"pos": [round(cx, 2), round(cy, 2)], "size": [round(w, 2), round(d, 2)],
+                                "yaw": round(math.degrees(yaw), 1), "base": round(float(gr.min()) - 1.0, 2),
+                                "top": round(float(ci) + rng.uniform(*P["h"]), 2),
+                                "style": BUILDING_STYLES.index(style), "district": dist})
+                    s += w + gap
+                else:
+                    s += max(3.0, w * 0.5)
+    # self-check: re-rasterise the stored (rounded) records
+    chk = np.zeros(terrain.shape, dtype=np.int16)
+    for b in out:
+        y0, y1, x0, x1, mk = rect_mask(b["pos"][0], b["pos"][1], b["size"][0], b["size"][1], math.radians(b["yaw"]))
+        chk[y0:y1, x0:x1] += mk
+    assert chk.max() <= 1, "buildings overlap"
+    assert not (best[chk > 0] < 1.5 - 0.15).any(), "building inside road clearance"
+    return out
 
 
 def main():
@@ -565,9 +717,13 @@ def main():
     rng = random.Random(SEED)
     terrain = make_heightmap(np.random.default_rng(SEED))
     g = build_roads(terrain, rng)
-    flatten_roads(terrain, g)
+    best = flatten_roads(terrain, g)
     for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
+
+    t0 = time.time()
+    buildings = place_buildings(terrain, best, g, random.Random(SEED + 7))
+    bt = time.time() - t0
 
     # Connectivity: report pieces of the road network that can't be reached from the start.
     adj = {i: set() for i in range(len(g.nodes))}
@@ -609,13 +765,15 @@ def main():
         "gates": [{"tag": t, "opens_with": m, "while_locked": w} for t, m, w in GATES],
         "roads": {"kinds": ROAD_KINDS, "sidewalk_kinds": sorted(SIDEWALK_KINDS), "sidewalk_width": SIDEWALK_W,
                   "nodes": g.nodes, "segments": g.segments},
+        "building_styles": BUILDING_STYLES,
+        "buildings": buildings,
         "start": {"pos": [520, 1290], "district": "CittaAlta", "ground_z": ground(520, 1290)},
     }
     (out / "marevia_layout.json").write_text(json.dumps(layout, indent=1))
 
     hm = np.clip((terrain - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN) * 65535.0, 0, 65535).astype(np.uint16)
     Image.fromarray(hm[::-1]).save(out / "marevia_height.png")
-    render_preview(out / "marevia_preview.png", terrain, g)
+    render_preview(out / "marevia_preview.png", terrain, g, buildings)
 
     kinds = {}
     for s in g.segments:
@@ -623,6 +781,10 @@ def main():
     gated = sum(1 for s in g.segments if s["gate"])
     print(f"nodes {len(g.nodes)}, segments {len(g.segments)} {kinds}, gated {gated}, "
           f"bridges {sum(1 for s in g.segments if s['bridge'])}, unreachable nodes {len(unreachable)}")
+    per = {}
+    for b in buildings:
+        per[b["district"]] = per.get(b["district"], 0) + 1
+    print(f"buildings {per} total {len(buildings)} in {bt:.1f}s")
     print(f"terrain {terrain.min():.1f}..{terrain.max():.1f} m; heightmap {HEIGHT_MIN:.0f} m = 0, {HEIGHT_MAX:.0f} m = 65535")
 
 

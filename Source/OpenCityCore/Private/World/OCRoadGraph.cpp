@@ -200,16 +200,15 @@ double FOCRoadGraph::PathTimeSeconds(const TArray<int32>& Path) const
 	return T;
 }
 
-int32 FOCRoadGraph::CountReachable(int32 Start, const TSet<FName>& ClosedGates) const
+TBitArray<> FOCRoadGraph::ReachableFrom(int32 Start, const TSet<FName>& ClosedGates) const
 {
+	TBitArray<> Seen(false, Nodes.Num());
 	if (!Nodes.IsValidIndex(Start))
 	{
-		return 0;
+		return Seen;
 	}
-	TBitArray<> Seen(false, Nodes.Num());
 	TArray<int32> Stack = { Start };
 	Seen[Start] = true;
-	int32 Count = 1;
 	while (!Stack.IsEmpty())
 	{
 		const int32 N = Stack.Pop();
@@ -224,10 +223,30 @@ int32 FOCRoadGraph::CountReachable(int32 Start, const TSet<FName>& ClosedGates) 
 			if (!Seen[Next])
 			{
 				Seen[Next] = true;
-				++Count;
-				Stack.Push(Next);
+				Stack.Add(Next);
 			}
 		}
 	}
-	return Count;
+	return Seen;
+}
+
+int32 FOCRoadGraph::CountReachable(int32 Start, const TSet<FName>& ClosedGates) const
+{
+	return ReachableFrom(Start, ClosedGates).CountSetBits();
+}
+
+int32 FOCRoadGraph::FindNearestNode(const FVector& Location, const TBitArray<>& Allowed) const
+{
+	int32 Best = INDEX_NONE;
+	double BestDistSq = TNumericLimits<double>::Max();
+	for (int32 i = 0; i < Nodes.Num() && i < Allowed.Num(); ++i)
+	{
+		const double D = FVector::DistSquared(Nodes[i].Location, Location);
+		if (Allowed[i] && D < BestDistSq)
+		{
+			BestDistSq = D;
+			Best = i;
+		}
+	}
+	return Best;
 }

@@ -1,10 +1,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "OCWorldBuilderLibrary.generated.h"
 
+class AActor;
 class ALandscape;
+class UDataLayerAsset;
+class UStaticMesh;
 class UMaterialInterface;
 class UWorld;
 
@@ -50,4 +54,26 @@ public:
 	static int32 BuildRoadMeshes(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng, const FString& AssetFolder,
 		UMaterialInterface* RoadMaterial, UMaterialInterface* SidewalkMaterial, const TArray<FName>& SidewalkKinds,
 		float SidewalkWidthCm, float ChunkSizeCm);
+
+	/**
+	 * Grey-box buildings from the layout's "buildings" list: one AOCBlockoutActor per square
+	 * chunk of ChunkSizeCm (folder "Buildings"), one instance of Mesh (a 100 cm cube) per
+	 * building, with custom data [style index, random]. Returns the number of buildings.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 BuildBuildings(UWorld* World, const FString& LayoutJsonPath, UStaticMesh* Mesh, UMaterialInterface* Material, float ChunkSizeCm);
+
+	/**
+	 * A runtime Data Layer asset (created at PackagePath/Name, or reused) with an instance in the
+	 * world, initially Activated or Unloaded. Returns the asset, or null on failure.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static UDataLayerAsset* CreateRuntimeDataLayer(UWorld* World, const FString& PackagePath, const FString& Name, bool bInitiallyActivated);
+
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static bool AddActorToDataLayer(AActor* Actor, UDataLayerAsset* DataLayer);
+
+	/** A registered gameplay tag by name (invalid tag and an error if it isn't registered). */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static FGameplayTag MakeTag(FName TagName);
 };

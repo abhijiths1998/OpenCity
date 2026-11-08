@@ -1,4 +1,5 @@
-"""M3 world build: the Marevia World Partition map with terrain, lighting and player start.
+"""M3 world build: the Marevia World Partition map with terrain, lighting, player start, roads and
+buildings; oc_m3_story.py adds bridges, landmarks, gates, water volumes and the progression data.
 
 Reads SourceArt/World/marevia_layout.json and marevia_height.png (Tools/make_marevia_layout.py).
 Run through scripts/build_world.sh, which deletes the old map first (World Partition keeps
@@ -13,6 +14,7 @@ import os
 import unreal
 
 import oc_lib as L
+import oc_m3_story
 
 TAG = "oc_m3"
 MAP_PATH = "/Game/Maps/Marevia/L_Marevia"
@@ -51,42 +53,13 @@ def build_roads(world, layout):
     log(f"roads: {n} chunks")
 
 
-def build_bridges(layout):
-    """Decks (collidable, 1 m thick) and parapets for every bridge segment in the road graph."""
-    import math
-    nodes = layout["roads"]["nodes"]
-    cube = unreal.load_asset("/Engine/BasicShapes/Cube")
-    mat = unreal.load_asset("/Game/Dev/Materials/M_Dev_Bridge")
-    count = 0
-    for s in layout["roads"]["segments"]:
-        if not s["bridge"]:
-            continue
-        ax, ay, az = nodes[s["a"]]
-        bx, by, bz = nodes[s["b"]]
-        # Unreal: X east, Y south. Deck runs A -> B, 5 m onto each bank, tilted to meet both ends.
-        dx, dy, dz = (bx - ax), -(by - ay), (bz - az)
-        length = math.hypot(dx, dy) + 10.0
-        yaw = math.degrees(math.atan2(dy, dx))
-        pitch = math.degrees(math.atan2(dz, math.hypot(dx, dy)))
-        width = s["width"] + 3.0
-        mid = ((ax + bx) / 2.0 * 100.0, -(ay + by) / 2.0 * 100.0, (az + bz) / 2.0 * 100.0)
-        deck = L.spawn(unreal.StaticMeshActor, (mid[0], mid[1], mid[2] - 45.0), (0, pitch, yaw), f"Bridge_{s['bridge']}", "Bridges")
-        comp = deck.get_component_by_class(unreal.StaticMeshComponent)
-        comp.set_static_mesh(cube)
-        comp.set_material(0, mat)
-        deck.set_actor_scale3d(unreal.Vector(length, width, 1.0))
-        # Parapets: 1.1 m high, 40 cm thick, along both edges (offset in the deck's local Y).
-        right = (math.sin(math.radians(yaw)) * -1.0, math.cos(math.radians(yaw)))  # unit vector to the deck's side
-        for sign in (-1, 1):
-            off = sign * (width / 2.0 - 0.2) * 100.0
-            p = (mid[0] + right[0] * off, mid[1] + right[1] * off, mid[2] + 55.0)
-            rail = L.spawn(unreal.StaticMeshActor, p, (0, pitch, yaw), f"Bridge_{s['bridge']}_Parapet{'L' if sign < 0 else 'R'}", "Bridges")
-            rc = rail.get_component_by_class(unreal.StaticMeshComponent)
-            rc.set_static_mesh(cube)
-            rc.set_material(0, mat)
-            rail.set_actor_scale3d(unreal.Vector(length, 0.4, 1.1))
-        count += 1
-    log(f"bridges: {count}")
+def build_buildings(world):
+    n = unreal.OCWorldBuilderLibrary.build_buildings(
+        world, os.path.join(WORLD_DIR, "marevia_layout.json"), unreal.load_asset("/Engine/BasicShapes/Cube"),
+        unreal.load_asset("/Game/Dev/Materials/M_Dev_Building"), 25200.0)
+    if n == 0:
+        raise RuntimeError("no buildings built")
+    log(f"buildings: {n}")
 
 
 def main():
@@ -129,7 +102,8 @@ def main():
     ps.set_editor_property("is_spatially_loaded", False)
 
     build_roads(world, layout)
-    build_bridges(layout)
+    build_buildings(world)
+    oc_m3_story.build(world, layout)
 
     unreal.EditorLoadingAndSavingUtils.save_dirty_packages(True, True)
     log(f"saved {MAP_PATH}")

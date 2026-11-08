@@ -13,6 +13,8 @@
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
@@ -24,6 +26,8 @@
 #include "Vehicles/OCMotorbike.h"
 #include "Vehicles/OCVehicle.h"
 #include "Vehicles/OCVehicleComponents.h"
+#include "Engine/GameInstance.h"
+#include "Progression/OCProgressionSubsystem.h"
 
 namespace OCDev
 {
@@ -158,10 +162,21 @@ namespace OCDev
 		{
 			return;
 		}
+		ACharacter* Body = Cast<ACharacter>(PC->GetPawn());
 		if (Args.IsValidIndex(0) && Args[0] == TEXT("off"))
 		{
 			PC->SetViewTarget(PC->GetPawn());
+			if (Body)
+			{
+				Body->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+			}
 			return;
+		}
+		if (Body)
+		{
+			// World Partition streams around the camera: hold the player still so they don't fall
+			// through ground that unloads while the camera is elsewhere.
+			Body->GetCharacterMovement()->DisableMovement();
 		}
 		if (Args.Num() < 5)
 		{
@@ -194,6 +209,76 @@ namespace OCDev
 			bHit ? *FString::Printf(TEXT("%.2f m (%s)"), Hit.ImpactPoint.Z / 100.0, *GetNameSafe(Hit.GetActor())) : TEXT("no hit"));
 	}
 
+	UOCProgressionSubsystem* Progression(UWorld* World)
+	{
+		const UGameInstance* GI = World ? World->GetGameInstance() : nullptr;
+		return GI ? GI->GetSubsystem<UOCProgressionSubsystem>() : nullptr;
+	}
+
+	void LogProgress(UOCProgressionSubsystem* Prog)
+	{
+		TArray<FString> Closed;
+		for (const FName& G : Prog->GetClosedGates())
+		{
+			Closed.Add(G.ToString());
+		}
+		Closed.Sort();
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV progress: completed [%s]; closed gates [%s]"),
+			*Prog->GetCompletedMilestones().ToStringSimple(), *FString::Join(Closed, TEXT(", ")));
+	}
+
+	/** Complete a story milestone: a full tag, a mission name (Funerale = Story.Mission.Funerale), or "all". */
+	void Unlock(const TArray<FString>& Args, UWorld* World)
+	{
+		UOCProgressionSubsystem* Prog = Progression(World);
+		if (!Prog || !Args.IsValidIndex(0))
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV unlock: oc.dev.unlock <Story.Mission.X | X | all>"));
+			return;
+		}
+		if (Args[0].Equals(TEXT("all"), ESearchCase::IgnoreCase))
+		{
+			Prog->CompleteAllMilestones();
+		}
+		else
+		{
+			FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*Args[0]), false);
+			if (!Tag.IsValid())
+			{
+				Tag = FGameplayTag::RequestGameplayTag(FName(TEXT("Story.Mission.") + Args[0]), false);
+			}
+			if (!Tag.IsValid())
+			{
+				TArray<FString> Known;
+				for (const FGameplayTag& M : Prog->GetScheduledMilestones())
+				{
+					Known.Add(M.ToString());
+				}
+				UE_LOG(LogOpenCity, Warning, TEXT("OCDEV unlock: unknown milestone %s (gates wait for: %s)"), *Args[0], *FString::Join(Known, TEXT(", ")));
+				return;
+			}
+			Prog->CompleteMilestone(Tag);
+		}
+		LogProgress(Prog);
+	}
+
+	void Progress(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UOCProgressionSubsystem* Prog = Progression(World))
+		{
+			LogProgress(Prog);
+		}
+	}
+
+	void ResetProgress(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UOCProgressionSubsystem* Prog = Progression(World))
+		{
+			Prog->ResetProgress();
+			LogProgress(Prog);
+		}
+	}
+
 	void Radio(const TArray<FString>& Args, UWorld* World)
 	{
 		if (AOCVehicle* V = Cast<AOCVehicle>(PlayerPawn(World)))
@@ -202,7 +287,7 @@ namespace OCDev
 		}
 	}
 
-	/** Spawn a vehicle 6 m in front of the player, on the ground: coupe | offroad | bike. */
+	/** Spawn a vehicle 4 m in front of the player, on the ground: coupe | offroad | bike. */
 	void Spawn(const TArray<FString>& Args, UWorld* World)
 	{
 		APawn* P = PlayerPawn(World);
@@ -216,7 +301,7 @@ namespace OCDev
 			return;
 		}
 		const FRotator Yaw(0.f, P->GetActorRotation().Yaw, 0.f);
-		FVector Loc = P->GetActorLocation() + Yaw.Vector() * 600.0;
+		FVector Loc = P->GetActorLocation() + Yaw.Vector() * 400.0;
 		FHitResult Hit;
 		FCollisionQueryParams Q(TEXT("OCDevSpawn"), false, P);
 		if (World->LineTraceSingleByChannel(Hit, Loc + FVector(0, 0, 500), Loc - FVector(0, 0, 2000), ECC_Visibility, Q))
@@ -229,6 +314,9 @@ namespace OCDev
 		UE_LOG(LogOpenCity, Display, TEXT("OCDEV spawn %s: %s"), *Name, V ? *V->GetActorLocation().ToCompactString() : TEXT("failed"));
 	}
 
+	FAutoConsoleCommandWithWorldAndArgs CmdUnlock(TEXT("oc.dev.unlock"), TEXT("Complete a story milestone: Story.Mission.X, X, or all."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Unlock));
+	FAutoConsoleCommandWithWorldAndArgs CmdProgress(TEXT("oc.dev.progress"), TEXT("Log completed milestones and closed gates."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Progress));
+	FAutoConsoleCommandWithWorldAndArgs CmdResetProgress(TEXT("oc.dev.resetprogress"), TEXT("Forget all story progress."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ResetProgress));
 	FAutoConsoleCommandWithWorldAndArgs CmdSpawn(TEXT("oc.dev.spawn"), TEXT("Spawn a vehicle in front of the player: coupe | offroad | bike."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Spawn));
 	FAutoConsoleCommandWithWorldAndArgs CmdStatus(TEXT("oc.dev.status"), TEXT("Log player pawn state."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Status));
 	FAutoConsoleCommandWithWorldAndArgs CmdGoto(TEXT("oc.dev.goto"), TEXT("Teleport the player pawn: X Y Z."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Goto));

@@ -198,7 +198,69 @@ def make_custom_surface(name, code, inputs_fn, roughness):
     return mat
 
 
+BUILDING_HLSL = HLSL_NOISE + """
+// Grey-box buildings (instanced cubes). Style = building_styles index from the layout:
+// 0 oldtown, 1 grid90, 2 grid120, 3 beach, 4 village, 5 terminal, 6 hills. Rnd = 0-1 per building.
+float3 n = normalize(N);
+float s = round(Style);
+float3 pal[6] = { float3(0.80, 0.73, 0.60), float3(0.79, 0.58, 0.33), float3(0.72, 0.42, 0.30),
+                  float3(0.83, 0.67, 0.60), float3(0.86, 0.85, 0.80), float3(0.86, 0.78, 0.52) };
+float3 wall = pal[min((int)floor(Rnd * 6.0), 5)];
+bool industrial = (s == 2.0 || s == 5.0);
+if (industrial)
+{
+    wall = lerp(float3(0.46, 0.48, 0.49), float3(0.58, 0.52, 0.44), Rnd);
+}
+if (n.z > 0.6)
+{
+    bool tiled = (s == 0.0 || s == 4.0 || s == 6.0);
+    return tiled ? float3(0.55, 0.27, 0.18) * (0.85 + 0.3 * Rnd) : float3(0.42, 0.41, 0.39);
+}
+float u = dot(WP.xy, float2(-n.y, n.x)) / 100.0;    // metres along the wall
+float v = WP.z / 100.0;
+float storey = industrial ? 6.0 : 3.2;
+float win = step(abs(frac(u / 3.0) - 0.5), industrial ? 0.42 : 0.19) * step(abs(frac(v / storey) - 0.6), industrial ? 0.08 : 0.22);
+float shutter = industrial ? 0.0 : step(abs(abs(frac(u / 3.0) - 0.5) - 0.25), 0.05) * step(abs(frac(v / storey) - 0.6), 0.22);
+float3 shut = (Rnd > 0.5) ? float3(0.20, 0.33, 0.24) : float3(0.30, 0.38, 0.45);
+float3 c = lerp(wall, float3(0.06, 0.07, 0.08), win);
+return lerp(c, shut, shutter);
+"""
+
+STRIPES_HLSL = """
+float t = frac((WP.x + WP.y + WP.z) / 100.0);
+return t < 0.5 ? float3(0.75, 0.08, 0.06) : float3(0.85, 0.85, 0.82);
+"""
+
+
+def make_building():
+    mat = L.get_or_create("M_Dev_Building", PATH, unreal.Material, unreal.MaterialFactoryNew(), "oc_dev")
+    MEL.delete_all_material_expressions(mat)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)
+    style = MEL.create_material_expression(mat, unreal.MaterialExpressionPerInstanceCustomData, -700, 100)
+    style.set_editor_property("data_index", 0)
+    rnd = MEL.create_material_expression(mat, unreal.MaterialExpressionPerInstanceCustomData, -700, 250)
+    rnd.set_editor_property("data_index", 1)
+    normal = MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -700, -100)
+    node = custom(mat, BUILDING_HLSL, [("WP", world_pos(mat, -700, -250)), ("N", normal), ("Style", style), ("Rnd", rnd)], -300, 0)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(const(mat, 0.85, -300, 200), "", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    L.log("oc_dev", f"built {mat.get_path_name()}")
+
+
 make_terrain()
+make_building()
+make_custom_surface("M_Dev_Barrier", STRIPES_HLSL, lambda m: [("WP", world_pos(m, -700, 0))], 0.6)
+make_flat("M_Dev_Landmark", (0.78, 0.74, 0.66), 0.8)       # pale stone: story landmarks stand out
+make_flat("M_Dev_LandmarkAccent", (0.55, 0.26, 0.17), 0.7)  # terracotta roofs, domes
+make_flat("M_Dev_Burnt", (0.07, 0.06, 0.055), 0.95)        # La Cala, the burned house
+make_flat("M_Dev_Metal", (0.30, 0.32, 0.34), 0.5)          # masts, cranes, rails
+make_flat("M_Dev_Glass", (0.25, 0.42, 0.55), 0.2)          # lantern, pool, windows on landmarks
+make_flat("M_Dev_Police", (0.10, 0.18, 0.45), 0.5)         # cordon cars
+make_flat("M_Dev_Rock", (0.20, 0.17, 0.14), 0.95)          # rockfall
+make_flat("M_Dev_Train", (0.38, 0.14, 0.10), 0.7)          # parked freight wagons
+make_flat("M_Dev_Concrete", (0.58, 0.57, 0.54), 0.9)       # the dam
 make_custom_surface("M_Dev_Road", ROAD_HLSL,
                     lambda m: [("Road0", uv(m, 0, -700, -100)), ("Road1", uv(m, 1, -700, 50)), ("WP", world_pos(m, -700, 200))], 0.8)
 make_custom_surface("M_Dev_Sidewalk", SIDEWALK_HLSL, lambda m: [("UV", uv(m, 0, -700, 0))], 0.85)

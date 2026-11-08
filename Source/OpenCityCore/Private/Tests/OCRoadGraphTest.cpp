@@ -97,6 +97,15 @@ bool FOCRoadGraphReachTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("All reachable when open"), G.CountReachable(0), 4);
 	TestEqual(TEXT("Island cut off when gate closed"), G.CountReachable(0, { FName(TEXT("Gate.Island")) }), 2);
 	TestTrue(TEXT("No route to island"), G.FindPath(0, 3, { FName(TEXT("Gate.Island")) }).IsEmpty());
+
+	// Push-backs: the nearest node among those reachable, never one across a closed gate.
+	const TBitArray<> Open = G.ReachableFrom(0, { FName(TEXT("Gate.Island")) });
+	TestTrue(TEXT("Mainland reachable"), Open[0] && Open[1]);
+	TestFalse(TEXT("Island not reachable"), Open[2] || Open[3]);
+	TestEqual(TEXT("Nearest overall is on the island"), G.FindNearestNode(FVector(2900.0, 0.0, 0.0)), 3);
+	TestEqual(TEXT("Nearest open is on the mainland"), G.FindNearestNode(FVector(2900.0, 0.0, 0.0), Open), 1);
+	TestEqual(TEXT("Nothing allowed"), G.FindNearestNode(FVector::ZeroVector, TBitArray<>(false, 4)), INDEX_NONE);
+	TestEqual(TEXT("Invalid start reaches nothing"), G.ReachableFrom(99).CountSetBits(), 0);
 	return true;
 }
 

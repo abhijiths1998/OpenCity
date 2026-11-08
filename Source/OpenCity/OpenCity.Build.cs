@@ -16,6 +16,8 @@ public class OpenCity : ModuleRules
 			"EnhancedInput",
 			"ChaosVehicles",
 			"OpenCityCore",
+			"GameplayTags",
+			"DeveloperSettings",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

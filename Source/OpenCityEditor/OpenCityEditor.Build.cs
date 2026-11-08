@@ -8,6 +8,6 @@ public class OpenCityEditor : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "OpenCityCore", "OpenCity", "Landscape", "ImageCore", "RHI", "MeshDescription", "StaticMeshDescription", "AssetRegistry", "Json" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "OpenCityCore", "OpenCity", "Landscape", "ImageCore", "RHI", "MeshDescription", "StaticMeshDescription", "AssetRegistry", "Json", "DataLayerEditor", "GameplayTags" });
 	}
 }
