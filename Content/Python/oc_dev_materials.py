@@ -124,6 +124,8 @@ def make_flat(name, rgb, roughness=0.8):
     mat = L.get_or_create(name, PATH, unreal.Material, unreal.MaterialFactoryNew(), "oc_dev")
     MEL.delete_all_material_expressions(mat)
     mat.set_editor_property("two_sided", True)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)  # instanced HLODs
+    mat.set_editor_property("used_with_nanite", True)  # road chunks are Nanite; set explicitly so a standalone rebuild keeps it
     MEL.connect_material_property(color(mat, rgb, -300, 0), "", unreal.MaterialProperty.MP_BASE_COLOR)
     MEL.connect_material_property(const(mat, roughness, -300, 150), "", unreal.MaterialProperty.MP_ROUGHNESS)
     MEL.recompile_material(mat)
@@ -190,6 +192,8 @@ def make_custom_surface(name, code, inputs_fn, roughness):
     mat = L.get_or_create(name, PATH, unreal.Material, unreal.MaterialFactoryNew(), "oc_dev")
     MEL.delete_all_material_expressions(mat)
     mat.set_editor_property("two_sided", True)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)  # instanced HLODs
+    mat.set_editor_property("used_with_nanite", True)  # road chunks are Nanite; set explicitly so a standalone rebuild keeps it
     node = custom(mat, code, inputs_fn(mat), -300, 0)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
     MEL.connect_material_property(const(mat, roughness, -300, 200), "", unreal.MaterialProperty.MP_ROUGHNESS)

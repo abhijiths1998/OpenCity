@@ -683,8 +683,8 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	return Built;
 }
 
-constexpr float BlockoutGridCm = 100.f;   // WORLD_METRICS.md: modular grid 100 / 200 / 400 cm
-constexpr float StoreyHeightCm = 320.f;   // WORLD_METRICS.md: floor-to-floor height
+constexpr double BlockoutGridCm = 100.0;   // WORLD_METRICS.md: modular grid 100 / 200 / 400 cm
+constexpr double StoreyHeightCm = 320.0;   // WORLD_METRICS.md: floor-to-floor height
 
 int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& LayoutJsonPath, UStaticMesh* Mesh, UMaterialInterface* Material, float ChunkSizeCm)
 {
@@ -720,15 +720,16 @@ int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& Layou
 		// Snap centre and half-extents to the 100 cm modular grid (WORLD_METRICS.md).
 		const double SnapX = FMath::RoundToDouble(CentreX / BlockoutGridCm) * BlockoutGridCm;
 		const double SnapY = FMath::RoundToDouble(CentreY / BlockoutGridCm) * BlockoutGridCm;
-		const float SnapW = FMath::RoundToFloat(Size[0]->AsNumber() * 100.0 / BlockoutGridCm) * BlockoutGridCm;
-		const float SnapD = FMath::RoundToFloat(Size[1]->AsNumber() * 100.0 / BlockoutGridCm) * BlockoutGridCm;
-		// Floor-to-floor 320 cm: snap total height to whole storeys.
-		const float TotalH = FMath::Max(static_cast<float>(Top - Base), 1.0f);
-		const int32 Storeys = FMath::Max(1, FMath::RoundToInt(TotalH / StoreyHeightCm));
-		const float SnapH = Storeys * StoreyHeightCm;
+		const double SnapW = FMath::Max(1.0, FMath::RoundToDouble(Size[0]->AsNumber() * 100.0 / BlockoutGridCm)) * BlockoutGridCm;
+		const double SnapD = FMath::Max(1.0, FMath::RoundToDouble(Size[1]->AsNumber() * 100.0 / BlockoutGridCm)) * BlockoutGridCm;
+		// Floor-to-floor 320 cm: snap total height (layout metres -> cm) to whole storeys.
+		const double TotalHCm = FMath::Max((Top - Base) * 100.0, 100.0);
+		const int32 Storeys = FMath::Max(1, FMath::RoundToInt32(TotalHCm / StoreyHeightCm));
+		const double SnapH = Storeys * StoreyHeightCm;
+		// The mesh is a 100 cm cube, so the instance scale is the size in metres.
 		const FTransform T(FRotator(0.0, -B->GetNumberField(TEXT("yaw")), 0.0),
-			FVector(static_cast<float>(SnapX), static_cast<float>(SnapY), static_cast<float>(Base * 100.0) + SnapH * 0.5f),
-			FVector(SnapW, SnapD, SnapH));
+			FVector(SnapX, SnapY, Base * 100.0 + SnapH * 0.5),
+			FVector(SnapW / 100.0, SnapD / 100.0, SnapH / 100.0));
 		const FIntPoint Key(FMath::FloorToInt32(SnapX / ChunkSizeCm), FMath::FloorToInt32(SnapY / ChunkSizeCm));
 		Chunks.FindOrAdd(Key).Add({ T, FVector2f(static_cast<float>(B->GetNumberField(TEXT("style"))), Random.FRand()) });
 	}

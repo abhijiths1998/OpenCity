@@ -20,6 +20,8 @@
 #include "Containers/Ticker.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "OCLog.h"
@@ -43,12 +45,13 @@ namespace OCAutoDrive
 		double MaxSpeed = 1e9;  // m/s allowed at this point (corners)
 	};
 
-	enum class EState : uint8 { Idle, Settling, Driving };
+	enum class EState : uint8 { Idle, Boarding, Settling, Driving };
 
 	struct FDriver
 	{
 		TWeakObjectPtr<UWorld> World;
 		TWeakObjectPtr<AOCVehicle> Vehicle;
+		TWeakObjectPtr<APawn> Walker;   // on foot at the start: gets a car once ground streams in
 		TArray<FPoint> Route;
 		FTSTicker::FDelegateHandle Ticker;
 		EState State = EState::Idle;
@@ -61,9 +64,11 @@ namespace OCAutoDrive
 		bool bOffRoute = false;
 		bool bInTick = false;
 		bool bQuitWhenDone = false;
+		bool bGrounded = false;
 		double WorstGroundAheadM = 1e9;  // nearest the car came to a stretch with no ground loaded
 
 		bool Tick(float Dt);
+		bool Board(float Dt);
 		void Place(int32 AtSeg);
 		void Finish(const TCHAR* How);
 		bool HasGround(const FVector& At, FHitResult* OutHit = nullptr) const;
@@ -126,6 +131,7 @@ namespace OCAutoDrive
 		}
 		FHitResult Hit;
 		FCollisionQueryParams Q(TEXT("OCAutoDrive"), false, Vehicle.Get());
+		Q.AddIgnoredActor(Walker.Get());
 		const bool bHit = W->LineTraceSingleByChannel(Hit, At + FVector(0, 0, 5000), At - FVector(0, 0, 5000), ECC_WorldStatic, Q);
 		if (OutHit)
 		{
@@ -148,6 +154,7 @@ namespace OCAutoDrive
 		V->SetActorLocationAndRotation(From + FVector(0, 0, 150), FRotator(0.f, Dir.Rotation().Yaw, 0.f), false, nullptr, ETeleportType::ResetPhysics);
 		State = EState::Settling;
 		SettleClock = 0.0;
+		bGrounded = false;
 		SlowClock = FlipClock = 0.0;
 		LastPos = V->GetActorLocation();
 	}
@@ -190,6 +197,10 @@ namespace OCAutoDrive
 			return false;
 		}
 		TGuardValue<bool> InTick(bInTick, true);
+		if (State == EState::Boarding)
+		{
+			return Board(Dt);
+		}
 		AOCVehicle* V = Vehicle.Get();
 		UChaosVehicleMovementComponent* M = V ? V->GetVehicleMovementComponent() : nullptr;
 		if (!World.IsValid() || !M)
@@ -202,10 +213,12 @@ namespace OCAutoDrive
 
 		if (State == EState::Settling)
 		{
-			// Hold still until World Partition has streamed in ground under the car.
+			// Hold the car above the start until World Partition has streamed in ground there, then
+			// set it down on the surface (never inside geometry: depenetration reads as a crash).
 			SettleClock += Dt;
 			UPrimitiveComponent* Body = Cast<UPrimitiveComponent>(V->GetRootComponent());
-			if (!HasGround(Route[Seg].Pos))
+			FHitResult Ground;
+			if (!bGrounded && !HasGround(Route[Seg].Pos, &Ground))
 			{
 				V->SetActorLocation(Route[Seg].Pos + FVector(0, 0, 150), false, nullptr, ETeleportType::ResetPhysics);
 				if (Body)
@@ -218,6 +231,12 @@ namespace OCAutoDrive
 					return false;
 				}
 				return true;
+			}
+			if (!bGrounded)
+			{
+				bGrounded = true;
+				V->SetActorLocation(Ground.ImpactPoint + FVector(0, 0, 60), false, nullptr, ETeleportType::ResetPhysics);
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV route: set down on %s at %s"), *GetNameSafe(Ground.GetActor()), *Ground.ImpactPoint.ToCompactString());
 			}
 			M->SetThrottleInput(0.f);
 			M->SetBrakeInput(1.f);
@@ -348,6 +367,50 @@ namespace OCAutoDrive
 		}
 	}
 
+	/** On foot: hold the player at the route start until ground streams in, then spawn the coupe there and drive it. */
+	bool FDriver::Board(float Dt)
+	{
+		APawn* P = Walker.Get();
+		UWorld* W = World.Get();
+		if (!P || !W)
+		{
+			Finish(TEXT("ABORTED (player or world gone)"));
+			return false;
+		}
+		SettleClock += Dt;
+		const FVector Start = Route[0].Pos;
+		FHitResult Ground;
+		if (!HasGround(Start, &Ground))
+		{
+			P->SetActorLocation(Start + FVector(0, 0, 300), false, nullptr, ETeleportType::ResetPhysics);
+			if (SettleClock > 30.0)
+			{
+				Finish(TEXT("ABORTED (no ground streamed in at the start after 30 s)"));
+				return false;
+			}
+			return true;
+		}
+		UClass* Class = LoadClass<AOCVehicle>(nullptr, TEXT("/Game/Vehicles/Blueprints/BP_OCVehicle_Coupe.BP_OCVehicle_Coupe_C"));
+		const FVector Dir = (Route[1].Pos - Start).GetSafeNormal2D();
+		FActorSpawnParameters SP;
+		SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AOCVehicle* V = Class ? W->SpawnActor<AOCVehicle>(Class, Ground.ImpactPoint + FVector(0, 0, 60), FRotator(0.f, Dir.Rotation().Yaw, 0.f), SP) : nullptr;
+		if (ACharacter* C = Cast<ACharacter>(P))
+		{
+			C->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+		}
+		const bool bIn = V && V->Interact(P) && W->GetFirstPlayerController() && W->GetFirstPlayerController()->GetPawn() == V;
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV route: spawned a coupe on %s and %s"), *GetNameSafe(Ground.GetActor()), bIn ? TEXT("got in") : TEXT("could NOT get in"));
+		if (!bIn)
+		{
+			Finish(TEXT("ABORTED (could not board a vehicle)"));
+			return false;
+		}
+		Vehicle = V;
+		Place(0);
+		return true;
+	}
+
 	void Route(const TArray<FString>& Args, UWorld* World)
 	{
 		if (Args.IsValidIndex(0) && Args[0].Equals(TEXT("stop"), ESearchCase::IgnoreCase))
@@ -360,6 +423,7 @@ namespace OCAutoDrive
 		}
 		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
 		AOCVehicle* V = PC ? Cast<AOCVehicle>(PC->GetPawn()) : nullptr;
+		APawn* OnFoot = PC && !V ? PC->GetPawn() : nullptr;
 		const UGameInstance* GI = World ? World->GetGameInstance() : nullptr;
 		const UOCProgressionSubsystem* Prog = GI ? GI->GetSubsystem<UOCProgressionSubsystem>() : nullptr;
 		const FOCRoadGraph* Roads = Prog ? Prog->GetRoadGraph() : nullptr;
@@ -381,7 +445,7 @@ namespace OCAutoDrive
 				++i;
 			}
 		}
-		if (!V || !Roads || Waypoints.Num() < 2)
+		if ((!V && !OnFoot) || !Roads || Waypoints.Num() < 2)
 		{
 			UE_LOG(LogOpenCity, Display, TEXT("OCDEV route: needs a driven vehicle, a road graph and 2+ waypoints: oc.dev.route X0 Y0 X1 Y1 [...] [kmh=N] | stop"));
 			return;
@@ -454,12 +518,25 @@ namespace OCAutoDrive
 		GDriver = FDriver();
 		GDriver.World = World;
 		GDriver.Vehicle = V;
+		GDriver.Walker = OnFoot;
 		GDriver.Route = MoveTemp(R);
 		GDriver.CapMps = CapKmh / 3.6;
 		GDriver.bQuitWhenDone = Args.ContainsByPredicate([](const FString& A) { return A.Equals(TEXT("quit"), ESearchCase::IgnoreCase); });
 		// A core ticker, every frame, only while a route is being driven: steering needs per-frame input.
 		GDriver.Ticker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float Dt) { return GDriver.Tick(Dt); }));
-		GDriver.Place(0);
+		if (V)
+		{
+			GDriver.Place(0);
+		}
+		else
+		{
+			// On foot: freeze the player at the start (so they don't fall before ground loads) and board there.
+			if (ACharacter* C = Cast<ACharacter>(OnFoot))
+			{
+				C->GetCharacterMovement()->DisableMovement();
+			}
+			GDriver.State = EState::Boarding;
+		}
 		UE_LOG(LogOpenCity, Display, TEXT("OCDEV route START: %d waypoints, %d road nodes, %.0f m, cap %.0f km/h, %d gates closed"),
 			Waypoints.Num(), Nodes.Num(), GDriver.Route.Last().Along, CapKmh, Closed.Num());
 	}

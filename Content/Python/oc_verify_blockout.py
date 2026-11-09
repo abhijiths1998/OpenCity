@@ -89,7 +89,7 @@ def main():
                 # centre snapped to 100 cm grid (X and Y)
                 if abs(loc.x % GRID_CM) > 0.5 or abs(loc.y % GRID_CM) > 0.5:
                     off_grid += 1
-                scale = t.get_scale3d()
+                scale = t.get_scale3d() * 100.0  # 100 cm cube: scale is metres, size in cm = scale * 100
                 # width/depth snapped to 100 cm increments
                 if abs(scale.x % GRID_CM) > 0.5 or abs(scale.y % GRID_CM) > 0.5:
                     off_grid += 1
