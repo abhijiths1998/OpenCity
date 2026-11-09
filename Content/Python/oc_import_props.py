@@ -25,7 +25,10 @@ LAMP_GLOW = "/Game/Materials/M_Master_LampGlow"
 MEL = unreal.MaterialEditingLibrary
 
 
-def material_for(slot, folder, textures):
+FOLIAGE_MASTER = "/Game/Materials/M_Master_Foliage"
+
+
+def material_for(slot, folder, textures, foliage=False):
     """MI_Prop_<slot> from the slot's Poly Haven maps (<slot>_diff/_nor_gl/_arm). Interchange imports
     the textures but no materials from these glTFs, so the props would render default grey."""
     if slot.endswith(("_glass", "_bulb")):
@@ -49,12 +52,15 @@ def material_for(slot, folder, textures):
     leafy = "leaves" in slot or "fern" in slot
     mi = L.get_or_create(f"MI_Prop_{slot}", folder, unreal.MaterialInstanceConstant,
                          unreal.MaterialInstanceConstantFactoryNew(), TAG)
-    MEL.set_material_instance_parent(mi, unreal.load_asset(TWO_SIDED if leafy else SURFACE))
+    # Plants: every slot (trunk, branches, leaves) on the foliage master, so the wind moves them together.
+    parent = FOLIAGE_MASTER if foliage else (TWO_SIDED if leafy else SURFACE)
+    MEL.set_material_instance_parent(mi, unreal.load_asset(parent))
     MEL.clear_all_material_instance_parameters(mi)
     for param, t in (("BaseColor", bc), ("Normal", n), ("ORM", arm)):
         if t:
             MEL.set_material_instance_texture_parameter_value(mi, param, t)
-    for k, v in (("TileSizeM", 1.0), ("Macro", 0.0), ("TintSlot", -1.0)):
+    settings = (("Subsurface", 1.0 if leafy else 0.0),) if foliage else (("TileSizeM", 1.0), ("Macro", 0.0), ("TintSlot", -1.0))
+    for k, v in settings:
         MEL.set_material_instance_scalar_parameter_value(mi, k, v)
     MEL.update_material_instance(mi)
     L.save(mi)
@@ -110,7 +116,7 @@ def main():
             if isinstance(a, unreal.Texture2D):
                 textures[a.get_name()] = a
         for i, sm in enumerate(mesh.get_editor_property("static_materials")):
-            mi = material_for(str(sm.get_editor_property("material_slot_name")), f"{DEST}/{name}", textures)
+            mi = material_for(str(sm.get_editor_property("material_slot_name")), f"{DEST}/{name}", textures, foliage=name in FOLIAGE)
             if mi:
                 mesh.set_material(i, mi)
         L.save(mesh)

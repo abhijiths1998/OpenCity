@@ -277,5 +277,22 @@
   "design_speed_max_kmh": 30,
   "paving": "concrete",
   "_game": "port quay and pier"
+ },
+ "passerella": {
+  "dm_type": "",
+  "urban": true,
+  "lane_cm": 275,
+  "lanes_per_dir": 1,
+  "median_cm": 0,
+  "shoulder_left_cm": 0,
+  "shoulder_right_cm": 0,
+  "emergency_lane_cm": 0,
+  "footpath_cm": 0,
+  "parking_cm": 0,
+  "max_grade_pct": 8,
+  "min_radius_m": 0,
+  "design_speed_max_kmh": 10,
+  "paving": "stone_slab",
+  "_game": "pedestrian footbridge (Passerella over the Ardo): no cars"
  }
 }

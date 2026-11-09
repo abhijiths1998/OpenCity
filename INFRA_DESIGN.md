@@ -102,6 +102,7 @@ Source of truth: `SourceArt/Infra/road_profiles.json`. All widths are in cm. The
 | `costiera` | F2 lanes | 1 × 325 | 0 / 50 to a 1 m stone parapet | - | - | - | - | 750 | 10% | 45 m | 70 |
 | `montana_tornanti` | F2 (hairpins are not regulated) | 1 × 300 | 0 / 50 | - | - | - | - | 700 | 12% (game) | 12 m (game) | 60 |
 | `strada_bianca` | not classified | 1 × 275 | - | - | - | - | - | 550 | 12% | 20 m | 50 |
+| `passerella` | not classified; **pedestrian** | 1 × 275 (walkers) | - | - | - | - | - | 550 | 8% | - | 10 |
 | `banchina_porto` | not classified | 1 × 350 | 0 / 150 | - | - | - | - | 1,000 | 4% | - | 30 |
 
 Notes from the decree:
@@ -206,7 +207,7 @@ Fields added to each road segment:
 | `parking` | none, blue, white, yellow |
 | `tram` | Tram tracks in the carriageway |
 
-Speeds are clamped to each profile's maximum: urban 50, Zona 30 in the ZTL.
+Speeds are clamped to each profile's maximum: urban 50, Zona 30 in the ZTL. `pedestrian` (the `passerella` and `vicolo` profiles) keeps cars off a segment: paths, reach and lanes skip it. The drive test had routed cars over the Passerella footbridge.
 
 **Tools:**
 

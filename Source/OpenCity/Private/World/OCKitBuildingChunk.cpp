@@ -4,6 +4,7 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/Material.h"
 
 AOCKitBuildingChunk::AOCKitBuildingChunk()
 {
@@ -40,6 +41,20 @@ UInstancedStaticMeshComponent* AOCKitBuildingChunk::GetOrAddPiece(UStaticMesh* M
 	else if (Size < 400.0 && !Mesh->GetName().Contains(TEXT("Wall")) && !Mesh->GetName().Contains(TEXT("Window")))
 	{
 		C->SetCullDistances(0, 40000);
+	}
+	// Foliage sways in the wind (world position offset, M_Master_Foliage): only near the camera,
+	// because WPO makes Nanite rasterise the mesh every frame.
+	bool bFoliage = false;
+	for (int32 i = 0; i < Mesh->GetStaticMaterials().Num(); ++i)
+	{
+		UMaterialInterface* M = Mesh->GetMaterial(i);
+		const UMaterial* Base = M ? M->GetBaseMaterial() : nullptr;
+		bFoliage |= Base && Base->GetName() == TEXT("M_Master_Foliage");
+	}
+	C->SetEvaluateWorldPositionOffset(bFoliage);
+	if (bFoliage)
+	{
+		C->SetWorldPositionOffsetDisableDistance(6000);
 	}
 	AddInstanceComponent(C);
 	C->RegisterComponent();

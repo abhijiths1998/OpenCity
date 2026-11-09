@@ -35,6 +35,7 @@ namespace OCWorldState
 	const FName NightName(TEXT("NightAmount"));
 	const FName HourName(TEXT("TimeOfDay"));
 	const FName RainName(TEXT("RainAmount"));
+	const FName WindName(TEXT("Wind"));
 	const FName WetName(TEXT("Wetness"));
 }
 
@@ -159,6 +160,7 @@ UOCWorldStateSubsystem::FWeather UOCWorldStateSubsystem::FWeather::From(const UO
 		W.Rain = P->RainAmount;
 		W.WetTarget = P->WetnessTarget;
 		W.Exposure = P->ExposureBias;
+		W.Wind = P->WindStrength;
 	}
 	return W;
 }
@@ -174,6 +176,7 @@ UOCWorldStateSubsystem::FWeather UOCWorldStateSubsystem::FWeather::Lerp(const FW
 	W.Rain = FMath::Lerp(A.Rain, B.Rain, T);
 	W.WetTarget = FMath::Lerp(A.WetTarget, B.WetTarget, T);
 	W.Exposure = FMath::Lerp(A.Exposure, B.Exposure, T);
+	W.Wind = FMath::Lerp(A.Wind, B.Wind, T);
 	return W;
 }
 
@@ -278,6 +281,7 @@ void UOCWorldStateSubsystem::Apply()
 			MPC->SetScalarParameterValue(OCWorldState::NightName, Night);
 			MPC->SetScalarParameterValue(OCWorldState::HourName, Hour);
 			MPC->SetScalarParameterValue(OCWorldState::RainName, Current.Rain);
+			MPC->SetScalarParameterValue(OCWorldState::WindName, Current.Wind);
 			MPC->SetScalarParameterValue(OCWorldState::WetName, Wetness);
 		}
 	}

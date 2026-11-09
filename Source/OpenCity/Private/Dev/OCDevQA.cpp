@@ -23,6 +23,9 @@
 #include "OCLog.h"
 #include "RHI.h"
 #include "World/OCWorldStateSubsystem.h"
+#if WITH_EDITOR
+#include "ShaderCompiler.h"
+#endif
 
 namespace OCQA
 {
@@ -42,6 +45,15 @@ namespace OCQA
 		int32 Frames = 0;
 
 		const FOCCameraBookmark& Mark() const { return Marks[Index % Marks.Num()]; }
+
+		static bool ShadersPending()
+		{
+#if WITH_EDITOR
+			return GShaderCompilingManager && GShaderCompilingManager->GetNumRemainingJobs() > 0;
+#else
+			return false;
+#endif
+		}
 		float Hour() const { return Hours[Index / Marks.Num()]; }
 		int32 Total() const { return Marks.Num() * Hours.Num(); }
 
@@ -83,6 +95,10 @@ namespace OCQA
 				return false;
 			}
 			Clock += Dt;
+			if (Phase == 0 && Clock > Settle && ShadersPending() && Clock < Settle + 120.0)
+			{
+				return true;  // a shot taken mid-compile shows checkerboard stand-ins (QA 2026-11-10)
+			}
 			if (Phase == 0 && Clock > Settle)
 			{
 				Phase = 1;

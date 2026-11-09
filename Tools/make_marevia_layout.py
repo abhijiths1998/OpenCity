@@ -1111,6 +1111,7 @@ def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
 
 PROFILES_PATH = Path(__file__).resolve().parent.parent / "SourceArt/Infra/road_profiles.json"
 CORE = (700.0, 1230.0, 400.0, 290.0)  # Città Alta's walled core: ellipse centre x, y and radii (m), around Santa Lucia
+PEDESTRIAN_PROFILES = {"passerella", "vicolo"}  # no cars: routing, lanes and traffic skip them
 ERA_WEAR = {"roman": 0.85, "medieval": 0.8, "c19": 0.6, "postwar": 0.65, "modern": 0.3}
 
 
@@ -1124,6 +1125,8 @@ def classify_segment(seg, mid, district, dead_end):
     Geometry is untouched: Phase 3 rebuilds widths to the profiles (INFRA_DESIGN.md)."""
     kind, x, y = seg["kind"], mid[0], mid[1]
     core = district == "CittaAlta" and in_core(x, y)
+    if seg["bridge"] == "Passerella":  # STORY.md: "two road bridges plus a footbridge"
+        return "passerella", "stone_slab", "c19", "none", False
     if kind == "pier":
         return "banchina_porto", "concrete", "postwar", "none", False
     if kind == "coast":
@@ -1204,6 +1207,7 @@ def annotate_networks(g, landmarks, rng):
         if profile not in profiles:
             raise ValueError(f"segment {i}: profile {profile} missing from {PROFILES_PATH}")
         sg.update(profile=profile, paving=paving, era=era, parking=parking, ztl=ztl, one_way=False,
+                  pedestrian=profile in PEDESTRIAN_PROFILES,
                   tram=i in tram, wear=round(min(1.0, max(0.0, ERA_WEAR[era] + rng.uniform(-0.15, 0.15))), 2))
         # Italian limits: the profile's design maximum (urban 50), Zona 30 inside the walls.
         sg["speed_kmh"] = min(sg["speed_kmh"], profiles[profile]["design_speed_max_kmh"], 30 if ztl else 999)

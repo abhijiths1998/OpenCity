@@ -66,7 +66,7 @@ void FOCLaneGraph::Build(const FOCRoadGraph& Roads)
 	AtNode.SetNum(Nodes.Num());
 	for (int32 s = 0; s < Segments.Num(); ++s)
 	{
-		if (Nodes.IsValidIndex(Segments[s].A) && Nodes.IsValidIndex(Segments[s].B) && Segments[s].A != Segments[s].B)
+		if (Nodes.IsValidIndex(Segments[s].A) && Nodes.IsValidIndex(Segments[s].B) && Segments[s].A != Segments[s].B && !Segments[s].bPedestrian)
 		{
 			AtNode[Segments[s].A].Add(s);
 			AtNode[Segments[s].B].Add(s);
@@ -90,9 +90,9 @@ void FOCLaneGraph::Build(const FOCRoadGraph& Roads)
 	for (int32 s = 0; s < Segments.Num(); ++s)
 	{
 		const FOCRoadSegment& Seg = Segments[s];
-		if (!Nodes.IsValidIndex(Seg.A) || !Nodes.IsValidIndex(Seg.B) || Seg.A == Seg.B)
+		if (!Nodes.IsValidIndex(Seg.A) || !Nodes.IsValidIndex(Seg.B) || Seg.A == Seg.B || Seg.bPedestrian)
 		{
-			continue;
+			continue;  // pedestrian segments (footbridges, vicoli) get no driving lanes
 		}
 		// One-way: A to B only. A one-way into a dead end has no U-turn lane; FOCNetworkValidator
 		// reports that node as a one-way trap (error), so such data never ships.

@@ -52,7 +52,7 @@ private:
 	/** Blendable weather values (a snapshot of a preset). */
 	struct FWeather
 	{
-		float Sun = 1.f, Sky = 1.f, Fog = 1.f, Rayleigh = 1.f, Mie = 1.f, Rain = 0.f, WetTarget = 0.f, Exposure = 0.f;
+		float Sun = 1.f, Sky = 1.f, Fog = 1.f, Rayleigh = 1.f, Mie = 1.f, Rain = 0.f, WetTarget = 0.f, Exposure = 0.f, Wind = 0.3f;
 		static FWeather From(const UOCWeatherPreset* P);
 		static FWeather Lerp(const FWeather& A, const FWeather& B, float T);
 	};

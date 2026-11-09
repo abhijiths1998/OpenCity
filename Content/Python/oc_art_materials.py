@@ -310,7 +310,7 @@ def build_world_parameters():
     params = list(mpc.get_editor_property("scalar_parameters"))
     have = {str(p.get_editor_property("parameter_name")) for p in params}
     added = False
-    for name, value in (("NightAmount", 0.0), ("TimeOfDay", 12.0), ("Wetness", 0.0), ("RainAmount", 0.0)):
+    for name, value in (("NightAmount", 0.0), ("TimeOfDay", 12.0), ("Wetness", 0.0), ("RainAmount", 0.0), ("Wind", 0.3)):
         if name not in have:
             p = unreal.CollectionScalarParameter()
             L.set_props(p, parameter_name=name, default_value=value)
@@ -709,6 +709,77 @@ def build_car_glass(mpc):
     log(f"built {mat.get_path_name()}")
 
 
+FOLIAGE_HLSL = r"""
+// Foliage (M4b): Poly Haven tree and plant scans on the two-sided foliage shading model. Leaves
+// let light through (Subsurface 1, tinted by their own colour); trunks don't (0). Each instance
+// gets a slight hue and brightness shift so a row of the same tree doesn't repeat.
+float4 c = Texture2DSample(BCTex, BCTexSampler, UV);
+float3 bc = c.rgb * lerp(0.85, 1.12, Rand) * lerp(float3(1.0, 1.0, 1.0), float3(1.04, 1.0, 0.9), frac(Rand * 7.31));
+float2 nxy = Texture2DSample(NTex, NTexSampler, UV).rg * 2.0 - 1.0;
+TangentNormal = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
+float3 orm = Texture2DSample(ORMTex, ORMTexSampler, UV).rgb;
+AO = orm.r;
+Rough = saturate(orm.g);
+Sss = bc * float3(0.9, 1.0, 0.55) * Subsurface;
+// Wet leaves turn darker and glossier (MPC_World.Wetness).
+bc *= lerp(1.0, 0.75, Wet);
+Rough = lerp(Rough, 0.35, Wet * 0.8);
+return bc;
+"""
+
+FOLIAGE_WPO_HLSL = r"""
+// Cheap wind (MPC_World.Wind, set per weather preset): the whole plant leans and sways with height
+// above its pivot (the trunk base stays put), plus a fast flutter on leaves. World-space cm.
+float h = max(LP.z, 0.0) / 100.0;                       // metres above the pivot
+float phase = dot(WP.xy, float2(0.0011, 0.0007));       // neighbours sway out of step
+float gust = 0.6 + 0.4 * sin(Time * 0.37 + phase * 3.0);
+float sway = sin(Time * 1.3 + phase * 6.2832) * gust;
+float bend = Wind * h * h * 0.35;                       // cm: ~22 cm at 8 m in a strong wind
+float2 dir = float2(0.94, 0.34);
+float flutter = sin(Time * 7.0 + dot(WP.xyz, float3(0.05, 0.07, 0.09))) * Wind * Subsurface * min(h, 4.0) * 0.6;
+return float3(dir * bend * (0.4 + sway), 0.0) + VN * flutter;
+"""
+
+
+def build_foliage_master(mpc):
+    """M_Master_Foliage: two-sided foliage shading, per-instance variation, wetness and wind
+    (ART_PIPELINE.md target 400 instructions). Used by the tree and plant props (oc_import_props.py)."""
+    mat = fresh_material("M_Master_Foliage")
+    L.set_props(mat, two_sided=True, shading_model=unreal.MaterialShadingModel.MSM_TWO_SIDED_FOLIAGE)
+    # Nanite culls by bounds: let the wind push vertices up to 0.5 m past them.
+    mat.set_editor_property("max_world_position_offset_displacement", 50.0)
+    S = unreal.MaterialSamplerType
+    bc = tex_object(mat, "BaseColor", S.SAMPLERTYPE_COLOR, None, -1400, -300)
+    nm = tex_object(mat, "Normal", S.SAMPLERTYPE_NORMAL, None, -1400, -150)
+    orm = tex_object(mat, "ORM", S.SAMPLERTYPE_MASKS, None, -1400, 0)
+    uv = MEL.create_material_expression(mat, unreal.MaterialExpressionTextureCoordinate, -1400, 150)
+    rnd = MEL.create_material_expression(mat, unreal.MaterialExpressionPerInstanceRandom, -1400, 250)
+    sss = scalar(mat, "Subsurface", 0.0, -1400, 350)
+    wet = mpc_scalar(mat, mpc, "Wetness", -1400, 450)
+    f1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
+    f3 = unreal.CustomMaterialOutputType.CMOT_FLOAT3
+    node = custom(mat, FOLIAGE_HLSL, [("BCTex", bc), ("NTex", nm), ("ORMTex", orm), ("UV", uv), ("Rand", rnd),
+                                      ("Subsurface", sss), ("Wet", wet)],
+                  [("TangentNormal", f3), ("AO", f1), ("Rough", f1), ("Sss", f3)], -300, 0)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(node, "TangentNormal", unreal.MaterialProperty.MP_NORMAL)
+    MEL.connect_material_property(node, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.connect_material_property(node, "AO", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
+    MEL.connect_material_property(node, "Sss", unreal.MaterialProperty.MP_SUBSURFACE_COLOR)
+    wpo = custom(mat, FOLIAGE_WPO_HLSL,
+                 [("LP", MEL.create_material_expression(mat, unreal.MaterialExpressionLocalPosition, -1000, 600)),
+                  ("WP", MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -1000, 680)),
+                  ("VN", MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -1000, 760)),
+                  ("Time", MEL.create_material_expression(mat, unreal.MaterialExpressionTime, -1000, 840)),
+                  ("Wind", mpc_scalar(mat, mpc, "Wind", -1000, 920)),
+                  ("Subsurface", sss)], [], -300, 600)
+    MEL.connect_material_property(wpo, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    log(f"built {mat.get_path_name()}")
+    return mat
+
+
 def WET_EXTRA(mpc, ripples, puddles):
     """extra inputs for build_textured_master: the wetness block's parameters, built once per material."""
     cache = {}
@@ -809,6 +880,7 @@ def main():
     build_water_master(mpc, water)
     build_rain_post_process(mpc)
     build_car_glass(mpc)
+    build_foliage_master(mpc)
     made = []
     for name, (slug, tile, tint, settings) in INSTANCES.items():
         if slug not in textures:

@@ -61,10 +61,11 @@ struct OPENCITYCORE_API FOCRoadSegment
 	bool bZTL = false;       // inside the limited-traffic zone
 	FName Parking;           // none, blue (paid), white (free), yellow (reserved)
 	bool bTram = false;      // tram tracks in the carriageway
+	bool bPedestrian = false; // footbridges and vicoli: no cars (paths, reach and lanes skip it)
 
 	float LengthCm(const TArray<FOCRoadNode>& Nodes) const;
 	/** True if traffic may drive this segment from node From. */
-	bool AllowsFrom(int32 From) const { return !bOneWay || From == A; }
+	bool AllowsFrom(int32 From) const { return !bPedestrian && (!bOneWay || From == A); }
 };
 
 /** A junction node and how traffic is controlled there (roundabout, signals, piazza, ...). */

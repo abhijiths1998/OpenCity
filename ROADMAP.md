@@ -109,7 +109,7 @@ These need your login or `sudo`, so they're yours to do:
 
 ## M4b: Look-dev completion (L)
 
-**Build:** remaining masters (car paint, glass, foliage, character, water), decals, Clear, Cloudy and Rain weather, final post-process, and the showcase street block.
+**Build:** remaining masters (car paint, glass, foliage, character, water), decals, Clear, Cloudy and Rain weather, final post-process, and the showcase street block. *(Done: glass (building, car), foliage (wind from `MPC_World.Wind` per weather), water, decals, weather, post-process with local exposure. Open: car paint and character masters.)*
 
 **Acceptance:**
 

@@ -111,6 +111,7 @@ bool FOCRoadGraph::LoadFromLayoutJson(const FString& JsonText, FString& OutError
 		O->TryGetBoolField(TEXT("one_way"), S.bOneWay);
 		O->TryGetBoolField(TEXT("ztl"), S.bZTL);
 		O->TryGetBoolField(TEXT("tram"), S.bTram);
+		O->TryGetBoolField(TEXT("pedestrian"), S.bPedestrian);
 		double Wear = S.Wear;
 		if (O->TryGetNumberField(TEXT("wear"), Wear)) { S.Wear = static_cast<float>(Wear); }
 		Segments.Add(S);

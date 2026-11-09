@@ -99,6 +99,18 @@ bool FOCRoadOneWayTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestEqual(TEXT("One lane on the one-way segment"), OneWayLanes, 1);
+
+	// A footbridge across the square: walkers only.
+	FOCRoadSegment Foot;
+	Foot.A = 0;
+	Foot.B = 3;
+	Foot.bPedestrian = true;
+	G.AddSegment(Foot);
+	TestEqual(TEXT("Cars still drive round, not over the footbridge"), G.FindPath(0, 3).Num(), 4);
+	TestEqual(TEXT("Still no way back past the one-way"), G.FindPath(3, 0).Num(), 0);
+	FOCLaneGraph L2;
+	L2.Build(G);
+	TestEqual(TEXT("No lanes on the footbridge"), L2.GetSegmentLanes(G.NumSegments() - 1, 0).Num(), 0);
 	return true;
 }
 

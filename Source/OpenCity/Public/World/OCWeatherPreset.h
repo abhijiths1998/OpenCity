@@ -46,4 +46,8 @@ public:
 	 *  compensation or shaded streets go black. Night keeps the map's bias. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weather", meta = (ClampMin = "-2", ClampMax = "3"))
 	float ExposureBias = 0.f;
+
+	/** 0..1: how hard foliage sways (MPC_World.Wind, read by M_Master_Foliage). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weather", meta = (ClampMin = "0", ClampMax = "1"))
+	float WindStrength = 0.3f;
 };

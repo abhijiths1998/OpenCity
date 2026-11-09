@@ -164,6 +164,7 @@ Targets raised 2026-11-09 (approved): the first set (120 to 250) was written bef
 | `M_Master_Water` | Water | 352 | 440 |
 | `M_Master_KitGlass` | Glass: building windows (opaque, lit per instance at night) | 267 | 400 |
 | `M_Master_CarGlass` | Glass: car windows with rain drops (opaque, glossy) | 358 | 400 |
+| `M_Master_Foliage` | Trees and plants: two-sided foliage, per-instance variation, wetness, wind (WPO, off beyond 60 m) | 266 | 400 |
 | `M_Master_LampGlow` | Lamp glass (near-empty opaque master) | 192 | - |
 | `M_Master_Decal` | DBuffer decals | 383 | 400 |
 | `M_PP_Rain` | Screen rain post-process | 69 | - |
