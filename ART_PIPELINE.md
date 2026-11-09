@@ -139,29 +139,33 @@ Limits per master: at most 3 static switches, at most 8 texture samples. Prefer 
 
 | Master | Features | Base pass target |
 |---|---|---:|
-| `M_Master_Opaque` | PBR, detail normal, macro variation, world-aligned option, vertex-color dirt, moss and wear | 180 |
-| `M_Master_Building` | Trim sheets, grime, edge wear, rain streaks, night windows randomised per instance | 220 |
-| `M_Master_Road` | Asphalt, cracks, tire marks, wet puddles, RVT blending. Lane markings are decals | 200 |
-| `M_Master_CarPaint` | Clear Coat, flakes, dirt, scratches and damage | 220 |
-| `M_Master_Glass` | Reflections, dirt, rain droplets. Cheap translucency, no refraction on Low | 150 |
-| `M_Master_Foliage` | Two-sided foliage model, subsurface, cheap wind | 120 |
-| `M_Master_Character` | Skin subsurface, cloth, simple hair | 200 |
-| `M_Master_Water` | Ocean, shoreline foam. Depends on the M3 Water decision | 250 |
+| `M_Master_Opaque` (built as `M_Master_Surface`) | PBR, detail normal, macro variation, world-aligned option, vertex-color dirt, moss and wear | 450 |
+| `M_Master_Building` (built as `M_Master_Surface`) | Trim sheets, grime, edge wear, rain streaks, night windows randomised per instance | 450 |
+| `M_Master_Road` (and ground instances of `M_Master_Surface`) | Asphalt, cracks, tire marks, wet puddles, ripples, splashes. Lane markings in the shader, details as decals | 550 |
+| `M_Master_Landscape` | Four-layer terrain blend, wet puddles | 600 |
+| `M_Master_CarPaint` | Clear Coat, flakes, dirt, scratches and damage | 450 |
+| `M_Master_Glass` (`M_Master_KitGlass`, `M_Master_CarGlass`) | Reflections, dirt, rain droplets. Opaque dark glass (vehicle and building shells have no interiors) | 400 |
+| `M_Master_Foliage` | Two-sided foliage model, subsurface, cheap wind | 400 |
+| `M_Master_Character` | Skin subsurface, cloth, simple hair | 450 |
+| `M_Master_Water` | Ocean, shoreline foam. Depends on the M3 Water decision | 440 |
+| `M_Master_Decal` | DBuffer decals | 400 |
 
-**Measured (2026-11-09, `oc_material_stats.py`, SM6, base-pass pixel shader instructions).** The targets in the table above were written before measuring and assume no fixed cost, but on 5.8 SM6 a near-empty opaque master (`M_Master_LampGlow`) already counts 192. Targets are therefore reset to *original target + 190*; nothing else about them changed.
+Targets raised 2026-11-09 (approved): the first set (120 to 250) was written before measuring and assumed no fixed cost, but on 5.8 SM6 a near-empty opaque master already counts ~190, and cutting instructions further (577 to 419 on walls) did not change frame time.
 
-| Material (permutation) | Role | Measured | Target (+190) |
+**Measured (2026-11-09, `oc_material_stats.py`, SM6, base-pass pixel shader instructions):**
+
+| Material (permutation) | Role | Measured | Target |
 |---|---|---:|---:|
-| `M_Master_Surface`, wall instances (`MI_Kit_Wall`, trim, wood, metal) | Building | 419 | 410 |
-| `M_Master_Surface`, roof instances (`MI_Kit_Roof`) | Building | 398 | 410 |
-| `M_Master_Surface`, ground instances (`MI_Sidewalk`, `MI_Box_Stone`: puddles, ripples, splashes) | Road-like ground | 504 to 520 | 390 |
-| `M_Master_Road` | Road | 461 | 390 |
-| `M_Master_Landscape` | Landscape (no target yet) | 571 | - |
+| `M_Master_Surface`, wall instances (`MI_Kit_Wall`, trim, wood, metal) | Building | 419 | 450 |
+| `M_Master_Surface`, roof instances (`MI_Kit_Roof`) | Building | 398 | 450 |
+| `M_Master_Surface`, ground instances (`MI_Sidewalk`, `MI_Box_Stone`: puddles, ripples, splashes) | Road | 504 to 520 | 550 |
+| `M_Master_Road` | Road | 461 | 550 |
+| `M_Master_Landscape` | Landscape | 571 | 600 |
 | `M_Master_Water` | Water | 352 | 440 |
-| `M_Master_KitGlass` | Building windows (opaque, lit per instance at night) | 267 | 340 |
-| `M_Master_CarGlass` | Car windows with rain drops (opaque, glossy) | 358 | 340 |
+| `M_Master_KitGlass` | Glass: building windows (opaque, lit per instance at night) | 267 | 400 |
+| `M_Master_CarGlass` | Glass: car windows with rain drops (opaque, glossy) | 358 | 400 |
 | `M_Master_LampGlow` | Lamp glass (near-empty opaque master) | 192 | - |
-| `M_Master_Decal` | DBuffer decals | 383 | - |
+| `M_Master_Decal` | DBuffer decals | 383 | 400 |
 | `M_PP_Rain` | Screen rain post-process | 69 | - |
 
 Projection mode and wet ground are static switches (`ProjectionBit0/1`, `WetGround`) that feed the Custom node compile-time constants, so each instance compiles only its own paths: walls went from 577 to 419. Only ground instances, roads and terrain compile puddles, ripples and splash rings (+42 for the splashes); the whole wet block is a uniform branch and free when dry. **The cut did not show up in frame time** (Medium 79.8 and 77.2 FPS afterwards vs 83.3 before, within heat noise): the base pass is not what limits Medium. Car glass is opaque: the vehicle bodies are shells with no interior, so see-through glass would show an empty car, and the translucent versions measured 3,093 (forward shading), 1,869 (surface lighting) and 486 (volumetric, no reflections). The coupe's windows were UV islands of its paint slot; `Tools/blender/split_car_glass.py` moves them into a `Glass` slot (`SM_SportsCar_Body`).

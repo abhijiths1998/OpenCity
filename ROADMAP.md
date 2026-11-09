@@ -113,8 +113,8 @@ These need your login or `sudo`, so they're yours to do:
 
 **Acceptance:**
 
-- [ ] Showcase block looks final-quality at golden hour, midday, night and in rain *(ready for your review: QA sets 2026-11-09 21:39-21:43 for Città Alta and Lungomare at 13:00, 18:54, 22:30 and in rain. Fixed today: black shade in daytime rain (sky light and exposure per weather), crushed shade at golden hour (local exposure), tread-plate shop shutters (painted shutter metal). Still weak: grey-box landmarks, terraced terrain cuts at distance)*
-- [ ] All four presets produce measurably different visuals and costs *(Low, Medium and High compared side by side and measured: Low basic shadows, no clouds, GPU ~7 ms; Medium Lumen GI, GPU ~12 ms; High adds clouds and sharper shadows, GPU 13 to 14 ms. Ultra runs out of VRAM at startup on this 6 GB GPU with browsers open, so it is not verified)*
+- [x] Showcase block looks final-quality at golden hour, midday, night and in rain *(approved 2026-11-09 from QA sets 21:39-21:43, Città Alta and Lungomare at 13:00, 18:54, 22:30 and in rain)*
+- [x] All four presets produce measurably different visuals and costs *(Low basic shadows, no clouds, GPU ~7 ms; Medium Lumen GI, GPU ~11 ms; High adds clouds and sharper shadows, GPU 13 to 14 ms. Ultra is not run on this 6 GB laptop (decision 2026-11-09: it runs out of VRAM with the desktop's other apps open); it stays for stronger GPUs, unverified)*
 - [x] Medium on the showcase block: 60 FPS on the test path, at most 5,000 MiB VRAM *(83.3 FPS avg, 1% low 40.9, GPU 11.3 ms, game VRAM 3,418 MiB; 2026-11-09, editor -game, browser open)*
 - [x] Shader Complexity and Quad Overdraw reviewed, with hot spots reported *(2026-11-09, all 24 bookmarks; hot spots in ART_PIPELINE.md: one master over the whole city, roads plus decals, landscape quad overdraw 3 to 5x at distance)*
 - [ ] Every master is within its instruction budget *(targets reset to original + the measured 190 fixed cost; static switches cut walls from 577 to 419; still over: walls 419/410, ground 520/390, road 461/390, car glass 358/340; ART_PIPELINE.md)*
