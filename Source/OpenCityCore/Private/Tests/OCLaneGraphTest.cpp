@@ -174,9 +174,10 @@ bool FOCLaneGraphMareviaTest::RunTest(const FString& Parameters)
 	int32 Expected = 0;
 	for (const FOCRoadSegment& S : Roads.GetSegments())
 	{
-		Expected += 2 * FMath::Max(1, S.LanesPerDirection);
+		// Footbridges and vicoli carry no traffic; one-way streets only run A to B.
+		Expected += S.bPedestrian ? 0 : (S.bOneWay ? 1 : 2) * FMath::Max(1, S.LanesPerDirection);
 	}
-	TestEqual(TEXT("Two directions of every lane"), G.NumLanes(), Expected);
+	TestEqual(TEXT("Both directions of every two-way lane"), G.NumLanes(), Expected);
 
 	int32 Stranded = 0, WrongSide = 0, Reversed = 0;
 	for (int32 i = 0; i < G.NumLanes(); ++i)

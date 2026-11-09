@@ -130,6 +130,26 @@ bool FOCRoadValidatorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("One-way: nodes past the one-way can't get back"), R.Num(TEXT("oneway")), 4);
 	TestEqual(TEXT("Junction: unknown type 'zebra'"), R.Num(TEXT("junction")), 2);  // + roundabout with 2 roads
 	TestEqual(TEXT("Connectivity: everything reachable from 0"), R.Num(TEXT("connectivity")), 0);
+	TestEqual(TEXT("Clearance: nothing stacked in this layout"), R.Num(TEXT("clearance")), 0);
+
+	// A hairpin: two legs 12 m apart, 10 m apart in height, joined at an apex 25 m on.
+	FOCRoadGraph H;
+	const TCHAR* Hairpin = TEXT(R"({"roads": {
+		"profiles": {"tornanti": {"lane_cm": 300, "shoulder_right_cm": 50, "max_grade_pct": 50, "min_radius_m": 12, "design_speed_max_kmh": 60}},
+		"nodes": [[0,0,0],[50,0,0],[75,0,0],[100,0,0],[75,12,10],[50,12,10],[0,12,10]],
+		"segments": [
+			{"a":0,"b":1,"kind":"pass","lanes_per_dir":1,"width":7,"speed_kmh":50,"profile":"tornanti"},
+			{"a":1,"b":2,"kind":"pass","lanes_per_dir":1,"width":7,"speed_kmh":50,"profile":"tornanti"},
+			{"a":2,"b":3,"kind":"pass","lanes_per_dir":1,"width":7,"speed_kmh":50,"profile":"tornanti"},
+			{"a":3,"b":4,"kind":"pass","lanes_per_dir":1,"width":7,"speed_kmh":50,"profile":"tornanti"},
+			{"a":4,"b":5,"kind":"pass","lanes_per_dir":1,"width":7,"speed_kmh":50,"profile":"tornanti"},
+			{"a":5,"b":6,"kind":"pass","lanes_per_dir":1,"width":7,"speed_kmh":50,"profile":"tornanti"}
+		]}})");
+	TestTrue(TEXT("Hairpin parses"), H.LoadFromLayoutJson(Hairpin, Error));
+	FOCNetworkReport HR;
+	FOCNetworkValidator::ValidateRoads(H, FOCNetworkValidator::FOptions(), HR);
+	TestTrue(TEXT("Hairpin apex: ~6 m radius flagged"), HR.Num(TEXT("radius")) >= 1);
+	TestTrue(TEXT("Stacked legs: 5 m gap for 10 m of height flagged"), HR.Num(TEXT("clearance")) >= 1);
 	TestTrue(TEXT("Radius of three collinear points is huge"), FOCNetworkValidator::PlanRadiusCm(FVector(0), FVector(100, 0, 0), FVector(200, 0, 0)) > 1e9);
 	TestEqual(TEXT("Radius of a quarter circle"), FOCNetworkValidator::PlanRadiusCm(FVector(100, 0, 0), FVector(0, 100, 0), FVector(-100, 0, 0)), 100.0, 0.01);
 	return true;

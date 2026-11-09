@@ -229,14 +229,21 @@ Proposed infrastructure waits in `SourceArt/Infra/proposed_networks.json` until 
 - **Rail:** geometry, gradient, electrification for the line kind, stations.
 - **Water:** body type, depth, still water with flow, edge treatments.
 
-**Current result (2026-11-09): 88 issues, 20 errors.** All of them are Phase 3 work:
+**Current result (2026-11-10): 106 issues, 27 errors.** All of them are Phase 3 work:
 
 | Check | Result | Cause |
 |---|---|---|
 | Gradient | 20 errors, 23 warnings | Le Colline local roads climb at up to 23.6% (limit 10%); centro streets reach 19% (game limit 15%); the coast road reaches 14.8% |
-| Width | 45 warnings | 5.5 m local streets outside the centre, against the 6.5 m F minimum |
-| Speed | 0 | Fixed today by clamping |
-| Connectivity, ZTL gates, junctions | 0 | |
+| Radius | 7 errors, 9 warnings | **16 pass-road hairpins are tighter than the 12 m game minimum**, 7 of them under 6 m. The autopilot wrecked at one (node 728, 1695, 2352): its legs are 12 m apart and 10 m apart in height. |
+| Clearance | 3 warnings | Stacked legs too close for a slope between them, so a wall forms. This undercounts, because nodes are 25 m apart. |
+| Width | 44 warnings | 5.5 m local streets outside the centre, against the 6.5 m F minimum |
+| Speed, connectivity, ZTL gates, junctions | 0 | |
+
+**Proposed fixes for Phase 3 (approval needed):**
+
+1. **Hairpins.** Give the pass router a minimum turn radius: limit the turn per move and use longer moves where the route reverses. Then widen each apex into a bulb of radius 14 m or more, widened by 45/R per lane.
+2. **Stacked legs.** Where the legs still sit within height difference ÷ 1.6 of each other, add retaining walls from the Blender kit: rough stone on the old roads, concrete faced with stone on the 1930s pass road.
+3. **Steep local roads.** Re-grade the Le Colline local roads, adding switchbacks where needed, so they stay within 10% (+1).
 
 Not checkable from data yet, so they come with the geometry phases:
 - Gaps or overlaps between meshes, and kerb height mismatches

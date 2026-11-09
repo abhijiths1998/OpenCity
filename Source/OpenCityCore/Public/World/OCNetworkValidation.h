@@ -9,7 +9,7 @@ class FOCWaterNetwork;
 /** One finding of the network validator. */
 struct OPENCITYCORE_API FOCNetworkIssue
 {
-	FName Check;                 // profile, width, lanes, gradient, radius, speed, connectivity, oneway, ztl, tram, junction, rail_*, water_*
+	FName Check;                 // profile, width, lanes, gradient, radius, clearance, speed, connectivity, oneway, ztl, tram, junction, rail_*, water_*
 	bool bError = false;         // errors break gameplay or data; warnings are design deviations
 	int32 Segment = INDEX_NONE;  // road segment, rail line or water body index
 	int32 Node = INDEX_NONE;
@@ -40,6 +40,7 @@ public:
 		float WidthTolerance = 0.12f;   // segment width vs profile carriageway
 		float GradeTolerancePct = 1.f;  // the decree allows +1 point where justified
 		float MinTurnDeg = 3.f;         // radius is checked only where the road actually bends
+		float MaxTerrainSlope = 1.6f;   // m per m: the steepest the land between two roads may be (layout MAX_SLOPE)
 	};
 
 	static void ValidateRoads(const FOCRoadGraph& Roads, const FOptions& Options, FOCNetworkReport& Out);

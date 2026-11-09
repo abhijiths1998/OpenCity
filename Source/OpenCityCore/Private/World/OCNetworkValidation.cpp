@@ -16,6 +16,7 @@ namespace OCValidate
 	const FName Ztl(TEXT("ztl"));
 	const FName Tram(TEXT("tram"));
 	const FName Junction(TEXT("junction"));
+	const FName Clearance(TEXT("clearance"));
 	const FName RailGeometry(TEXT("rail_geometry"));
 	const FName RailGrade(TEXT("rail_gradient"));
 	const FName RailPower(TEXT("rail_power"));
@@ -177,11 +178,99 @@ void FOCNetworkValidator::ValidateRoads(const FOCRoadGraph& Roads, const FOption
 		{
 			continue;
 		}
-		const double R = PlanRadiusCm(Prev, Here, Next) / 100.0;
+		// Nodes sit ~25 m apart, so a hairpin's three-point circle is far wider than the bend the
+		// road really makes: there the apex radius is half the distance between the two legs.
+		const double R = (TurnDeg > 120.0 ? FMath::Min(PlanRadiusCm(Prev, Here, Next), PlanLength(Prev, Next) * 0.5)
+			: PlanRadiusCm(Prev, Here, Next)) / 100.0;
 		if (R < P->MinRadiusM)
 		{
 			Add(Out, Radius, R < P->MinRadiusM * 0.5, INDEX_NONE, n, Here, FString::Printf(TEXT("node %d (%s): %.0f m radius, minimum %.0f m (turn %.0f deg)"),
 				n, *S0.Profile.ToString(), R, P->MinRadiusM, TurnDeg));
+		}
+	}
+
+	// Clearance between stretches of road that are close in plan but not neighbours along the road
+	// (stacked hairpin legs, a street passing above another): the land between their edges must
+	// have room for a slope of MaxSlope, or it becomes a wall.
+	{
+		TMap<FIntPoint, TArray<int32>> Grid;  // 50 m cells
+		const double CellCm = 5000.0;
+		auto CellOf = [CellCm](const FVector& P) { return FIntPoint(FMath::FloorToInt32(P.X / CellCm), FMath::FloorToInt32(P.Y / CellCm)); };
+		for (int32 n = 0; n < Nodes.Num(); ++n)
+		{
+			if (!Roads.SegmentsAt(n).IsEmpty())
+			{
+				Grid.FindOrAdd(CellOf(Nodes[n].Location)).Add(n);
+			}
+		}
+		auto HalfWidth = [&](int32 n)
+		{
+			double W = 0.0;
+			for (const int32 si : Roads.SegmentsAt(n))
+			{
+				W = FMath::Max(W, 0.5 * Segs[si].WidthCm);
+			}
+			return W;
+		};
+		auto NearAlongRoad = [&](int32 From, int32 To, int32 Hops)
+		{
+			TArray<int32> Frontier = { From };
+			TSet<int32> Seen = { From };
+			for (int32 h = 0; h < Hops && !Frontier.IsEmpty(); ++h)
+			{
+				TArray<int32> Next;
+				for (const int32 N : Frontier)
+				{
+					for (const int32 si : Roads.SegmentsAt(N))
+					{
+						const int32 M = Segs[si].A == N ? Segs[si].B : Segs[si].A;
+						if (M == To)
+						{
+							return true;
+						}
+						if (!Seen.Contains(M))
+						{
+							Seen.Add(M);
+							Next.Add(M);
+						}
+					}
+				}
+				Frontier = MoveTemp(Next);
+			}
+			return false;
+		};
+		for (const TPair<FIntPoint, TArray<int32>>& Cell : Grid)
+		{
+			for (const int32 n : Cell.Value)
+			{
+				for (int32 dx = -1; dx <= 1; ++dx)
+				{
+					for (int32 dy = -1; dy <= 1; ++dy)
+					{
+						const TArray<int32>* Other = Grid.Find(Cell.Key + FIntPoint(dx, dy));
+						for (const int32 m : Other ? *Other : TArray<int32>())
+						{
+							if (m <= n)
+							{
+								continue;
+							}
+							const double Dz = FMath::Abs(Nodes[n].Location.Z - Nodes[m].Location.Z);
+							if (Dz < 200.0)
+							{
+								continue;
+							}
+							const double Gap = PlanLength(Nodes[n].Location, Nodes[m].Location) - HalfWidth(n) - HalfWidth(m);
+							const double Need = Dz / Options.MaxTerrainSlope;
+							if (Gap < Need && !NearAlongRoad(n, m, 3))
+							{
+								Add(Out, Clearance, Gap < Need * 0.5, INDEX_NONE, n, Nodes[n].Location,
+									FString::Printf(TEXT("nodes %d and %d: %.0f m apart edge to edge, %.0f m height difference needs %.0f m (wall)"),
+										n, m, FMath::Max(0.0, Gap) / 100.0, Dz / 100.0, Need / 100.0));
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
