@@ -185,7 +185,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		TEXT("Balcony_400"), TEXT("Shopfront_400"), TEXT("Door_200"), TEXT("GroundWindow_400"), TEXT("Corner_320"),
 		TEXT("Plinth_200"), TEXT("Plinth_400"), TEXT("Cornice_200"), TEXT("Cornice_400"), TEXT("Parapet_200"), TEXT("Parapet_400"),
 		TEXT("RoofHip"), TEXT("RoofFlat"), TEXT("Prop_WaterTank"), TEXT("Prop_ACUnit"), TEXT("Prop_Dish"), TEXT("Prop_Chimney"),
-		TEXT("Prop_RoofHut"), TEXT("Drainpipe_320") };
+		TEXT("Prop_RoofHut"), TEXT("Drainpipe_320"), TEXT("CorniceCorner") };
 	FPieces Pieces;
 	for (const TCHAR* Name : PieceNames)
 	{
@@ -200,6 +200,14 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		UE_LOG(LogOpenCity, Error, TEXT("BuildKitBuildings: no kit in %s (run Content/Python/oc_import_kit.py)"), *KitFolder);
 		return 0;
 	}
+
+	// Optional doorstep and shopfront clutter (Content/Python/oc_import_props.py).
+	auto LoadProp = [](const TCHAR* Name) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/Environment/Props/%s/%s.%s"), Name, Name, Name)); };
+	UStaticMesh* Pot = LoadProp(TEXT("SM_Prop_ceramic_pot"));
+	UStaticMesh* Fern = LoadProp(TEXT("SM_Prop_fern_02"));
+	UStaticMesh* Crate = LoadProp(TEXT("SM_Prop_plastic_crate_01"));
+	UStaticMesh* WoodCrate = LoadProp(TEXT("SM_Prop_wooden_crate_01"));
+	UStaticMesh* Cafe = LoadProp(TEXT("SM_Prop_outdoor_table_chair_set_01"));
 
 	TArray<FString> StyleNames;
 	for (const TSharedPtr<FJsonValue>& V : Root->GetArrayField(TEXT("building_styles")))
@@ -299,6 +307,18 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 			I.Data[7] = R.FRand() < 0.3f ? 1.f : 0.f;   // this window lit at night
 			Out.Add(I);
 		};
+		auto AddProp = [&](UStaticMesh* Mesh, const FVector& Loc, double YawDeg)
+		{
+			if (Mesh)
+			{
+				FInstance I;
+				I.Mesh = Mesh;
+				I.Transform = FTransform(FRotator(0.0, YawDeg, 0.0), FVector(Loc.X, Loc.Y, Height.HeightCm(Loc.X, Loc.Y) + 20.0));
+				for (int32 k = 0; k < 6; ++k) { I.Data[k] = 1.f; }
+				Out.Add(I);
+			}
+		};
+		const bool bSeafront = Style.Palette == 1;
 
 		for (int32 f = 0; f < 4; ++f)
 		{
@@ -323,7 +343,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 				const double Bw = BayW[b];
 				const bool bFour = Bw > 300.0;
 				const FVector BayStart = Start + Along * Offset;
-				Add(bFour ? TEXT("Plinth_400") : TEXT("Plinth_200"), BayStart + FVector(0, 0, Z0), Rot);
+				// Plinths go under plain ground bays only: doors and shopfronts carry their own stubs.
 				for (int32 s = 0; s < Storeys; ++s)
 				{
 					const FVector P = BayStart + FVector(0, 0, Z0 + s * StoreyCm);
@@ -334,20 +354,43 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 							Add(TEXT("Door_200"), P, Rot);
 							if (bFour)
 							{
+								Add(TEXT("Plinth_200"), BayStart + Along * 200.0 + FVector(0, 0, Z0), Rot);
+							}
+							if (R.FRand() < 0.55f)  // potted plants either side of the step
+							{
+								const FVector Step = BayStart + Fa.Out * 60.0;
+								AddProp(R.FRand() < 0.5f ? Pot : Fern, Step + Along * 20.0, Rot.Yaw + R.FRandRange(0.f, 360.f));
+								AddProp(Pot, Step + Along * 180.0, Rot.Yaw + R.FRandRange(0.f, 360.f));
+							}
+							if (bFour)
+							{
 								Add(TEXT("Wall_200"), P + Along * 200.0, Rot);
 							}
 						}
 						else if (!bFour)
 						{
 							Add(TEXT("Wall_200"), P, Rot);
+							Add(TEXT("Plinth_200"), P, Rot);
 						}
 						else if (Fa.bStreet && R.FRand() < Style.Shop)
 						{
 							Add(TEXT("Shopfront_400"), P, Rot);
+							const FVector Front = BayStart + Fa.Out * 90.0;
+							const float Pick = R.FRand();
+							if (bSeafront && Pick < 0.45f)
+							{
+								AddProp(Cafe, Front + Fa.Out * 60.0 + Along * 200.0, Rot.Yaw + 90.0);
+							}
+							else if (Pick < 0.35f)
+							{
+								AddProp(R.FRand() < 0.6f ? Crate : WoodCrate, Front + Along * R.FRandRange(30.f, 90.f), Rot.Yaw + R.FRandRange(-20.f, 20.f));
+								AddProp(Crate, Front + Along * R.FRandRange(300.f, 370.f), Rot.Yaw + R.FRandRange(-20.f, 20.f));
+							}
 						}
 						else
 						{
 							Add(R.FRand() < (Fa.bStreet ? 0.8 : Style.SideWindows * 0.6) ? TEXT("GroundWindow_400") : TEXT("Wall_400"), P, Rot);
+							Add(TEXT("Plinth_400"), P, Rot);
 						}
 						continue;
 					}
@@ -382,17 +425,24 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 				Add(TEXT("Corner_320"), Start + FVector(0, 0, Z0 + s * StoreyCm), Rot);
 				if (Fa.bStreet && f % 2 == 0)
 				{
-					Add(TEXT("Drainpipe_320"), Start + Along * 45.0 + Fa.Out * 8.0 + FVector(0, 0, Z0 + s * StoreyCm), Rot);
+					// The pipe's brackets reach Y = 0, so its pivot sits on the wall face.
+					Add(TEXT("Drainpipe_320"), Start + Along * 45.0 + FVector(0, 0, Z0 + s * StoreyCm), Rot);
 				}
 			}
+			Add(TEXT("CorniceCorner"), Start + FVector(0, 0, TopZ), Rot);  // mitre block: closes the cornice at the corner
 		}
 
 		// Roof.
 		const FRotator Yaw(0.0, FMath::RadiansToDegrees(FMath::Atan2(U.Y, U.X)), 0.0); // yaw only: roofs stay upright
 		if (bPitched)
 		{
+			// Ridge along the piece's X: turn it to run along the longer side; 0.4 m eaves all round,
+			// sitting on top of the cornice.
 			const double Ridge = FMath::Clamp(FMath::Min(W, D) / 100.0 * 0.28, 1.4, 4.0);
-			Add(TEXT("RoofHip"), C + FVector(0, 0, TopZ + 30.0), Yaw, FVector(W / 100.0 + 0.5, D / 100.0 + 0.5, Ridge));
+			const bool bTurn = D > W;
+			const FRotator RoofRot(0.0, Yaw.Yaw + (bTurn ? 90.0 : 0.0), 0.0);
+			const FVector RoofScale = bTurn ? FVector(D / 100.0 + 0.8, W / 100.0 + 0.8, Ridge) : FVector(W / 100.0 + 0.8, D / 100.0 + 0.8, Ridge);
+			Add(TEXT("RoofHip"), C + FVector(0, 0, TopZ + 35.0), RoofRot, RoofScale);
 			if (R.FRand() < 0.5)
 			{
 				Add(TEXT("Prop_Chimney"), C + U * (R.FRandRange(-0.3f, 0.3f) * W) + Vw * (R.FRandRange(-0.2f, 0.2f) * D) + FVector(0, 0, TopZ + 30.0), Yaw);
@@ -442,5 +492,160 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 	}
 	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: %d buildings, %d piece instances in %d chunks%s"), Buildings, Count, Chunks.Num(),
 		Missing.IsEmpty() ? TEXT("") : *FString::Printf(TEXT("; missing pieces skipped: %s"), *FString::Join(Missing, TEXT(", "))));
+	return Count;
+}
+
+
+int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+	float SidewalkWidthCm, float ChunkSizeCm, int32 Seed)
+{
+	using namespace OCKit;
+	FString Text;
+	TSharedPtr<FJsonObject> Root;
+	OCWorld::FHeightField Height;
+	FOCRoadGraph Roads;
+	FString Error;
+	if (!World || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root.IsValid()
+		|| !Height.Load(HeightmapPng, Root) || !Roads.LoadFromLayoutJson(Text, Error))
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetProps: cannot read the layout or heightmap"));
+		return 0;
+	}
+	auto LoadProp = [](const TCHAR* Name) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/Environment/Props/%s/%s.%s"), Name, Name, Name)); };
+	UStaticMesh* Lamp = LoadProp(TEXT("SM_Prop_street_lamp_01"));
+	UStaticMesh* Trees[2] = { LoadProp(TEXT("SM_Prop_island_tree_01")), LoadProp(TEXT("SM_Prop_island_tree_02")) };
+	UStaticMesh* Bin = LoadProp(TEXT("SM_Prop_metal_trash_can"));
+	UStaticMesh* Hydrant = LoadProp(TEXT("SM_Prop_fire_hydrant"));
+	if (!Lamp)
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetProps: props not imported (Content/Python/oc_import_props.py)"));
+		return 0;
+	}
+
+	// Junction clearance per node: half the widest road there plus a margin (as FOCLaneGraph).
+	const TArray<FOCRoadNode>& Nodes = Roads.GetNodes();
+	TArray<double> Clear;
+	Clear.Init(0.0, Nodes.Num());
+	TArray<int32> Degree;
+	Degree.Init(0, Nodes.Num());
+	for (const FOCRoadSegment& S : Roads.GetSegments())
+	{
+		Clear[S.A] = FMath::Max(Clear[S.A], S.WidthCm * 0.5 + SidewalkWidthCm + 300.0);
+		Clear[S.B] = FMath::Max(Clear[S.B], S.WidthCm * 0.5 + SidewalkWidthCm + 300.0);
+		++Degree[S.A];
+		++Degree[S.B];
+	}
+
+	TMap<FIntPoint, TArray<FInstance>> Chunks;
+	FRandomStream R(Seed);
+	int32 Lamps = 0, TreeCount = 0;
+	auto Put = [&](UStaticMesh* Mesh, const FVector& At, double YawDeg, double Scale)
+	{
+		if (!Mesh)
+		{
+			return;
+		}
+		FInstance I;
+		I.Mesh = Mesh;
+		I.Transform = FTransform(FRotator(0.0, YawDeg, 0.0), FVector(At.X, At.Y, Height.HeightCm(At.X, At.Y) + 27.0), FVector(Scale));
+		for (int32 k = 0; k < 6; ++k) { I.Data[k] = 1.f; }
+		Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(At.X / ChunkSizeCm), FMath::FloorToInt32(At.Y / ChunkSizeCm))).Add(I);
+	};
+
+	for (const FOCRoadSegment& S : Roads.GetSegments())
+	{
+		const bool bSidewalk = S.Kind == TEXT("avenue") || S.Kind == TEXT("street") || S.Kind == TEXT("coast");
+		if (!bSidewalk || !S.Bridge.IsNone())
+		{
+			continue;
+		}
+		const FVector A = Nodes[S.A].Location, B = Nodes[S.B].Location;
+		const FVector Dir = FVector(B - A).GetSafeNormal2D();
+		const FVector Right(-Dir.Y, Dir.X, 0.0);
+		const double Len = FVector::Dist2D(A, B);
+		const double From = Clear[S.A], To = Len - Clear[S.B];
+		if (To - From < 400.0)
+		{
+			continue;
+		}
+		const bool bBoulevard = S.Kind == TEXT("avenue") || S.Kind == TEXT("coast");
+		const double Curb = S.WidthCm * 0.5 + 55.0;                  // lamps and bins at the kerb
+		const double Mid = S.WidthCm * 0.5 + SidewalkWidthCm * 0.5;  // trees in the middle of the pavement
+		auto At = [&](double D, double Side, double Off) { return A + Dir * D + Right * (Side * Off); };
+		const double SegYaw = FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
+
+		// Street lights every 28 m, staggered across the two sides; both sides on boulevards.
+		int32 k = 0;
+		for (double D = From + 6.0 * 100.0; D <= To; D += 2800.0, ++k)
+		{
+			for (int32 Side = -1; Side <= 1; Side += 2)
+			{
+				if (!bBoulevard && (k + (Side > 0 ? 1 : 0)) % 2 == 0)
+				{
+					continue;
+				}
+				// The lamp's arm reaches over the road (+X of the model toward the road centre).
+				Put(Lamp, At(D, Side, Curb), SegYaw + (Side > 0 ? 180.0 : 0.0) + 90.0, 1.25);
+				++Lamps;
+			}
+		}
+		// Trees every 10 m on boulevards, kept 3 m clear of the lamps.
+		if (bBoulevard)
+		{
+			for (double D = From + 1100.0; D <= To; D += 1000.0)
+			{
+				if (FMath::Fmod(D - (From + 600.0), 2800.0) < 300.0 || FMath::Fmod(D - (From + 600.0), 2800.0) > 2500.0)
+				{
+					continue;
+				}
+				for (int32 Side = -1; Side <= 1; Side += 2)
+				{
+					Put(Trees[R.RandRange(0, 1)], At(D + R.FRandRange(-60.f, 60.f), Side, Mid), R.FRandRange(0.f, 360.f), R.FRandRange(0.85f, 1.15f));
+					++TreeCount;
+				}
+			}
+		}
+		// A bin near each junction end, a hydrant every ~90 m.
+		for (int32 Side = -1; Side <= 1; Side += 2)
+		{
+			if (R.FRand() < 0.6f) { Put(Bin, At(From + 150.0, Side, Curb + 30.0), SegYaw + 90.0, 1.0); }
+			if (R.FRand() < 0.4f) { Put(Bin, At(To - 150.0, Side, Curb + 30.0), SegYaw + 90.0, 1.0); }
+		}
+		for (double D = From + R.FRandRange(500.f, 3000.f); D < To; D += 9000.0)
+		{
+			Put(Hydrant, At(D, R.FRand() < 0.5f ? -1.0 : 1.0, Curb + 10.0), SegYaw, 1.0);
+		}
+	}
+
+	int32 Count = 0;
+	for (const TPair<FIntPoint, TArray<FInstance>>& Pair : Chunks)
+	{
+		FBox Bounds(ForceInit);
+		for (const FInstance& I : Pair.Value)
+		{
+			Bounds += I.Transform.GetLocation();
+		}
+		AOCKitBuildingChunk* Actor = World->SpawnActor<AOCKitBuildingChunk>(FVector(Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.Min.Z), FRotator::ZeroRotator);
+		if (!Actor)
+		{
+			continue;
+		}
+		for (const FInstance& I : Pair.Value)
+		{
+			UInstancedStaticMeshComponent* ISM = Actor->GetOrAddPiece(I.Mesh);
+			// Lamps, trunks, bins and hydrants are solid; leaves, ferns and pots are not.
+			if (I.Mesh == Lamp || I.Mesh == Bin || I.Mesh == Hydrant)
+			{
+				ISM->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			}
+			const int32 Index = ISM->AddInstance(I.Transform, /*bWorldSpace*/ true);
+			ISM->SetCustomData(Index, TArrayView<const float>(I.Data, AOCKitBuildingChunk::NumCustomData));
+			++Count;
+		}
+		Actor->SetActorLabel(FString::Printf(TEXT("Street_Props_%d_%d"), Pair.Key.X, Pair.Key.Y));
+		Actor->SetFolderPath(TEXT("Props"));
+	}
+	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetProps: %d props (%d lamps, %d trees) in %d chunks"), Count, Lamps, TreeCount, Chunks.Num());
 	return Count;
 }

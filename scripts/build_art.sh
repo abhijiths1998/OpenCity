@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Rebuild all final-art assets from clean (ART_PIPELINE.md):
+#   1. fetch CC0 textures and models (skips files already downloaded, MD5-checked)
+#   2. merge each model into one mesh (Blender) and build the modular building kit (Blender)
+#   3. import textures and build the masters and instances, then props, then the kit (Unreal)
+# Then run scripts/build_world.sh and scripts/build_hlod.sh to put it all in the map.
+# Usage: scripts/build_art.sh [--skip-fetch]
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+oc_require_engine
+BLENDER="${OC_BLENDER:-$HOME/Applications/blender-4.2/blender}"
+[[ -x "$BLENDER" ]] || { echo "error: Blender 4.2 LTS not found at $BLENDER (see CLAUDE.md)" >&2; exit 1; }
+cd "$PROJECT_ROOT"
+
+if [[ "${1:-}" != "--skip-fetch" ]]; then
+  python3 -I Tools/fetch_assets.py
+  python3 -I Tools/fetch_models.py
+fi
+
+# Props: one mesh each; packs with several variants keep one (object-name regex).
+declare -A KEEP=( [metal_trash_can]='metal_trash_can(_handle_left|_handle_right)?' [fire_hydrant]='.*_aged' [fern_02]='fern_02_b' )
+mkdir -p SourceArt/Downloads/Props
+for slug in street_lamp_01 metal_trash_can fire_hydrant island_tree_01 island_tree_02 fern_02 ceramic_pot \
+            plastic_crate_01 wooden_crate_01 Barrel_01 outdoor_table_chair_set_01; do
+  "$BLENDER" -b --factory-startup -P Tools/blender/combine_gltf.py -- \
+    SourceArt/Downloads/Models/$slug/*.gltf "SourceArt/Downloads/Props/SM_Prop_$slug.glb" ${KEEP[$slug]:+"${KEEP[$slug]}"} \
+    | grep -E "COMBINED|Error"
+done
+
+"$BLENDER" -b --factory-startup -P Tools/blender/make_kit.py | grep -vE "^(Blender|Read|Info)" | tail -5
+
+OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_art_materials.py
+scripts/run_python.sh Content/Python/oc_import_props.py
+scripts/run_python.sh Content/Python/oc_import_kit.py
+echo "ART OK. Next: scripts/build_world.sh && scripts/build_hlod.sh"

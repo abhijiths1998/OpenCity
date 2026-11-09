@@ -16,6 +16,7 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `T
 
 | Asset | Source | URL | Author | License | Where used | Date |
 |---|---|---|---|---|---|---|
+| Marevia building kit (26 pieces, `SM_Kit_*`) | Own work: `Tools/blender/make_kit.py` (Blender 4.2) | n/a | OpenCity | Project-owned | All buildings (`BuildKitBuildings`) | 2026-11-09 |
 | `plastered_wall` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/plastered_wall | Poly Haven | CC0 | Kit: building walls (MI_Kit_Wall) | 2026-11-09 |
 | `white_stucco` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/white_stucco | Poly Haven | CC0 | Kit: Lungomare and Le Colline walls (alternate plaster) | 2026-11-09 |
 | `old_sandstone_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/old_sandstone_02 | Poly Haven | CC0 | Kit: stone trims, sills, cornices, quoins, plinths (MI_Kit_Trim) | 2026-11-09 |

@@ -85,6 +85,16 @@ public:
 		const FString& KitFolder, float ChunkSizeCm, int32 Seed);
 
 	/**
+	 * Street dressing from the road graph (props imported by oc_import_props.py): street lights every
+	 * 28 m at the kerb, trees every 10 m on avenues and the coast road, bins near junctions, hydrants.
+	 * Junctions, bridges and alleys stay clear. One AOCKitBuildingChunk per ChunkSizeCm square
+	 * (folder "Props"); lamps, bins and hydrants collide. Returns the number of props.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 BuildStreetProps(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+		float SidewalkWidthCm, float ChunkSizeCm, int32 Seed);
+
+	/**
 	 * A runtime Data Layer asset (created at PackagePath/Name, or reused) with an instance in the
 	 * world, initially Activated or Unloaded. Returns the asset, or null on failure.
 	 */

@@ -178,9 +178,9 @@ def setup_look():
             c = a.get_component_by_class(unreal.DirectionalLightComponent)
             L.set_props(c, light_color=unreal.Color(255, 240, 220, 255))
         elif isinstance(a, unreal.ExponentialHeightFog):
-            L.set_props(a.get_component_by_class(unreal.ExponentialHeightFogComponent), fog_density=0.012,
-                        fog_height_falloff=0.08, fog_inscattering_luminance=unreal.LinearColor(0.55, 0.62, 0.72, 1.0),
-                        start_distance=3000.0)
+            L.set_props(a.get_component_by_class(unreal.ExponentialHeightFogComponent), fog_density=0.005,
+                        fog_height_falloff=0.12, fog_inscattering_luminance=unreal.LinearColor(0.55, 0.62, 0.72, 1.0),
+                        start_distance=6000.0)
     cloud = L.spawn(unreal.VolumetricCloud, label="Clouds", folder="Lighting")  # r.VolumetricCloud off on Low/Medium
     cloud.set_editor_property("is_spatially_loaded", False)
     ppv = L.spawn(unreal.PostProcessVolume, label="PostProcess_Marevia", folder="Lighting")
@@ -243,6 +243,11 @@ def main():
     setup_look()
     build_roads(world, layout)
     build_buildings(world)
+    if unreal.load_asset("/Game/Environment/Props/SM_Prop_street_lamp_01/SM_Prop_street_lamp_01"):
+        n = unreal.OCWorldBuilderLibrary.build_street_props(
+            world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"),
+            layout["roads"]["sidewalk_width"] * 100.0, 25200.0, 1951)
+        log(f"street props: {n}")
     oc_m3_story.build(world, layout)
     oc_m3_water.build(layout)
     build_perf_path(layout)

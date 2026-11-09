@@ -737,12 +737,12 @@ def flatten_roads(h, g):
 
 BUILDING_STYLES = ["oldtown", "grid90", "grid120", "beach", "village", "terminal", "hills"]
 # w, d, h ranges (m), gap range along the road, slope limit (m), extra setback (m)
-BUILDING_PARAMS = {
-    "oldtown":  dict(w=(7, 12), d=(9, 14), h=(9, 18), gap=(0, 0.5), slope=8, setback=(1.5, 1.5), extra=0),
-    "grid90":   dict(w=(10, 20), d=(12, 20), h=(10, 24), gap=(0.5, 2), slope=5, setback=(1.5, 3), extra=0),
-    "grid120":  dict(w=(20, 45), d=(20, 35), h=(7, 14), gap=(3, 8), slope=4, setback=(1.5, 3), extra=0),
-    "beach":    dict(w=(15, 30), d=(12, 20), h=(12, 30), gap=(3, 8), slope=5, setback=(1.5, 3), extra=0),
-    "village":  dict(w=(6, 10), d=(8, 12), h=(6, 10), gap=(0.5, 3), slope=6, setback=(1.5, 3), extra=0),
+BUILDING_PARAMS = {  # setback: m from the pavement edge (town frontages sit on the pavement)
+    "oldtown":  dict(w=(7, 12), d=(9, 14), h=(9, 18), gap=(0, 0.3), slope=8, setback=(0.2, 0.4), extra=0),
+    "grid90":   dict(w=(10, 20), d=(12, 20), h=(10, 24), gap=(0, 1.0), slope=5, setback=(0.2, 0.6), extra=0),
+    "grid120":  dict(w=(20, 45), d=(20, 35), h=(7, 14), gap=(3, 8), slope=4, setback=(1.0, 3), extra=0),
+    "beach":    dict(w=(15, 30), d=(12, 20), h=(12, 30), gap=(1, 4), slope=5, setback=(0.3, 1.0), extra=0),
+    "village":  dict(w=(6, 10), d=(8, 12), h=(6, 10), gap=(0, 1.5), slope=6, setback=(0.2, 0.8), extra=0),
     "terminal": dict(w=(25, 50), d=(15, 30), h=(8, 16), gap=(6, 15), slope=3, setback=(1.5, 3), extra=0),
     "hills":    dict(w=(12, 20), d=(10, 16), h=(6, 9), gap=(25, 60), slope=6, setback=(1.5, 3), extra=6),
 }
@@ -777,7 +777,9 @@ def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
     ground_ok &= ~((np.abs(xs[None, :] - rx[:, None]) <= rhw[:, None]) & (ys[:, None] < DAM_Y + 30))
     for (x0, y0, x1, y1) in (DARSENA, RESERVOIR):
         ground_ok[max(0, int(y0 - Y_MIN)):int(y1 - Y_MIN) + 1, max(0, int(x0)):int(x1) + 1] = False
-    blocked = ~ground_ok | (best < 1.5)
+    # best = metres past (road + pavement + 1 m): frontages may come to 0.3 m from the pavement edge.
+    FRONTAGE = -0.7
+    blocked = ~ground_ok | (best < FRONTAGE)
     for _, _, (x, y), (fw, fd), _, _ in landmarks:
         blocked[max(0, int(y - fd / 2 - 8 - Y_MIN)):int(y + fd / 2 + 8 - Y_MIN) + 2,
                 max(0, int(x - fw / 2 - 8)):int(x + fw / 2 + 8) + 2] = True
@@ -817,7 +819,7 @@ def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
         ux, uy = (bx - ax) / L, (by - ay) / L
         # Rasterise exactly what gets stored (rounded), so the self-check below sees the same masks.
         yaw = math.radians(round(math.degrees(math.atan2(uy, ux)), 1))
-        edge = seg["width"] / 2 + (SIDEWALK_W if seg["kind"] in SIDEWALK_KINDS else 0.0) + 1.0
+        edge = seg["width"] / 2 + (SIDEWALK_W if seg["kind"] in SIDEWALK_KINDS else 0.0) + 0.3
         for side in (1, -1):
             s = rng.uniform(0, 3)
             while s < L:
@@ -868,7 +870,7 @@ def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
         y0, y1, x0, x1, mk = rect_mask(b["pos"][0], b["pos"][1], b["size"][0], b["size"][1], math.radians(b["yaw"]))
         chk[y0:y1, x0:x1] += mk
     assert chk.max() <= 1, "buildings overlap"
-    assert not (best[chk > 0] < 1.5 - 0.15).any(), "building inside road clearance"
+    assert not (best[chk > 0] < FRONTAGE - 0.15).any(), "building inside road clearance"
     return out
 
 
