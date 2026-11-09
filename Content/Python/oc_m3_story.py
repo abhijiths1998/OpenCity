@@ -102,6 +102,24 @@ def shape(label, folder, center_m, size_m, mat, mesh=CUBE, rot=(0, 0, 0)):
 # --------------------------------------------------------------------------------------------
 # Bridges
 
+def river_span(layout, a, ux, uy, length, margin=6.0):
+    """(first, last) distance along a bridge that lies over the Fiume Ardo channel plus `margin`,
+    or None if the bridge doesn't cross the river."""
+    line = layout["water"]["river"]["centerline"]
+
+    def dist_to_river(x, y):
+        best = 1e18
+        for (x0, y0), (x1, y1) in zip(line, line[1:]):
+            dx, dy = x1 - x0, y1 - y0
+            t = max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / max(dx * dx + dy * dy, 1e-9)))
+            best = min(best, math.hypot(x - x0 - t * dx, y - y0 - t * dy))
+        return best
+
+    over = [d for d in range(0, int(length) + 1)
+            if dist_to_river(a[0] + ux * d, a[1] + uy * d) < river_half_width(a[1] + uy * d) + margin]
+    return (float(over[0]), float(over[-1])) if over else None
+
+
 def build_bridges(layout, layers):
     """Decks (1 m thick, 5 m onto each bank) and 1.1 m parapets. Moving bridges: the span over the
     water (all but the 30 m of approach at each end) goes in the Open layer, and its raised or
@@ -122,6 +140,8 @@ def build_bridges(layout, layers):
             t = d / length
             return a[0] + ux * d, a[1] + uy * d, a[2] + (b[2] - a[2]) * t
 
+        wet = river_span(layout, a, ux, uy, length)
+
         def deck(d0, d1, suffix, layer=None):
             p0, p1 = at(d0), at(d1)
             mid = tuple((p0[i] + p1[i]) / 2.0 for i in range(3))
@@ -130,8 +150,10 @@ def build_bridges(layout, layers):
             actors = [shape(f"Bridge_{s['bridge']}_{suffix}", folder, (mid[0], mid[1], mid[2] - 0.5 - DECK_DROP_M),
                             (d1 - d0, width, 1.0), "Bridge", rot=(0, pitch, yaw))]
             # Parapets along both edges, but only clear of the bank nodes: the deck runs 5 m onto the
-            # bank, and parapets there stood across the junction roads at each end.
-            r0, r1 = max(d0, RAIL_CLEAR_M), min(d1, length - RAIL_CLEAR_M)
+            # bank, and parapets there stood across the junction roads at each end. Over the river
+            # they also stop 6 m past the channel: the Passerella's west end lies beyond the riverside
+            # avenue, and parapets across its lanes stopped traffic (drive test 2026-11-09).
+            r0, r1 = max(d0, RAIL_CLEAR_M, wet[0] if wet else -1e9), min(d1, length - RAIL_CLEAR_M, wet[1] if wet else 1e9)
             q0, q1 = at(r0), at(r1)
             rmid = tuple((q0[i] + q1[i]) / 2.0 for i in range(3))
             for side in (-1, 1) if r1 - r0 > 1.0 else ():

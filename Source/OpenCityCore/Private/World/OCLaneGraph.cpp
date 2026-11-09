@@ -94,7 +94,9 @@ void FOCLaneGraph::Build(const FOCRoadGraph& Roads)
 		{
 			continue;
 		}
-		for (int32 Dir = 0; Dir < (Seg.bOneWay ? 1 : 2); ++Dir)  // one-way: A to B only
+		// One-way: A to B only. A one-way into a dead end has no U-turn lane; FOCNetworkValidator
+		// reports that node as a one-way trap (error), so such data never ships.
+		for (int32 Dir = 0; Dir < (Seg.bOneWay ? 1 : 2); ++Dir)
 		{
 			const int32 From = Dir == 0 ? Seg.A : Seg.B;
 			const int32 To = Dir == 0 ? Seg.B : Seg.A;
