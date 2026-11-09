@@ -119047,6 +119047,159 @@
    "top": 17.98,
    "style": 4,
    "district": "BorgoMarino"
+  },
+  {
+   "pos": [
+    630.0,
+    330.0
+   ],
+   "size": [
+    70.0,
+    36.0
+   ],
+   "yaw": 0.0,
+   "base": 3.84,
+   "top": 11.75,
+   "storeys": 2,
+   "style": 1,
+   "district": "PortoVecchio",
+   "landmark": "FishMarket"
+  },
+  {
+   "pos": [
+    702.0,
+    1217.12
+   ],
+   "size": [
+    30.0,
+    42.0
+   ],
+   "yaw": 0.0,
+   "base": 42.61,
+   "top": 60.53,
+   "storeys": 4,
+   "style": 0,
+   "district": "CittaAlta",
+   "landmark": "SantaLucia"
+  },
+  {
+   "pos": [
+    570.0,
+    1184.0
+   ],
+   "size": [
+    22.0,
+    18.0
+   ],
+   "yaw": 0.0,
+   "base": 33.12,
+   "top": 49.15,
+   "storeys": 4,
+   "style": 0,
+   "district": "CittaAlta",
+   "landmark": "CastrovanniTownhouse"
+  },
+  {
+   "pos": [
+    1124.0,
+    1010.0
+   ],
+   "size": [
+    44.0,
+    36.0
+   ],
+   "yaw": 0.0,
+   "base": 10.77,
+   "top": 31.45,
+   "storeys": 6,
+   "style": 1,
+   "district": "CittaAlta",
+   "landmark": "PoliceHQ"
+  },
+  {
+   "pos": [
+    447.0,
+    1486.0
+   ],
+   "size": [
+    60.0,
+    40.0
+   ],
+   "yaw": 0.0,
+   "base": 15.03,
+   "top": 41.35,
+   "storeys": 7,
+   "style": 1,
+   "district": "CittaAlta",
+   "landmark": "OspedaleSanMartino"
+  },
+  {
+   "pos": [
+    2250.0,
+    980.0
+   ],
+   "size": [
+    48.0,
+    30.0
+   ],
+   "yaw": 0.0,
+   "base": 10.84,
+   "top": 24.74,
+   "storeys": 4,
+   "style": 2,
+   "district": "LeFornaci",
+   "landmark": "StazioneCentrale"
+  },
+  {
+   "pos": [
+    2175.0,
+    260.0
+   ],
+   "size": [
+    40.0,
+    30.0
+   ],
+   "yaw": 0.0,
+   "base": 3.39,
+   "top": 14.5,
+   "storeys": 3,
+   "style": 3,
+   "district": "Lungomare",
+   "landmark": "ClubMedusa"
+  },
+  {
+   "pos": [
+    2615.0,
+    312.0
+   ],
+   "size": [
+    40.0,
+    24.0
+   ],
+   "yaw": 0.0,
+   "base": 3.0,
+   "top": 42.67,
+   "storeys": 12,
+   "style": 3,
+   "district": "Lungomare",
+   "landmark": "HotelRiviera"
+  },
+  {
+   "pos": [
+    643.0,
+    1936.0
+   ],
+   "size": [
+    24.0,
+    30.0
+   ],
+   "yaw": 0.0,
+   "base": 67.52,
+   "top": 82.62,
+   "storeys": 3,
+   "style": 6,
+   "district": "LeColline",
+   "landmark": "VillaSalvi"
   }
  ],
  "start": {

@@ -173,9 +173,14 @@ def build_bridges(layout, layers):
 # --------------------------------------------------------------------------------------------
 # Landmarks
 
+# Parts replaced by the kit-built main volume (make_marevia_layout.py KIT_LANDMARKS).
+KIT_REPLACED = {"Main", "Roof", "Tower", "Crown", "Band", "Neon", "Door"}
+
+
 def build_landmarks(layout):
     crest = layout["water"]["reservoir_level"] + 2.0
     built = []
+    kit_built = {b["landmark"] for b in layout["buildings"] if b.get("landmark")}
     for lm in layout["landmarks"]:
         name, kind = lm["name"], lm["kind"]
         x, y = lm["pos"]
@@ -187,6 +192,11 @@ def build_landmarks(layout):
         def part(suffix, off, size, mat="Landmark", mesh=CUBE, rot=(0, 0, 0), sink=2.0):
             """off = (east, north, base above ground) in m; the base sinks `sink` m into slopes."""
             label = f"LM_{name}" if suffix == "Main" else f"LM_{name}_{suffix}"
+            if name in kit_built and suffix in KIT_REPLACED:
+                if suffix == "Main":  # keep the named marker missions and checks look for
+                    marker = L.spawn(unreal.TargetPoint, cm(x + off[0], y + off[1], g + off[2] + 1.0), (0, 0, 0), label, folder)
+                    marker.set_editor_property("is_spatially_loaded", False)
+                return None
             return shape(label, folder, (x + off[0], y + off[1], g + off[2] - sink + (size[2] + sink) / 2.0),
                          (size[0], size[1], size[2] + sink), mat, mesh, rot)
 

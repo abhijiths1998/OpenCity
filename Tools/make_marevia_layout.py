@@ -627,6 +627,42 @@ def drop_orphan_nodes(g):
         seg["a"], seg["b"] = remap[seg["a"]], remap[seg["b"]]
 
 
+# Landmarks whose main volume is built from the building kit (Tools/blender/KIT_SPEC.md) instead of a
+# grey box: kind -> (offset of the main volume as a fraction of (w, d), its size fraction, storeys,
+# building style). oc_m3_story.py keeps their other parts (bell tower, wings, canopies...).
+KIT_LANDMARKS = {
+    "church":  ((0.0, -0.125), (1.0, 0.75), 4, "oldtown"),
+    "house":   ((0.0, 0.0), (1.0, 1.0), 4, "oldtown"),
+    "civic":   ((0.0, 0.0), (1.0, 1.0), None, "grid90"),
+    "hall":    ((0.0, 0.0), (1.0, 1.0), 2, "grid90"),
+    "club":    ((0.0, 0.0), (1.0, 1.0), 3, "beach"),
+    "hotel":   ((0.0, 0.0), (1.0, 1.0), None, "beach"),
+    "station": ((0.0, 0.0), (0.4, 1.0), 4, "grid120"),
+    "villa":   ((-0.2, 0.0), (0.6, 1.0), 3, "hills"),
+}
+
+
+def landmark_buildings(terrain, landmarks):
+    """Building records for the kit-built landmark volumes (same format as place_buildings)."""
+    out = []
+    for name, dist, (x, y), (fw, fd), h, kind in landmarks:
+        if kind not in KIT_LANDMARKS:
+            continue
+        (ox, oy), (sx, sy), storeys, style = KIT_LANDMARKS[kind]
+        cx, cy = x + ox * fw, y + oy * fd
+        w = max(MIN_FOOTPRINT, round(fw * sx / BAY) * BAY)
+        d = max(MIN_FOOTPRINT, round(fd * sy / BAY) * BAY)
+        n = storeys or max(1, round(h / STOREY_H))
+        r0, r1 = int(cy - d / 2 - Y_MIN), int(cy + d / 2 - Y_MIN) + 1
+        c0, c1 = int(cx - w / 2), int(cx + w / 2) + 1
+        ground = terrain[r0:r1, c0:c1]
+        ci = float(terrain[int(round(cy - Y_MIN)), int(round(cx))])
+        out.append({"pos": [round(cx, 2), round(cy, 2)], "size": [w, d], "yaw": 0.0,
+                    "base": round(float(ground.min()) - 1.0, 2), "top": round(ci + n * STOREY_H, 2), "storeys": n,
+                    "style": BUILDING_STYLES.index(style), "district": dist, "landmark": name})
+    return out
+
+
 # --- Preview ------------------------------------------------------------------------------
 
 DISTRICT_COLORS = {
@@ -929,6 +965,7 @@ def main():
 
     t0 = time.time()
     buildings = place_buildings(terrain, best, g, random.Random(SEED + 7), landmarks)
+    buildings += landmark_buildings(terrain, landmarks)
     bt = time.time() - t0
 
     # Connectivity: report pieces of the road network that can't be reached from the start.

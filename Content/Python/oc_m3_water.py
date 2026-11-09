@@ -56,7 +56,7 @@ def visual(label, folder, center_m, size_m, mat, mesh, rot=(0, 0, 0), spatial=Tr
     a = L.spawn(unreal.StaticMeshActor, (x * 100.0, -y * 100.0, z * 100.0), rot, label, folder)
     comp = a.get_component_by_class(unreal.StaticMeshComponent)
     comp.set_static_mesh(asset(mesh))
-    art = {"Terrain": "MI_Box_Rock", "Landmark": "MI_Box_Stucco"}.get(mat)
+    art = {"Terrain": "MI_Box_Rock", "Hill": "MI_Box_Hill", "Landmark": "MI_Box_Stucco"}.get(mat)
     final = unreal.load_asset(f"/Game/Environment/Materials/{art}") if art else None
     comp.set_material(0, final or asset(MAT + mat))
     comp.set_collision_profile_name("NoCollision")
@@ -125,9 +125,9 @@ def build_scenery(layout):
     # Distant peaks: a ragged ridge 1.5-6 km behind Monte Ferrale (cones, rock above 300 m).
     for i in range(16):
         x = ox - 2500.0 + i * (sx + 5000.0) / 15.0 + rng.uniform(-200, 200)
-        y = north_edge + rng.uniform(1500.0, 6000.0)
         h = rng.uniform(700.0, 1500.0)
         r = h * rng.uniform(1.4, 2.2)
+        y = north_edge + r + rng.uniform(300.0, 2500.0)  # the whole cone stays behind the map edge
         visual(f"Scenery_Peak_{i:02d}", "Scenery/Peaks", (x, y, h / 2.0 - 60.0), (2 * r, 2 * r * rng.uniform(0.7, 1.0), h),
                "Terrain", CONE, rot=(0, 0, rng.uniform(0, 360)), spatial=False, shadows=False)
         count += 1
@@ -137,9 +137,10 @@ def build_scenery(layout):
         y = oy + 250.0 + i * (sy + 600.0) / 11.0
         t = max(0.0, min(1.0, (y - 300.0) / (sy - 300.0)))
         h = 40.0 + 520.0 * t * t + rng.uniform(-20, 40)
-        x = east_edge + rng.uniform(250.0, 700.0)
+        size_x = rng.uniform(900, 1400)
+        x = east_edge + size_x / 2.0 + rng.uniform(60.0, 300.0)  # the whole hill stays past the map edge
         visual(f"Scenery_EastHill_{i:02d}", "Scenery/EastCoast", (x, y, -h * 0.15),
-               (rng.uniform(900, 1400), rng.uniform(500, 800), 2.3 * h), "Terrain", SPHERE, spatial=False, shadows=False)
+               (size_x, rng.uniform(500, 800), 2.3 * h), "Hill", SPHERE, spatial=False, shadows=False)
         count += 1
 
     # Isola Ventura: a rocky island ~3.5 km offshore with an old sea fortress (STORY.md).
