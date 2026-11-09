@@ -12,6 +12,7 @@ class UMaterialParameterCollection;
 class UOCWeatherPreset;
 class AExponentialHeightFog;
 class ASkyAtmosphere;
+class APostProcessVolume;
 
 /**
  * Time of day: moves the sun, tints it, dims the sky light at night, writes MPC_World (the only
@@ -51,7 +52,7 @@ private:
 	/** Blendable weather values (a snapshot of a preset). */
 	struct FWeather
 	{
-		float Sun = 1.f, Sky = 1.f, Fog = 1.f, Rayleigh = 1.f, Mie = 1.f, Rain = 0.f, WetTarget = 0.f;
+		float Sun = 1.f, Sky = 1.f, Fog = 1.f, Rayleigh = 1.f, Mie = 1.f, Rain = 0.f, WetTarget = 0.f, Exposure = 0.f;
 		static FWeather From(const UOCWeatherPreset* P);
 		static FWeather Lerp(const FWeather& A, const FWeather& B, float T);
 	};
@@ -63,6 +64,8 @@ private:
 	float BaseFogDensity = -1.f;
 	TWeakObjectPtr<AExponentialHeightFog> Fog;
 	TWeakObjectPtr<ASkyAtmosphere> Atmosphere;
+	TWeakObjectPtr<APostProcessVolume> PostVolume;  // the unbound one; weather adds to its exposure bias
+	float BaseExposureBias = 0.f;
 	TWeakObjectPtr<ADirectionalLight> SunLight;
 	TWeakObjectPtr<ASkyLight> SkyLight;
 	UPROPERTY()

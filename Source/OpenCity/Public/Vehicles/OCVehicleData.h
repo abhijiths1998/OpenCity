@@ -11,6 +11,7 @@ class UInputAction;
 class UInputMappingContext;
 class USkeletalMesh;
 class USoundBase;
+class UMaterialInterface;
 class UStaticMesh;
 
 /** One radio station. The stub plays no audio yet (M10 adds MetaSounds). */
@@ -57,6 +58,10 @@ struct OPENCITY_API FOCVehiclePart
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Part")
 	FVector Scale = FVector::OneVector;
+
+	/** Replaces every material on the part when set (e.g. the rain-aware car glass). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Part")
+	TObjectPtr<UMaterialInterface> MaterialOverride;
 };
 
 /** Motorbike-only handling (used by AOCMotorbike, ignored by cars). */

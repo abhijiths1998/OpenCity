@@ -194,6 +194,29 @@ namespace OCDev
 		}
 	}
 
+	/** Frame the possessed pawn (vehicle QA): Dist (cm), Angle (deg from its nose, 0 = in front looking
+	 *  back, 180 = behind), Height (cm) [FOV]. The pawn keeps streaming the world around itself. */
+	void ViewCar(const TArray<FString>& Args, UWorld* World)
+	{
+		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+		APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+		if (!Pawn || Args.Num() < 3)
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV viewcar: Dist Angle Height [FOV] (needs a pawn)"));
+			return;
+		}
+		const FVector Target = Pawn->GetActorLocation() + FVector(0.f, 0.f, 80.f);
+		const FRotator Facing(0.f, Pawn->GetActorRotation().Yaw + FCString::Atof(*Args[1]), 0.f);
+		const FVector Loc = Pawn->GetActorLocation() + Facing.Vector() * FCString::Atof(*Args[0]) + FVector(0.f, 0.f, FCString::Atof(*Args[2]));
+		ACameraActor* Cam = World->SpawnActor<ACameraActor>(Loc, (Target - Loc).Rotation());
+		if (Cam)
+		{
+			Cam->GetCameraComponent()->SetFieldOfView(Args.IsValidIndex(3) ? FCString::Atof(*Args[3]) : 50.f);
+			PC->SetViewTarget(Cam);
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV viewcar %s looking at %s"), *Loc.ToCompactString(), *Target.ToCompactString());
+		}
+	}
+
 	/** Trace straight down at layout metres (x east, y north) and log the ground height. */
 	void Ground(const TArray<FString>& Args, UWorld* World)
 	{
@@ -328,6 +351,7 @@ namespace OCDev
 	FAutoConsoleCommandWithWorldAndArgs CmdFlip(TEXT("oc.dev.flip"), TEXT("Roll the driven vehicle over: [deg/s]."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Flip));
 	FAutoConsoleCommandWithWorldAndArgs CmdTilt(TEXT("oc.dev.tilt"), TEXT("Tilt the driven vehicle to a roll angle at rest: [deg]."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Tilt));
 	FAutoConsoleCommandWithWorldAndArgs CmdViewFrom(TEXT("oc.dev.viewfrom"), TEXT("View from a fixed camera: X Y Z Pitch Yaw [FOV], or 'off'."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ViewFrom));
+	FAutoConsoleCommandWithWorldAndArgs CmdViewCar(TEXT("oc.dev.viewcar"), TEXT("Frame the possessed pawn: Dist Angle Height [FOV] (cm, deg from its nose); 'oc.dev.viewfrom off' returns."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ViewCar));
 	FAutoConsoleCommandWithWorldAndArgs CmdGround(TEXT("oc.dev.ground"), TEXT("Log ground height at layout metres: X Y."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Ground));
 	FAutoConsoleCommandWithWorldAndArgs CmdRadio(TEXT("oc.dev.radio"), TEXT("Radio next (or 'prev')."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Radio));
 

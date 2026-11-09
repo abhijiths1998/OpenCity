@@ -169,6 +169,13 @@ void AOCVehicle::BuildVisualParts()
 		C->SetCanEverAffectNavigation(false);
 		C->SetupAttachment(GetMesh(), Part.Bone);
 		C->SetRelativeTransform(FTransform(Part.Rotation, Part.Offset, Part.Scale));
+		if (Part.MaterialOverride)
+		{
+			for (int32 i = 0; i < C->GetNumMaterials(); ++i)
+			{
+				C->SetMaterial(i, Part.MaterialOverride);
+			}
+		}
 		C->RegisterComponent();
 		VisualPartComponents.Add(C);
 	}

@@ -170,6 +170,7 @@ UOCWorldStateSubsystem (timer, about 10 Hz, blends values)
   *As built (M3):* one layer, `/Game/World/HLOD/HLOD0_Instanced` (instancing; landscape proxies use the landscape's own baked HLOD), set as the map's HLOD setup by `UOCWorldBuilderLibrary::ConfigureHLOD`: 256 m cells shown out to 8 km, past the 384 m streaming range. A second, far layer was tried and dropped: an instancing layer can't represent the landscape (distant terrain vanished), approximating needs the Experimental MeshModelingToolsetExp plugin, and merging the ~880k kit pieces ran the builder out of memory. `scripts/build_hlod.sh [Map] [--delete]` runs the engine's `WorldPartitionHLODsBuilder` commandlet (needs the GPU). Rebuild HLODs after every `scripts/build_world.sh`.
 - **Lanes:** `FOCLaneGraph` (OpenCityCore) derives directed lanes and junction links from the road graph (right-hand traffic; right turns from the outer lane, left from the inner, U-turns only at dead ends). `UOCRoadGraphAsset::GetLanes()` serves it to traffic (M5), police routing (M7) and the minimap (M9).
 - **Water (M3 decision): custom surfaces, not the Water plugin.** Sea, river and reservoir are plain planes with `M_Dev_Water` (`oc_m3_water.py`), and deep-water gameplay is `AOCDeepWaterVolume`. Reasons: the plugin is Experimental; it brings things v1 doesn't use (buoyancy, swimming, a water-zone render target and its own mesh quadtree) that cost VRAM on a 6 GB card; its water bodies carve the landscape, while our generator already carves the heightmap from `marevia_layout.json`; and its World Partition and Linux behaviour is unverified. The plugin was **not** spiked at runtime: this decision rests on those grounds. Revisit only if boats come back post-v1. M4b replaces `M_Dev_Water` with `M_Master_Water` (translucency, waves, shoreline foam) on the same meshes.
+- **Time of day and weather (M4a/M4b, as built):** `UOCWorldStateSubsystem` (world subsystem, 10 Hz timer, no Tick) is the only writer of `MPC_World` (`NightAmount`, `TimeOfDay`, `Wetness`, `RainAmount`). The sun follows `FOCSunModel` (unit-tested); at night the same light is a dim moon. A pool of 24 unshadowed sodium spot lights follows the street lamps nearest the camera at night. Weather presets (`UOCWeatherPreset`: `DA_Weather_Clear/Cloudy/Rain`) blend over `WeatherBlendSeconds`, scaling sun, sky light and fog and the sky atmosphere's Rayleigh/Mie; wetness soaks in while it rains (`SoakSeconds`) and dries slowly (`DrySeconds`). By day the sky light scale and an exposure bias (`ExposureBias`, added to the unbound post-process volume's bias) compensate for the dimmed sun under overcast skies; at night both give way to the map's own night levels, so night rain keeps its look. Materials read the two MPC values: porous darkening, gloss, puddles with rain ripples (surface, road, landscape masters), rougher water, and `M_PP_Rain` screen rain. Console: `oc.tod <hour>`, `oc.tod.run`, `oc.weather <Clear|Cloudy|Rain> [seconds]`; command line `-octod=`, `-ocweather=`.
 - **Scenery:** distant peaks, the coast past the east edge and Isola Ventura are collision-free meshes that are always loaded and cast no shadows (`Scenery_*`).
 - **Terrain:** standard Landscape. RVT handles road and terrain blending.
 - **City generation:** a road graph asset is the single source of truth. PCG reads it for roads and building blockouts. Traffic, the minimap and police routing read the same graph. PCG runs at **edit time only**, with results saved into the level.
@@ -256,6 +257,18 @@ The brief requires presets that really change the output. Low must be a true fal
 | Traffic and crowd | 50% | 100% | 120% | 150% |
 
 High and Ultra exist for stronger GPUs. This laptop is not expected to hold 60 FPS on them. Dynamic resolution is available on Vulkan in 5.8 and helps hold 60 on Medium. Whether DLSS works on Linux is unverified: **check in M4**, and TSR remains the baseline either way.
+
+**Measured preset costs (2026-11-09, `L_Marevia` perf path, editor `-game`, 1080p, browsers open):**
+
+| Preset | Avg FPS | 1% low | GPU ms | Game VRAM (MiB) |
+|---|---:|---:|---:|---:|
+| Low | 98.6 | 59.4 | 4.6 | 3,770 |
+| Medium | 83.3 | 40.9 | 11.3 | 3,418 |
+| High (cool machine) | 53.0 | 25.4 | 18.0 | 4,388 |
+| High (same settings, after 25 min of runs) | 28.1 | 15.8 | 34.8 | 4,271 |
+| Ultra | no lap result (run did not finish) | | | 4,211 peak |
+
+High swings by 2x with heat alone: the render thread went from 10 to 35 ms over one back-to-back batch while the CPU sat at 78 C with its clock capped. Single-cvar A/B tests on High (`r.DistanceFieldShadowing 0`, `r.Lumen.TraceMeshSDFs 0`, `r.VolumetricFog 0`) stayed inside that noise, so High keeps the engine values (`Config/DefaultScalability.ini` has the numbers). For A/B tests use `OC_PERF_EXEC="r.Foo 0" scripts/perf_run.sh ...`: `r.*` cvars passed with `-dpcvars` crash this build at startup with a Vulkan out-of-memory.
 
 Lumen Lite is the basis of the Medium plan: it is reported at about 2x the speed of high-quality Lumen, using `sg.GlobalIlluminationQuality 1` and `sg.ReflectionQuality 1`. **It is Beta and untested here.** If it fails on Linux Vulkan, Medium falls back to reduced software Lumen at a lower render scale.
 

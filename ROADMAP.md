@@ -113,12 +113,12 @@ These need your login or `sudo`, so they're yours to do:
 
 **Acceptance:**
 
-- [ ] Showcase block looks final-quality at golden hour, midday, night and in rain
-- [ ] All four presets produce measurably different visuals and costs
-- [ ] Medium on the showcase block: 60 FPS on the test path, at most 5,000 MiB VRAM
+- [ ] Showcase block looks final-quality at golden hour, midday, night and in rain *(QA sets 2026-11-09: clear golden hour and night strong; daytime rain now overcast and readable after the sky-light/exposure fix; narrow-street shade at dusk still dark; some textures (metal shutters) read wrong at street level)*
+- [ ] All four presets produce measurably different visuals and costs *(costs measured: Low 98.6 / Medium 83.3 / High 53 FPS cool, 28 hot / Ultra no lap; visuals not yet compared side by side)*
+- [x] Medium on the showcase block: 60 FPS on the test path, at most 5,000 MiB VRAM *(83.3 FPS avg, 1% low 40.9, GPU 11.3 ms, game VRAM 3,418 MiB; 2026-11-09, editor -game, browser open)*
 - [ ] Shader Complexity and Quad Overdraw reviewed, with hot spots reported
-- [ ] Every master is within its instruction budget
-- [ ] Rain drives wet surfaces, puddles, splashes and windshield droplets from one value
+- [ ] Every master is within its instruction budget *(measured, all over: surface 535, road 417, water 352, car glass 1,869; the fixed base-pass cost alone is ~190, so the targets need resetting; ART_PIPELINE.md)*
+- [ ] Rain drives wet surfaces, puddles, splashes and windshield droplets from one value *(wet surfaces, puddles, ripples and screen rain from `RainAmount`/`Wetness`; splashes not built; car-glass droplet material built but the coupe's windows need their own material slot)*
 
 ## M5: Life in the city (L)
 

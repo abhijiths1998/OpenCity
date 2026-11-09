@@ -5,6 +5,8 @@
 # Usage: scripts/perf_run.sh [Map] [Preset 0-3] [Laps] [extra game args...]
 #   default: L_PerfBaseline, preset 1 (Medium), 2 laps
 #   e.g. -ocperfprofilegpu logs a one-frame GPU pass breakdown
+# OC_PERF_EXEC="r.Foo 0, r.Bar 1" runs console commands after the preset (for A/B tests; r.* cvars
+# passed with -dpcvars crash this build at startup).
 #
 # OC_PERF_BUILD selects what runs:
 #   editor    (default) editor binary in -game mode, uncooked. Quick, but extra render-thread cost.
@@ -31,11 +33,11 @@ case "$BUILD" in
   editor)
     oc_require_engine
     CMD=("$UE_EDITOR" "$UPROJECT" "$MAP_PATH" -game "${COMMON_ARGS[@]}"
-         -ExecCmds="scalability $PRESET" -log="OCPerf_${MAP}.log")
+         -ExecCmds="scalability $PRESET${OC_PERF_EXEC:+, $OC_PERF_EXEC}" -log="OCPerf_${MAP}.log")
     REPORT_DIR="$PROJECT_ROOT/Saved/Profiling/OCPerf" ;;
   dev)
     CMD=("$PROJECT_ROOT/Packaged/Development/Linux/OpenCity/Binaries/Linux/OpenCity" OpenCity
-         "$MAP_PATH" "${COMMON_ARGS[@]}" -ExecCmds="scalability $PRESET")
+         "$MAP_PATH" "${COMMON_ARGS[@]}" -ExecCmds="scalability $PRESET${OC_PERF_EXEC:+, $OC_PERF_EXEC}")
     REPORT_DIR="$PROJECT_ROOT/Packaged/Development/Linux/OpenCity/Saved/Profiling/OCPerf" ;;
   shipping)
     CMD=("$PROJECT_ROOT/Packaged/Shipping/Linux/OpenCity/Binaries/Linux/OpenCity-Linux-Shipping" OpenCity

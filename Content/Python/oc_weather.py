@@ -14,10 +14,13 @@ import oc_lib as L
 
 TAG = "oc_weather"
 PRESETS = {
-    "Clear":  dict(sun_scale=1.0,  sky_light_scale=1.0,  fog_scale=1.0, rayleigh_scale=1.0,  mie_scale=1.0, rain_amount=0.0, wetness_target=0.0),
+    "Clear":  dict(sun_scale=1.0,  sky_light_scale=1.0,  fog_scale=1.0, rayleigh_scale=1.0,  mie_scale=1.0, rain_amount=0.0, wetness_target=0.0, exposure_bias=0.0),
     # Overcast: the sun barely casts shadows, the sky light carries the scene, the sky goes grey.
-    "Cloudy": dict(sun_scale=0.15, sky_light_scale=1.15, fog_scale=1.8, rayleigh_scale=0.4,  mie_scale=4.0, rain_amount=0.0, wetness_target=0.0),
-    "Rain":   dict(sun_scale=0.08, sky_light_scale=1.0,  fog_scale=3.5, rayleigh_scale=0.3,  mie_scale=5.0, rain_amount=1.0, wetness_target=1.0),
+    "Cloudy": dict(sun_scale=0.15, sky_light_scale=1.15, fog_scale=1.8, rayleigh_scale=0.4,  mie_scale=4.0, rain_amount=0.0, wetness_target=0.0, exposure_bias=0.0),
+    # The sky light captures the sky in real time, and the sky is lit by the (dimmed) sun, so its
+    # scale has to rise as the sun falls; exposure_bias (EV, day only) stops the bright fog at the end
+    # of a street from exposing the shaded walls down to black (QA 2026-11-09).
+    "Rain":   dict(sun_scale=0.04, sky_light_scale=4.5,  fog_scale=3.5, rayleigh_scale=0.3,  mie_scale=5.0, rain_amount=1.0, wetness_target=1.0, exposure_bias=1.0),
 }
 
 for name, props in PRESETS.items():

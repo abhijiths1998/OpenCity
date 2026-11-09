@@ -9,6 +9,7 @@
 #include "Components/SkyAtmosphereComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
+#include "Engine/PostProcessVolume.h"
 #include "Engine/SkyLight.h"
 #include "Engine/SpotLight.h"
 #include "Engine/StaticMesh.h"
@@ -80,6 +81,15 @@ void UOCWorldStateSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 			break;
 		}
 	}
+	for (TActorIterator<APostProcessVolume> It(&InWorld); It; ++It)
+	{
+		if (It->bUnbound)
+		{
+			PostVolume = *It;
+			BaseExposureBias = It->Settings.bOverride_AutoExposureBias ? It->Settings.AutoExposureBias : 0.f;
+			break;
+		}
+	}
 	// Weather: the settings' start preset, or -ocweather=<name>.
 	const UOCWeatherPreset* StartPreset = S->StartWeather.LoadSynchronous();
 	FString WeatherArg;
@@ -148,6 +158,7 @@ UOCWorldStateSubsystem::FWeather UOCWorldStateSubsystem::FWeather::From(const UO
 		W.Mie = P->MieScale;
 		W.Rain = P->RainAmount;
 		W.WetTarget = P->WetnessTarget;
+		W.Exposure = P->ExposureBias;
 	}
 	return W;
 }
@@ -162,6 +173,7 @@ UOCWorldStateSubsystem::FWeather UOCWorldStateSubsystem::FWeather::Lerp(const FW
 	W.Mie = FMath::Lerp(A.Mie, B.Mie, T);
 	W.Rain = FMath::Lerp(A.Rain, B.Rain, T);
 	W.WetTarget = FMath::Lerp(A.WetTarget, B.WetTarget, T);
+	W.Exposure = FMath::Lerp(A.Exposure, B.Exposure, T);
 	return W;
 }
 
@@ -241,7 +253,8 @@ void UOCWorldStateSubsystem::Apply()
 	}
 	if (ASkyLight* Sky = SkyLight.Get())
 	{
-		Sky->GetLightComponent()->SetIntensity(FMath::Lerp(1.f, S->NightSkyLightIntensity, Night) * Current.Sky);
+		// The weather's sky-light scale makes up for a dimmed sun by day; night keeps its own level.
+		Sky->GetLightComponent()->SetIntensity(FMath::Lerp(Current.Sky, S->NightSkyLightIntensity, Night));
 	}
 	if (AExponentialHeightFog* F = Fog.Get(); F && BaseFogDensity > 0.f)
 	{
@@ -252,6 +265,11 @@ void UOCWorldStateSubsystem::Apply()
 		USkyAtmosphereComponent* C = A->FindComponentByClass<USkyAtmosphereComponent>();
 		C->SetRayleighScatteringScale(0.0331f * Current.Rayleigh);  // engine default 0.0331
 		C->SetMieScatteringScale(0.003996f * Current.Mie);          // engine default 0.003996
+	}
+	if (APostProcessVolume* V = PostVolume.Get())
+	{
+		V->Settings.bOverride_AutoExposureBias = true;
+		V->Settings.AutoExposureBias = BaseExposureBias + Current.Exposure * (1.f - Night);
 	}
 	if (Parameters)
 	{

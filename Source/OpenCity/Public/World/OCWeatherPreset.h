@@ -41,4 +41,9 @@ public:
 	/** 0..1: how wet surfaces get under this weather (reached over time, see the settings). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weather", meta = (ClampMin = "0", ClampMax = "1"))
 	float WetnessTarget = 0.f;
+
+	/** Added to the map's auto-exposure bias by day (EV): overcast scenes under a bright sky need
+	 *  compensation or shaded streets go black. Night keeps the map's bias. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weather", meta = (ClampMin = "-2", ClampMax = "3"))
+	float ExposureBias = 0.f;
 };
