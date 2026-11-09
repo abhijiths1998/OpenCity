@@ -33,8 +33,8 @@
 
 namespace OCAutoDrive
 {
-	constexpr double LateralAccel = 5.0;    // m/s^2 allowed in corners
-	constexpr double BrakeDecel = 6.0;      // m/s^2 planned braking
+	constexpr double LateralAccel = 4.0;    // m/s^2 allowed in corners
+	constexpr double BrakeDecel = 4.0;      // m/s^2 planned braking (the coupe manages a little more)
 	constexpr double StuckSeconds = 5.0;
 	constexpr double OffRouteM = 15.0;
 	constexpr int32 MaxRecoveries = 8;
