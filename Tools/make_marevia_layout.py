@@ -205,7 +205,9 @@ def make_heightmap(rng):
         soft = np.pad(soft, ((0, h.shape[0] - soft.shape[0]), (0, 0)), mode="edge")
     h = h * (1 - mountain_mask) + soft * mountain_mask
     # West cliffs drop to the sea.
-    h = np.where(xs < WEST_CLIFF_X + 25, np.minimum(h, (xs - WEST_CLIFF_X) * 1.5), h)
+    # West cliffs drop to the sea: a 56-degree cap rising from the shore everywhere (clamping only
+    # the first 25 m left a sheer wall hundreds of metres high where the mountains reach the coast).
+    h = np.minimum(h, (xs - WEST_CLIFF_X) * 1.5)
     # Carve water: sea floor, Darsena, river channel, reservoir basin.
     coast = 60.0 + 25.0 * np.sin(xs / X(400.0)) + np.where(xs > X(1050), 30.0, 0.0)
     shore = np.clip((ys - coast) / 40.0, 0, 1)  # beach slope over 40 m
@@ -688,7 +690,9 @@ SIDEWALK_KINDS = {"avenue", "street"}   # get 2.5 m sidewalks on both sides in t
 SIDEWALK_W = 2.5
 
 
-SHOULDER = 10.0  # m of smooth blend from a road's graded corridor back into the land
+SHOULDER = 10.0  # m of smooth blend from a road's graded corridor back into the land (minimum)
+SHOULDER_MAX = 70.0  # m: deep cuts and fills blend over up to this far (about 1:1.5, ~34 degrees)
+CUT_RATIO = 1.5      # m of shoulder per m of height difference between road grade and land
 BLEND = 1.5      # m: soft-minimum scale where road corridors meet
 
 
@@ -710,7 +714,7 @@ def flatten_roads(h, g):
         ax, ay, az = g.nodes[s["a"]]
         bx, by, bz = g.nodes[s["b"]]
         half = s["width"] / 2.0 + (SIDEWALK_W if s["kind"] in SIDEWALK_KINDS else 0.0) + 1.0
-        reach = half + SHOULDER
+        reach = half + SHOULDER_MAX
         x0, x1 = int(max(0, min(ax, bx) - reach)), int(min(W, max(ax, bx) + reach)) + 1
         y0, y1 = int(max(0, min(ay, by) - reach - Y_MIN)), int(min(H, max(ay, by) + reach - Y_MIN)) + 1
         dx, dy = bx - ax, by - ay
@@ -721,16 +725,52 @@ def flatten_roads(h, g):
         yy += Y_MIN
         t = np.clip(((xx - ax) * dx + (yy - ay) * dy) / L2, 0.0, 1.0)
         edge = np.hypot(xx - (ax + t * dx), yy - (ay + t * dy)) - half
-        k = np.exp(-np.clip(edge, -half, SHOULDER) / BLEND)
+        k = np.exp(-np.clip(edge, -half, SHOULDER_MAX) / BLEND)
         best[y0:y1, x0:x1] = np.minimum(best[y0:y1, x0:x1], edge)
         wsum[y0:y1, x0:x1] += k
         # 20 cm below the road surface, so distant (coarser) landscape LODs never poke through.
         tsum[y0:y1, x0:x1] += k * (az + t * (bz - az) - 0.2)
     target = np.where(wsum > 0, tsum / np.maximum(wsum, 1e-12), h)
-    w = np.clip(1.0 - best / SHOULDER, 0.0, 1.0)  # 1 inside a road, fades to 0 over the shoulder
+    # 1 inside a road, fading to 0 over a shoulder that widens with the cut or fill height, so the
+    # pass road gets graded slopes instead of sheer walls (a fixed 10 m left 30 m cliffs).
+    need = np.clip(np.abs(target - h) * CUT_RATIO, SHOULDER, SHOULDER_MAX)
+    w = np.clip(1.0 - best / need, 0.0, 1.0)
     w = w * w * (3 - 2 * w)
     h[:] = h * (1 - w) + target * w
     return best
+
+
+def box_blur(a, r):
+    """Mean over a (2r+1)^2 window (separable cumulative sums, edges clamped)."""
+    out = a
+    for axis in (0, 1):
+        p = np.pad(out, [(r + 1, r) if ax == axis else (0, 0) for ax in (0, 1)], mode="edge")
+        c = np.cumsum(p, axis=axis, dtype=np.float64)
+        hi = np.take(c, np.arange(2 * r + 1, c.shape[axis]), axis=axis)
+        lo = np.take(c, np.arange(0, c.shape[axis] - 2 * r - 1), axis=axis)
+        out = ((hi - lo) / (2 * r + 1)).astype(np.float32)
+    return out
+
+
+def relax_slopes(h, best, passes=((8, 3), (6, 3), (4, 2))):
+    """Ease cliffs: where the land is steeper than ~45 degrees, blend toward a blurred copy of itself
+    (radius r m, n times per pass), so ridged-noise crags and deep road cuts become steep slopes
+    instead of sheer walls. Roads, their pavements and the water stay exactly as graded."""
+    ys = np.arange(h.shape[0])[:, None] + Y_MIN
+    xs = np.arange(h.shape[1])[None, :]
+    rx = np.array([river_x(float(y)) for y in ys[:, 0]])[:, None]
+    rhw = np.array([river_half_width(float(y)) for y in ys[:, 0]])[:, None]
+    free = (best > 1.0) & (h > 1.5)
+    free &= ~((np.abs(xs - rx) < rhw + 14.0) & (ys < DAM_Y + 30))
+    rx0, ry0, rx1, ry1 = RESERVOIR
+    free &= ~((xs > rx0 - 60) & (xs < rx1 + 60) & (ys > ry0 - 60) & (ys < ry1 + 60))
+    free = box_blur(free.astype(np.float32), 3)  # feather the mask edge
+    for r, n in passes:
+        for _ in range(n):
+            gy, gx = np.gradient(h)
+            steep = np.clip((np.hypot(gx, gy) - 0.9) / 0.6, 0.0, 1.0) * free  # 0 at ~42 deg, 1 at ~56 deg
+            h[:] = h * (1.0 - steep) + box_blur(h, r) * steep
+    return h
 
 
 # --- Buildings -----------------------------------------------------------------------------
@@ -883,6 +923,7 @@ def main():
     landmarks = settle_landmarks(terrain, g)   # may remove minor streets under big landmarks
     drop_orphan_nodes(g)
     best = flatten_roads(terrain, g)
+    relax_slopes(terrain, best)
     for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
 

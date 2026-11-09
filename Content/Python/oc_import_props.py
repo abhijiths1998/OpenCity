@@ -19,6 +19,46 @@ PROJECT_DIR = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_di
 SRC = os.path.join(PROJECT_DIR, "SourceArt/Downloads/Props")
 DEST = "/Game/Environment/Props"
 FOLIAGE = {"SM_Prop_island_tree_01", "SM_Prop_island_tree_02", "SM_Prop_fern_02"}
+SURFACE = "/Game/Materials/M_Master_Surface"
+TWO_SIDED = "/Game/Materials/M_Master_SurfaceTwoSided"
+LAMP_GLOW = "/Game/Materials/M_Master_LampGlow"
+MEL = unreal.MaterialEditingLibrary
+
+
+def material_for(slot, folder, textures):
+    """MI_Prop_<slot> from the slot's Poly Haven maps (<slot>_diff/_nor_gl/_arm). Interchange imports
+    the textures but no materials from these glTFs, so the props would render default grey."""
+    if slot.endswith(("_glass", "_bulb")):
+        return unreal.load_asset(LAMP_GLOW)
+    def tex(kind):
+        for name in (f"{slot}_{kind}_1k", f"{slot.rsplit('_', 1)[0]}_{kind}_1k"):
+            if name in textures:
+                return textures[name]
+        return None
+    bc, n, arm = tex("diff"), tex("nor_gl"), tex("arm")
+    if bc is None:
+        L.log(TAG, f"warning: no textures for slot {slot}")
+        return None
+    if n:  # glTF normals are OpenGL style (green up); the master expects DirectX
+        L.set_props(n, flip_green_channel=True, srgb=False,
+                    compression_settings=unreal.TextureCompressionSettings.TC_NORMALMAP)
+        L.save(n)
+    if arm:
+        L.set_props(arm, srgb=False, compression_settings=unreal.TextureCompressionSettings.TC_MASKS)
+        L.save(arm)
+    leafy = "leaves" in slot or "fern" in slot
+    mi = L.get_or_create(f"MI_Prop_{slot}", folder, unreal.MaterialInstanceConstant,
+                         unreal.MaterialInstanceConstantFactoryNew(), TAG)
+    MEL.set_material_instance_parent(mi, unreal.load_asset(TWO_SIDED if leafy else SURFACE))
+    MEL.clear_all_material_instance_parameters(mi)
+    for param, t in (("BaseColor", bc), ("Normal", n), ("ORM", arm)):
+        if t:
+            MEL.set_material_instance_texture_parameter_value(mi, param, t)
+    for k, v in (("TileSizeM", 1.0), ("Macro", 0.0), ("TintSlot", -1.0)):
+        MEL.set_material_instance_scalar_parameter_value(mi, k, v)
+    MEL.update_material_instance(mi)
+    L.save(mi)
+    return mi
 
 
 def main():
@@ -63,7 +103,18 @@ def main():
             if lib.does_asset_exist(target):
                 lib.delete_asset(target)
             lib.rename_asset(mesh.get_path_name().split(".")[0], target)
-        b = unreal.load_asset(target).get_bounds().box_extent
+        mesh = unreal.load_asset(target)
+        textures = {}
+        for path in lib.list_assets(f"{DEST}/{name}", recursive=True):
+            a = lib.load_asset(path)
+            if isinstance(a, unreal.Texture2D):
+                textures[a.get_name()] = a
+        for i, sm in enumerate(mesh.get_editor_property("static_materials")):
+            mi = material_for(str(sm.get_editor_property("material_slot_name")), f"{DEST}/{name}", textures)
+            if mi:
+                mesh.set_material(i, mi)
+        L.save(mesh)
+        b = mesh.get_bounds().box_extent
         L.log(TAG, f"{target}: {b.x * 2:.0f} x {b.y * 2:.0f} x {b.z * 2:.0f} cm")
 
 

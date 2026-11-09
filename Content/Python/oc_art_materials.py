@@ -51,6 +51,14 @@ INSTANCES = {
     "MI_Road_Asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.7)),
     "MI_Road_Setts": ("cobblestone_floor_01", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5)),
     "MI_Sidewalk": ("concrete_pavers_02", 1.5, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5)),
+    # Box-projected (ProjectionMode 3) for grey-box landmarks, bridges and distant scenery.
+    "MI_Box_Stucco": ("white_stucco", 2.0, (1.0, 0.95, 0.88), dict(TintSlot=-1, Macro=0.5, ProjectionMode=3)),
+    "MI_Box_Stone": ("old_sandstone_02", 2.0, (1.0, 0.97, 0.92), dict(TintSlot=-1, Macro=0.4, ProjectionMode=3)),
+    "MI_Box_Concrete": ("brushed_concrete", 2.5, (0.92, 0.91, 0.9), dict(TintSlot=-1, Macro=0.5, ProjectionMode=3)),
+    "MI_Box_Metal": ("metal_plate", 1.5, (0.4, 0.42, 0.44), dict(TintSlot=-1, Macro=0.3, ProjectionMode=3)),
+    "MI_Box_Roof": ("clay_roof_tiles", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.4, ProjectionMode=3)),
+    "MI_Box_Rock": ("cliff_side", 12.0, (0.95, 0.92, 0.88), dict(TintSlot=-1, Macro=0.8, ProjectionMode=3)),
+    "MI_Box_Hill": ("aerial_grass_rock", 30.0, (0.8, 0.82, 0.7), dict(TintSlot=-1, Macro=0.8, ProjectionMode=2)),
 }
 
 SURFACE_HLSL = r"""
@@ -73,11 +81,20 @@ else if (Mode < 1.5)
     B = normalize(cross(n, T));
     uv = float2(dot(WP, T), dot(WP, B)) / tileCm;
 }
-else
+else if (Mode < 2.5)
 {
     T = float3(1.0, 0.0, 0.0);
     B = float3(0.0, 1.0, 0.0);
     uv = WP.xy / tileCm;
+}
+else
+{
+    // World box projection from the dominant axis (grey-box landmarks, bridges, scenery: their
+    // engine-cube UVs would stretch one texture over a whole face).
+    float3 a = abs(n);
+    if (a.z >= a.x && a.z >= a.y) { T = float3(1, 0, 0); B = float3(0, 1, 0); uv = WP.xy / tileCm; }
+    else if (a.x >= a.y)          { T = float3(0, 1, 0); B = float3(0, 0, -1); uv = WP.yz * float2(1, -1) / tileCm; }
+    else                          { T = float3(1, 0, 0); B = float3(0, 0, -1); uv = WP.xz * float2(1, -1) / tileCm; }
 }
 
 // Base colour with macro variation: the same texture 7x larger, relative to its mean colour.
@@ -211,8 +228,9 @@ def custom(mat, code, inputs, outputs, x, y):
     return e
 
 
-def build_surface_master(defaults):
-    mat = fresh_material("M_Master_Surface")
+def build_surface_master(defaults, name="M_Master_Surface", two_sided=False):
+    mat = fresh_material(name)
+    mat.set_editor_property("two_sided", two_sided)  # two-sided variant: foliage (leaves are cut geometry)
     mat.set_editor_property("tangent_space_normal", False)  # the Custom node outputs a world normal
     bc = tex_object(mat, "BaseColor", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, defaults.get("BC"), -1400, -400)
     nm = tex_object(mat, "Normal", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, defaults.get("N"), -1400, -250)
@@ -253,10 +271,53 @@ return float3(0.02, 0.025, 0.03);
 """
 
 
-def build_glass_master():
+def build_world_parameters():
+    """MPC_World: written only by UOCWorldStateSubsystem (ARCHITECTURE.md)."""
+    mpc = L.get_or_create("MPC_World", "/Game/Core", unreal.MaterialParameterCollection,
+                          unreal.MaterialParameterCollectionFactoryNew(), TAG)
+    params = []
+    for name, value in (("NightAmount", 0.0), ("TimeOfDay", 12.0), ("Wetness", 0.0)):
+        p = unreal.CollectionScalarParameter()
+        L.set_props(p, parameter_name=name, default_value=value)
+        params.append(p)
+    mpc.set_editor_property("scalar_parameters", params)
+    L.save(mpc)
+    return mpc
+
+
+def mpc_scalar(mat, mpc, name, x, y):
+    e = MEL.create_material_expression(mat, unreal.MaterialExpressionCollectionParameter, x, y)
+    L.set_props(e, collection=mpc, parameter_name=name)
+    return e
+
+
+LAMP_HLSL = r"""
+// Street lamp glass and bulbs: dark by day, warm sodium glow at night (MPC_World.NightAmount).
+Emis = float3(1.0, 0.62, 0.30) * Night * Strength;
+return float3(0.35, 0.33, 0.30);
+"""
+
+
+def build_lamp_master(mpc):
+    mat = fresh_material("M_Master_LampGlow")
+    night = mpc_scalar(mat, mpc, "NightAmount", -800, 0)
+    strength = scalar(mat, "Glow", 40.0, -800, 100)
+    node = custom(mat, LAMP_HLSL, [("Night", night), ("Strength", strength)],
+                  [("Emis", unreal.CustomMaterialOutputType.CMOT_FLOAT3)], -300, 0)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(node, "Emis", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    r = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -300, 200)
+    r.set_editor_property("r", 0.2)
+    MEL.connect_material_property(r, "", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    log(f"built {mat.get_path_name()}")
+
+
+def build_glass_master(mpc):
     mat = fresh_material("M_Master_KitGlass")
     lit = instance_data(mat, 7, 0.0, -800, 0)
-    night = scalar(mat, "NightAmount", 0.0, -800, 100)
+    night = mpc_scalar(mat, mpc, "NightAmount", -800, 100)
     strength = scalar(mat, "WindowLight", 3.0, -800, 200)
     node = custom(mat, GLASS_HLSL, [("Lit", lit), ("Night", night), ("Strength", strength)],
                   [("Emis", unreal.CustomMaterialOutputType.CMOT_FLOAT3)], -300, 0)
@@ -356,7 +417,10 @@ float4 w = float4(wGrass, wDirt, wRock, wSand) / total;
 float dist = length(WP - Cam);
 float far = saturate((dist - 4000.0) / 12000.0);
 float3 bc = 0; float2 nn = 0; float3 orm = 0;
-#define OC_LAYER(i, T, TN, TO, TILE) if (w[i] > 0.01) { float2 uv = m / TILE; float2 dx = ddx(uv), dy = ddy(uv); \
+// Steep rock: project from the side (X or Y) so cliffs don't smear; everything else top-down.
+float3 an = abs(n);
+float2 mRock = an.z > 0.7 ? m : (an.x > an.y ? float2(WP.y, -WP.z) / 100.0 : float2(WP.x, -WP.z) / 100.0);
+#define OC_LAYER(i, T, TN, TO, TILE) if (w[i] > 0.01) { float2 uv = (i == 2 ? mRock : m) / TILE; float2 dx = ddx(uv), dy = ddy(uv); \
     float3 c = lerp(Texture2DSampleGrad(T, T##Sampler, uv, dx, dy).rgb, Texture2DSampleGrad(T, T##Sampler, uv * 0.25, dx * 0.25, dy * 0.25).rgb, far); \
     bc += c * w[i]; nn += (Texture2DSampleGrad(TN, TN##Sampler, uv, dx, dy).rg * 2.0 - 1.0) * w[i] * (1.0 - far * 0.7); \
     orm += Texture2DSampleGrad(TO, TO##Sampler, uv, dx, dy).rgb * w[i]; }
@@ -368,6 +432,9 @@ float3 tn = float3(nn, sqrt(saturate(1.0 - dot(nn, nn))));
 WorldNormal = normalize(mul(tn, (float3x3)Parameters.TangentToWorld));
 Rough = saturate(orm.g);
 AO = orm.r;
+// Dry Mediterranean grass: less saturated, a touch darker than the raw scan.
+float g = dot(bc, float3(0.3, 0.59, 0.11));
+bc = lerp(bc, lerp(float3(g, g, g), bc, 0.65) * 0.9, w.x);
 return bc * lerp(0.9, 1.1, saturate(vary + 0.5));
 """
 
@@ -438,7 +505,10 @@ def main():
     textures = import_textures()
     first = textures.get("plastered_wall", {})
     surface = build_surface_master(first)
-    glass = build_glass_master()
+    mpc = build_world_parameters()
+    glass = build_glass_master(mpc)
+    build_lamp_master(mpc)
+    build_surface_master(first, "M_Master_SurfaceTwoSided", two_sided=True)
     made = []
     for name, (slug, tile, tint, settings) in INSTANCES.items():
         if slug not in textures:

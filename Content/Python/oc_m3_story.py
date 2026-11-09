@@ -70,12 +70,25 @@ def ue_yaw(dx, dy):
     return math.degrees(math.atan2(-dy, dx))
 
 
+# Grey-box material -> box-projected final-art instance (oc_art_materials.py), when built.
+ART = {"Landmark": "MI_Box_Stucco", "LandmarkAccent": "MI_Box_Roof", "Concrete": "MI_Box_Concrete",
+       "Bridge": "MI_Box_Stone", "Metal": "MI_Box_Metal", "Rock": "MI_Box_Rock"}
+
+
+def material(name):
+    if name in ART:
+        art = unreal.load_asset(f"/Game/Environment/Materials/{ART[name]}")
+        if art:
+            return art
+    return asset(MAT + name)
+
+
 def shape(label, folder, center_m, size_m, mat, mesh=CUBE, rot=(0, 0, 0)):
     """A box or cylinder (engine meshes are 100 cm) centred at center_m, size in metres."""
     a = L.spawn(unreal.StaticMeshActor, cm(*center_m), rot, label, folder)
     comp = a.get_component_by_class(unreal.StaticMeshComponent)
     comp.set_static_mesh(asset(mesh))
-    comp.set_material(0, asset(MAT + mat))
+    comp.set_material(0, material(mat))
     a.set_actor_scale3d(unreal.Vector(*size_m))
     return a
 

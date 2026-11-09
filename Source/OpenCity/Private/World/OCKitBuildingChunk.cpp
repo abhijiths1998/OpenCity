@@ -30,6 +30,16 @@ UInstancedStaticMeshComponent* AOCKitBuildingChunk::GetOrAddPiece(UStaticMesh* M
 	C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	C->SetCanEverAffectNavigation(false);
 	C->NumCustomDataFloats = NumCustomData;
+	// Small clutter (pots, crates, roof props, pipes) is invisible from afar: cull it.
+	const double Size = Mesh->GetBounds().BoxExtent.GetMax() * 2.0;
+	if (Size < 150.0)
+	{
+		C->SetCullDistances(0, 12000);
+	}
+	else if (Size < 400.0 && !Mesh->GetName().Contains(TEXT("Wall")) && !Mesh->GetName().Contains(TEXT("Window")))
+	{
+		C->SetCullDistances(0, 40000);
+	}
 	AddInstanceComponent(C);
 	C->RegisterComponent();
 	return C;

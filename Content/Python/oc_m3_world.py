@@ -32,7 +32,7 @@ LANDSCAPE_GRID = 2  # components per streaming proxy edge (252 m)
 # HLOD (ARCHITECTURE.md section 7): two layers, built by scripts/build_hlod.sh.
 #   HLOD0 instanced: the real meshes (buildings, roads, bridges) and the landscape's own HLOD,
 #                    256 m cells shown out to 1 km, past the 384 m streaming range.
-#   HLOD1 merged: one merged mesh per 1 km cell, out to 8 km, so
+#   HLOD1 instanced: the same, in 1 km cells out to 8 km, so
 #                    the whole map and the mountains stay visible from anywhere.
 HLOD_PATH = "/Game/World/HLOD"
 KIT_PATH = "/Game/Environment/Meshes/Kit"
@@ -57,9 +57,11 @@ def setup_streaming(world):
 
 def setup_hlod(world):
     factory = unreal.HLODLayerFactory()
-    # Merged, not approximated: the approximate builder needs MeshModelingToolsetExp (Experimental).
-    top = L.get_or_create("HLOD1_Merged", HLOD_PATH, unreal.HLODLayer, factory, TAG)
-    L.set_props(top, layer_type=unreal.HLODLayerType.MESH_MERGE, parent_layer=None)
+    # Instanced, not merged or approximated: approximation needs MeshModelingToolsetExp (Experimental)
+    # and merging ~100k kit pieces per 1 km cell ran the builder out of memory (14 GB). Nanite keeps
+    # the instanced kit cheap at distance.
+    top = L.get_or_create("HLOD1_Far", HLOD_PATH, unreal.HLODLayer, factory, TAG)
+    L.set_props(top, layer_type=unreal.HLODLayerType.INSTANCING, parent_layer=None)
     L.save(top)
     base = L.get_or_create("HLOD0_Instanced", HLOD_PATH, unreal.HLODLayer, factory, TAG)
     L.set_props(base, layer_type=unreal.HLODLayerType.INSTANCING, parent_layer=top)

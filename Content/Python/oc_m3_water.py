@@ -56,7 +56,9 @@ def visual(label, folder, center_m, size_m, mat, mesh, rot=(0, 0, 0), spatial=Tr
     a = L.spawn(unreal.StaticMeshActor, (x * 100.0, -y * 100.0, z * 100.0), rot, label, folder)
     comp = a.get_component_by_class(unreal.StaticMeshComponent)
     comp.set_static_mesh(asset(mesh))
-    comp.set_material(0, asset(MAT + mat))
+    art = {"Terrain": "MI_Box_Rock", "Landmark": "MI_Box_Stucco"}.get(mat)
+    final = unreal.load_asset(f"/Game/Environment/Materials/{art}") if art else None
+    comp.set_material(0, final or asset(MAT + mat))
     comp.set_collision_profile_name("NoCollision")
     comp.set_editor_property("cast_shadow", shadows)
     a.set_actor_scale3d(unreal.Vector(*size_m))
