@@ -114,10 +114,10 @@ These need your login or `sudo`, so they're yours to do:
 **Acceptance:**
 
 - [ ] Showcase block looks final-quality at golden hour, midday, night and in rain *(QA sets 2026-11-09: clear golden hour and night strong; daytime rain now overcast and readable after the sky-light/exposure fix; narrow-street shade at dusk still dark; some textures (metal shutters) read wrong at street level)*
-- [ ] All four presets produce measurably different visuals and costs *(costs measured: Low 98.6 / Medium 83.3 / High 53 FPS cool, 28 hot / Ultra no lap; visuals not yet compared side by side)*
+- [ ] All four presets produce measurably different visuals and costs *(Low, Medium and High compared side by side and measured: Low basic shadows, no clouds, GPU ~7 ms; Medium Lumen GI, GPU ~12 ms; High adds clouds and sharper shadows, GPU 13 to 14 ms. Ultra runs out of VRAM at startup on this 6 GB GPU with browsers open, so it is not verified)*
 - [x] Medium on the showcase block: 60 FPS on the test path, at most 5,000 MiB VRAM *(83.3 FPS avg, 1% low 40.9, GPU 11.3 ms, game VRAM 3,418 MiB; 2026-11-09, editor -game, browser open)*
-- [ ] Shader Complexity and Quad Overdraw reviewed, with hot spots reported
-- [ ] Every master is within its instruction budget *(measured, all over: surface 577, road 459, water 352, car glass 358; the fixed base-pass cost alone is ~190, so the targets need resetting; ART_PIPELINE.md)*
+- [x] Shader Complexity and Quad Overdraw reviewed, with hot spots reported *(2026-11-09, all 24 bookmarks; hot spots in ART_PIPELINE.md: one master over the whole city, roads plus decals, landscape quad overdraw 3 to 5x at distance)*
+- [ ] Every master is within its instruction budget *(targets reset to original + the measured 190 fixed cost; static switches cut walls from 577 to 419; still over: walls 419/410, ground 520/390, road 461/390, car glass 358/340; ART_PIPELINE.md)*
 - [x] Rain drives wet surfaces, puddles, splashes and windshield droplets from one value *(`RainAmount` and `Wetness` drive wet surfaces, puddles with ripples, splash rings on up-facing ground, screen rain and drops on the coupe's glass; QA shots 2026-11-09)*
 
 ## M5: Life in the city (L)

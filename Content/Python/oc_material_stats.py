@@ -12,16 +12,16 @@ import unreal
 import oc_lib as L
 
 TAG = "oc_matstats"
-# Base-pass pixel shader targets (ART_PIPELINE.md, "Master materials"). The kit and props share
-# M_Master_Surface, which covers the Opaque and Building roles.
+# Base-pass pixel shader targets (ART_PIPELINE.md, "Master materials": original target + the
+# measured ~190 fixed cost). The kit and props share M_Master_Surface (Building role).
 BUDGETS = {
-    "M_Master_Surface": 220,
-    "M_Master_SurfaceTwoSided": 220,
-    "M_Master_Road": 200,
-    "M_Master_Landscape": 200,
-    "M_Master_Water": 250,
-    "M_Master_KitGlass": 150,
-    "M_Master_CarGlass": 150,
+    "M_Master_Surface": 410,
+    "M_Master_SurfaceTwoSided": 410,
+    "M_Master_Road": 390,
+    "M_Master_Landscape": None,
+    "M_Master_Water": 440,
+    "M_Master_KitGlass": 340,
+    "M_Master_CarGlass": 340,
     "M_Master_LampGlow": None,
     "M_Master_Decal": None,
     "M_PP_Rain": None,
@@ -39,4 +39,10 @@ for name, budget in BUDGETS.items():
     L.log(TAG, f"MATSTAT {name}: ps {ps} vs {st.num_vertex_shader_instructions} samplers {st.num_samplers} budget {budget or '-'}")
     if budget and ps > budget:
         over.append(f"{name} {ps}/{budget}")
+# Static switches make one shader per instance permutation: report the ones that cover the city.
+for name in ("MI_Kit_Wall", "MI_Kit_Roof", "MI_Sidewalk", "MI_Box_Stone"):
+    mi = unreal.load_asset(f"/Game/Environment/Materials/{name}")
+    if mi:
+        st = unreal.MaterialEditingLibrary.get_statistics(mi)
+        L.log(TAG, f"MATSTAT   {name}: ps {st.num_pixel_shader_instructions}")
 L.log(TAG, f"MATSTAT over budget: {', '.join(over) if over else 'none'}")

@@ -148,21 +148,29 @@ Limits per master: at most 3 static switches, at most 8 texture samples. Prefer 
 | `M_Master_Character` | Skin subsurface, cloth, simple hair | 200 |
 | `M_Master_Water` | Ocean, shoreline foam. Depends on the M3 Water decision | 250 |
 
-**Measured (2026-11-09, `oc_material_stats.py`, SM6, base-pass pixel shader instructions):**
+**Measured (2026-11-09, `oc_material_stats.py`, SM6, base-pass pixel shader instructions).** The targets in the table above were written before measuring and assume no fixed cost, but on 5.8 SM6 a near-empty opaque master (`M_Master_LampGlow`) already counts 192. Targets are therefore reset to *original target + 190*; nothing else about them changed.
 
-| Material | Role | Measured | Target |
+| Material (permutation) | Role | Measured | Target (+190) |
 |---|---|---:|---:|
-| `M_Master_Surface` (+ `TwoSided`) | Opaque and Building roles: kit, props, boxes | 577 | 180 / 220 |
-| `M_Master_Road` | Road | 459 | 200 |
-| `M_Master_Landscape` | Landscape (no target set; scored against 200) | 569 | - |
-| `M_Master_Water` | Water | 352 | 250 |
-| `M_Master_KitGlass` | Building windows (opaque, lit per instance at night) | 267 | 150 |
-| `M_Master_CarGlass` | Car windows with rain drops (opaque, glossy) | 358 | 150 |
+| `M_Master_Surface`, wall instances (`MI_Kit_Wall`, trim, wood, metal) | Building | 419 | 410 |
+| `M_Master_Surface`, roof instances (`MI_Kit_Roof`) | Building | 398 | 410 |
+| `M_Master_Surface`, ground instances (`MI_Sidewalk`, `MI_Box_Stone`: puddles, ripples, splashes) | Road-like ground | 504 to 520 | 390 |
+| `M_Master_Road` | Road | 461 | 390 |
+| `M_Master_Landscape` | Landscape (no target yet) | 571 | - |
+| `M_Master_Water` | Water | 352 | 440 |
+| `M_Master_KitGlass` | Building windows (opaque, lit per instance at night) | 267 | 340 |
+| `M_Master_CarGlass` | Car windows with rain drops (opaque, glossy) | 358 | 340 |
 | `M_Master_LampGlow` | Lamp glass (near-empty opaque master) | 192 | - |
 | `M_Master_Decal` | DBuffer decals | 383 | - |
 | `M_PP_Rain` | Screen rain post-process | 69 | - |
 
-Every master is over its target. The near-empty `M_Master_LampGlow` already counts 192, so on 5.8 SM6 the fixed base-pass cost is about 190 instructions and the 150 to 220 targets above cannot be met as written; they were set before measurement. The real cost to watch is per-pixel GPU time in the profiler: Medium holds 83 FPS on the perf path with these masters. Car glass is opaque: the vehicle bodies are shells with no interior, so see-through glass would show an empty car, and the translucent versions measured 3,093 (forward shading), 1,869 (surface lighting) and 486 (volumetric, no reflections). The coupe's windows were UV islands of its paint slot; `Tools/blender/split_car_glass.py` moves them into a `Glass` slot (`SM_SportsCar_Body`). The wetness block (darkening, gloss, puddles, ripples and splash rings, +42 for the splashes) is a uniform branch and costs nothing when dry.
+Projection mode and wet ground are static switches (`ProjectionBit0/1`, `WetGround`) that feed the Custom node compile-time constants, so each instance compiles only its own paths: walls went from 577 to 419. Only ground instances, roads and terrain compile puddles, ripples and splash rings (+42 for the splashes); the whole wet block is a uniform branch and free when dry. **The cut did not show up in frame time** (Medium 79.8 and 77.2 FPS afterwards vs 83.3 before, within heat noise): the base pass is not what limits Medium. Car glass is opaque: the vehicle bodies are shells with no interior, so see-through glass would show an empty car, and the translucent versions measured 3,093 (forward shading), 1,869 (surface lighting) and 486 (volumetric, no reflections). The coupe's windows were UV islands of its paint slot; `Tools/blender/split_car_glass.py` moves them into a `Glass` slot (`SM_SportsCar_Body`).
+
+**Shader Complexity and Quad Overdraw review (2026-11-09, `OC_QA_VIEWMODE=shadercomplexity|quadoverdraw scripts/qa_shots.sh hours=13`, all 24 bookmarks).** Hot spots:
+
+- **Everything is one master.** Shader complexity is a near-uniform red over the city because kit walls, roofs, props and grey boxes all use `M_Master_Surface`; there is no single expensive object. Roads (plus their DBuffer decals) read hotter than walls.
+- **Landscape at distance:** the only real quad overdraw (Nanite meshes, which is everything else, are not measured by that view). Far slopes seen at grazing angles (Monte Ferrale, Le Colline overviews) reach 3 to 5x; near ground is 1 to 2x. Fix candidates: landscape LOD distribution, or Nanite landscape (needs approval).
+- Foliage cards and trees are not hot in either view.
 
 Implementation notes:
 

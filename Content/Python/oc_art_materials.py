@@ -7,7 +7,8 @@
    BC sRGB, N BC5 normal map, ORM linear masks; World texture groups; capped at 2048.
 2. Builds /Game/Materials/M_Master_Surface: one opaque master for kit pieces, props, roads and
    ground. A Custom HLSL node samples BaseColor / Normal / ORM texture objects with:
-     ProjectionMode 0  mesh UV0 in metres / TileSizeM (kit pieces, roads, sidewalks)
+     ProjectionMode (static switches ProjectionBit0/1, so each instance compiles one path)
+                    0  mesh UV0 in metres / TileSizeM (kit pieces, roads, sidewalks)
                     1  roof planes: UVs aligned to each face's eaves from world position, so a
                        roof scaled to any footprint never stretches its tiles
                     2  world top-down (flat ground)
@@ -47,14 +48,14 @@ INSTANCES = {
     "MI_Kit_Wood": ("wood_peeling_paint_weathered", 1.2, (1.0, 1.0, 1.0), dict(TintSlot=1, Macro=0.2)),
     "MI_Kit_Metal": ("metal_plate", 1.0, (0.35, 0.36, 0.37), dict(TintSlot=-1, Macro=0.2, RoughMul=0.8)),
     "MI_Kit_Roof": ("clay_roof_tiles", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5, ProjectionMode=1)),
-    "MI_Kit_Concrete": ("brushed_concrete", 2.0, (0.95, 0.94, 0.92), dict(TintSlot=-1, Macro=0.5, PuddleAmount=0.3)),
-    "MI_Road_Asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.7)),
-    "MI_Road_Setts": ("cobblestone_floor_01", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5)),
-    "MI_Sidewalk": ("concrete_pavers_02", 1.5, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5, PuddleAmount=0.45)),
+    "MI_Kit_Concrete": ("brushed_concrete", 2.0, (0.95, 0.94, 0.92), dict(TintSlot=-1, Macro=0.5, PuddleAmount=0.3, WetGround=True)),
+    "MI_Road_Asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.7, WetGround=True)),
+    "MI_Road_Setts": ("cobblestone_floor_01", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5, WetGround=True)),
+    "MI_Sidewalk": ("concrete_pavers_02", 1.5, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5, PuddleAmount=0.45, WetGround=True)),
     # Box-projected (ProjectionMode 3) for grey-box landmarks, bridges and distant scenery.
     "MI_Box_Stucco": ("white_stucco", 2.0, (1.0, 0.95, 0.88), dict(TintSlot=-1, Macro=0.5, ProjectionMode=3)),
-    "MI_Box_Stone": ("old_sandstone_02", 2.0, (1.0, 0.97, 0.92), dict(TintSlot=-1, Macro=0.4, ProjectionMode=3)),
-    "MI_Box_Concrete": ("brushed_concrete", 2.5, (0.92, 0.91, 0.9), dict(TintSlot=-1, Macro=0.5, ProjectionMode=3)),
+    "MI_Box_Stone": ("old_sandstone_02", 2.0, (1.0, 0.97, 0.92), dict(TintSlot=-1, Macro=0.4, ProjectionMode=3, WetGround=True)),
+    "MI_Box_Concrete": ("brushed_concrete", 2.5, (0.92, 0.91, 0.9), dict(TintSlot=-1, Macro=0.5, ProjectionMode=3, WetGround=True)),
     "MI_Box_Metal": ("metal_plate", 1.5, (0.4, 0.42, 0.44), dict(TintSlot=-1, Macro=0.3, ProjectionMode=3)),
     "MI_Box_Roof": ("clay_roof_tiles", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.4, ProjectionMode=3)),
     "MI_Box_Rock": ("cliff_side", 12.0, (0.95, 0.92, 0.88), dict(TintSlot=-1, Macro=0.8, ProjectionMode=3)),
@@ -62,7 +63,9 @@ INSTANCES = {
 }
 
 SURFACE_HLSL = r"""
-// Projection and tangent frame.
+// Projection and tangent frame. Mode comes from two static switches (ProjectionBit0/1), so it is a
+// compile-time constant and each instance compiles one projection path.
+float Mode = ProjA + 2.0 * ProjB;
 float3 n = normalize(VN);
 float3 T, B;
 float2 uv;
@@ -192,6 +195,18 @@ def scalar(mat, name, value, x, y):
     return e
 
 
+def static_flag(mat, name, default, x, y):
+    """A static switch that feeds a Custom node a compile-time 1 or 0, so the shader compiler drops
+    the branches an instance doesn't use (each instance compiles only its own paths)."""
+    e = MEL.create_material_expression(mat, unreal.MaterialExpressionStaticSwitchParameter, x, y)
+    L.set_props(e, parameter_name=name, default_value=default)
+    for pin, value in (("True", 1.0), ("False", 0.0)):
+        c = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, x - 150, y + (0 if value else 40))
+        c.set_editor_property("r", value)
+        MEL.connect_material_expressions(c, "", e, pin)
+    return e
+
+
 def vector(mat, name, rgb, x, y):
     e = MEL.create_material_expression(mat, unreal.MaterialExpressionVectorParameter, x, y)
     L.set_props(e, parameter_name=name, default_value=unreal.LinearColor(rgb[0], rgb[1], rgb[2], 1.0))
@@ -248,7 +263,8 @@ def build_surface_master(defaults, mpc, ripples, name="M_Master_Surface", two_si
     wp = MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -1400, 150)
     vn = MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -1400, 250)
     params = [("Tile", scalar(mat, "TileSizeM", 2.0, -1100, -400)),
-              ("Mode", scalar(mat, "ProjectionMode", 0.0, -1100, -320)),
+              ("ProjA", static_flag(mat, "ProjectionBit0", False, -1100, -340)),
+              ("ProjB", static_flag(mat, "ProjectionBit1", False, -1100, -300)),
               ("Macro", scalar(mat, "Macro", 0.5, -1100, -240)),
               ("Slot", scalar(mat, "TintSlot", -1.0, -1100, -160)),
               ("Tint", vector(mat, "Tint", (1, 1, 1), -1100, -80)),
@@ -264,7 +280,7 @@ def build_surface_master(defaults, mpc, ripples, name="M_Master_Surface", two_si
     f1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
     node = custom(mat, SURFACE_HLSL.replace("return bc;", "float3 nGeo = n;\nfloat pn = lumBig / lumMean * 0.5;\n" + WET_HLSL + "\nreturn bc;"),
                   [("BCTex", bc), ("NTex", nm), ("ORMTex", orm), ("UV", uv), ("WP", wp), ("VN", vn)] + params + data
-                  + wet_inputs(mat, mpc, ripples),
+                  + wet_inputs(mat, mpc, ripples, static_flag(mat, "WetGround", False, -1100, 1000)),
                   [("WorldNormal", unreal.CustomMaterialOutputType.CMOT_FLOAT3), ("AO", f1), ("Rough", f1), ("Metal", f1)],
                   -300, 0)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
@@ -363,27 +379,31 @@ if (Wet > 0.001)
 {
     float wetv = saturate(Wet);
     float upv = saturate((nGeo.z - 0.75) / 0.2);
-    float pool = saturate((pn - 1.0 + wetv * PuddleAmt) * 5.0) * upv * wetv;
+    // WetGround is a compile-time constant: walls, roofs and trim compile none of the ground code.
+    float pool = WetGround > 0.5 ? saturate((pn - 1.0 + wetv * PuddleAmt) * 5.0) * upv * wetv : 0.0;
     bc *= lerp(1.0, 0.6, wetv * (1.0 - pool));
     bc = lerp(bc, bc * 0.3 + float3(0.01, 0.012, 0.014), pool);
     Rough = lerp(Rough, 0.15, wetv * 0.85);
     Rough = lerp(Rough, 0.03, pool);
-    float2 ruv = WP.xy / 220.0;
-    float2 r1 = Texture2DSample(RipN, RipNSampler, ruv + float2(0.031, 0.017) * Time).rg * 2.0 - 1.0;
-    float2 r2 = Texture2DSample(RipN, RipNSampler, ruv * 1.7 - float2(0.023, 0.041) * Time).rg * 2.0 - 1.0;
-    float2 rip = (r1 + r2) * (0.12 + 0.4 * Rain);
-    WorldNormal = normalize(lerp(WorldNormal, normalize(float3(rip, 1.0)), pool));
-    // Rain splashes: one impact per 22 cm cell at a random time, a ring that grows to ~10 cm over
-    // 0.3 s on up-facing ground: a bent, glossy, slightly bright crown that glints like a splash.
-    float2 sp = WP.xy / 22.0;
-    float sh = frac(sin(dot(floor(sp), float2(41.3, 289.1))) * 15731.743);
-    float per = 0.5 + sh;
-    float age = frac(Time / per + sh * 7.0) * per;
-    float2 sd = (frac(sp) - 0.5 - (float2(frac(sh * 21.7), frac(sh * 57.3)) - 0.5) * 0.5) * 22.0;
-    float ring = saturate(1.0 - abs(length(sd) - age * 33.0) / 1.6) * saturate(1.0 - age / 0.3) * Rain * upv;
-    WorldNormal = normalize(WorldNormal + float3(normalize(sd + 1e-4) * ring * 1.6, 0.0));
-    Rough = lerp(Rough, 0.02, ring);
-    bc += ring * 0.22;  // normal and gloss alone are invisible on overcast asphalt (QA 2026-11-09)
+    if (WetGround > 0.5)
+    {
+        float2 ruv = WP.xy / 220.0;
+        float2 r1 = Texture2DSample(RipN, RipNSampler, ruv + float2(0.031, 0.017) * Time).rg * 2.0 - 1.0;
+        float2 r2 = Texture2DSample(RipN, RipNSampler, ruv * 1.7 - float2(0.023, 0.041) * Time).rg * 2.0 - 1.0;
+        float2 rip = (r1 + r2) * (0.12 + 0.4 * Rain);
+        WorldNormal = normalize(lerp(WorldNormal, normalize(float3(rip, 1.0)), pool));
+        // Rain splashes: one impact per 22 cm cell at a random time, a ring that grows to ~10 cm over
+        // 0.3 s on up-facing ground: a bent, glossy, slightly bright crown that glints like a splash.
+        float2 sp = WP.xy / 22.0;
+        float sh = frac(sin(dot(floor(sp), float2(41.3, 289.1))) * 15731.743);
+        float per = 0.5 + sh;
+        float age = frac(Time / per + sh * 7.0) * per;
+        float2 sd = (frac(sp) - 0.5 - (float2(frac(sh * 21.7), frac(sh * 57.3)) - 0.5) * 0.5) * 22.0;
+        float ring = saturate(1.0 - abs(length(sd) - age * 33.0) / 1.6) * saturate(1.0 - age / 0.3) * Rain * upv;
+        WorldNormal = normalize(WorldNormal + float3(normalize(sd + 1e-4) * ring * 1.6, 0.0));
+        Rough = lerp(Rough, 0.02, ring);
+        bc += ring * 0.22;  // normal and gloss alone are invisible on overcast asphalt (QA 2026-11-09)
+    }
 }
 """
 
@@ -507,9 +527,11 @@ def textures_for(textures, slug):
 
 
 
-def wet_inputs(mat, mpc, ripples):
-    """Inputs the WET_HLSL block needs (besides bc, Rough, WorldNormal, nGeo, pn, WP)."""
-    return [("Wet", mpc_scalar(mat, mpc, "Wetness", -1100, 600)),
+def wet_inputs(mat, mpc, ripples, ground):
+    """Inputs the WET_HLSL block needs (besides bc, Rough, WorldNormal, nGeo, pn, WP). `ground` is a
+    compile-time 1/0 (static switch or constant): puddles, ripples and splashes only where it is 1."""
+    return [("WetGround", ground),
+            ("Wet", mpc_scalar(mat, mpc, "Wetness", -1100, 600)),
             ("Rain", mpc_scalar(mat, mpc, "RainAmount", -1100, 680)),
             ("Time", MEL.create_material_expression(mat, unreal.MaterialExpressionTime, -1100, 760)),
             ("RipN", tex_object(mat, "Ripples", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, ripples, -1100, 840)),
@@ -625,7 +647,13 @@ def make_instance(name, parent, textures, tile, tint, settings):
     MEL.set_material_instance_scalar_parameter_value(mi, "TileSizeM", tile)
     MEL.set_material_instance_vector_parameter_value(mi, "Tint", unreal.LinearColor(tint[0], tint[1], tint[2], 1.0))
     for k, v in settings.items():
-        MEL.set_material_instance_scalar_parameter_value(mi, k, float(v))
+        if k == "ProjectionMode":
+            MEL.set_material_instance_static_switch_parameter_value(mi, "ProjectionBit0", bool(int(v) & 1))
+            MEL.set_material_instance_static_switch_parameter_value(mi, "ProjectionBit1", bool(int(v) & 2))
+        elif k == "WetGround":
+            MEL.set_material_instance_static_switch_parameter_value(mi, "WetGround", bool(v))
+        else:
+            MEL.set_material_instance_scalar_parameter_value(mi, k, float(v))
     MEL.update_material_instance(mi)
     L.save(mi)
     return mi
@@ -680,11 +708,13 @@ def WET_EXTRA(mpc, ripples, puddles):
 
     def get(mat, key):
         if mat not in cache:
-            ins = dict(wet_inputs(mat, mpc, ripples))
+            one = MEL.create_material_expression(mat, unreal.MaterialExpressionConstant, -1250, 1000)
+            one.set_editor_property("r", 1.0)  # roads and terrain are always ground
+            ins = dict(wet_inputs(mat, mpc, ripples, one))
             ins["PuddleAmt"].set_editor_property("default_value", puddles)
             cache[mat] = ins
         return cache[mat][key]
-    return [(k, (lambda m, k=k: get(m, k))) for k in ("Wet", "Rain", "Time", "RipN", "PuddleAmt")]
+    return [(k, (lambda m, k=k: get(m, k))) for k in ("WetGround", "Wet", "Rain", "Time", "RipN", "PuddleAmt")]
 
 
 def build_water_master(mpc, water):

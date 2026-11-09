@@ -262,13 +262,15 @@ High and Ultra exist for stronger GPUs. This laptop is not expected to hold 60 F
 
 | Preset | Avg FPS | 1% low | GPU ms | Game VRAM (MiB) |
 |---|---:|---:|---:|---:|
-| Low | 98.6 | 59.4 | 4.6 | 3,770 |
+| Low (engine Low: no sun shadows) | 98.6 | 59.4 | 4.6 | 3,770 |
+| Low with basic sun shadows (as shipped, `r.ShadowQuality=2`) | 83.8 / 82.4 | 40.1 / 41.4 | 6.8 / 7.4 | 4,271 |
 | Medium | 83.3 | 40.9 | 11.3 | 3,418 |
+| Medium, after the static-switch material cut (21:00) | 79.8 / 77.2 | 39.3 / 34.0 | 12.0 / 12.3 | 3,982 |
 | High (cool machine) | 53.0 | 25.4 | 18.0 | 4,388 |
 | High (same settings, after 25 min of runs) | 28.1 | 15.8 | 34.8 | 4,271 |
-| Ultra | no lap result (run did not finish) | | | 4,211 peak |
+| Ultra | out of VRAM at startup with browsers open | | | 4,211 peak |
 
-High swings by 2x with heat alone: the render thread went from 10 to 35 ms over one back-to-back batch while the CPU sat at 78 C with its clock capped. Single-cvar A/B tests on High (`r.DistanceFieldShadowing 0`, `r.Lumen.TraceMeshSDFs 0`, `r.VolumetricFog 0`) stayed inside that noise, so High keeps the engine values (`Config/DefaultScalability.ini` has the numbers). For A/B tests use `OC_PERF_EXEC="r.Foo 0" scripts/perf_run.sh ...`: `r.*` cvars passed with `-dpcvars` crash this build at startup with a Vulkan out-of-memory.
+Low now keeps basic sun shadows: the engine's Low turns them off and streets read flat. With them, Low is render-thread bound in editor `-game` (~12 ms), so it lands near Medium's FPS here while using ~40% less GPU. High swings by 2x with heat alone: the render thread went from 10 to 35 ms over one back-to-back batch while the CPU sat at 78 C with its clock capped. Single-cvar A/B tests on High (`r.DistanceFieldShadowing 0`, `r.Lumen.TraceMeshSDFs 0`, `r.VolumetricFog 0`) stayed inside that noise, so High keeps the engine values (`Config/DefaultScalability.ini` has the numbers). For A/B tests use `OC_PERF_EXEC="r.Foo 0" scripts/perf_run.sh ...`: `r.*` cvars passed with `-dpcvars` crash this build at startup with a Vulkan out-of-memory.
 
 Lumen Lite is the basis of the Medium plan: it is reported at about 2x the speed of high-quality Lumen, using `sg.GlobalIlluminationQuality 1` and `sg.ReflectionQuality 1`. **It is Beta and untested here.** If it fails on Linux Vulkan, Medium falls back to reduced software Lumen at a lower render scale.
 
