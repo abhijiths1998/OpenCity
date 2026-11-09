@@ -32,6 +32,22 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `T
 | `aerial_grass_rock` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/aerial_grass_rock | Poly Haven | CC0 | Landscape: grass and scrub | 2026-11-09 |
 | `brown_mud_rocks_01` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/brown_mud_rocks_01 | Poly Haven | CC0 | Landscape: dirt and slopes | 2026-11-09 |
 | `cliff_side` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/cliff_side | Poly Haven | CC0 | Landscape: rock, cliffs, mountains | 2026-11-09 |
+| `street_lamp_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/street_lamp_01 | Poly Haven | CC0 | Street lights along streets and avenues | 2026-11-09 |
+| `street_lamp_02` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/street_lamp_02 | Poly Haven | CC0 | Street lights, old town variant | 2026-11-09 |
+| `modular_street_seating` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/modular_street_seating | Poly Haven | CC0 | Benches at junctions and plazas | 2026-11-09 |
+| `metal_trash_can` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/metal_trash_can | Poly Haven | CC0 | Bins at junctions | 2026-11-09 |
+| `fire_hydrant` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/fire_hydrant | Poly Haven | CC0 | Street clutter | 2026-11-09 |
+| `island_tree_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/island_tree_01 | Poly Haven | CC0 | Boulevard and seafront trees | 2026-11-09 |
+| `island_tree_02` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/island_tree_02 | Poly Haven | CC0 | Boulevard and seafront trees | 2026-11-09 |
+| `fern_02` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/fern_02 | Poly Haven | CC0 | Planters, verges | 2026-11-09 |
+| `ceramic_pot` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/ceramic_pot | Poly Haven | CC0 | Potted plants by doors | 2026-11-09 |
+| `plastic_crate_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/plastic_crate_01 | Poly Haven | CC0 | Shopfront clutter | 2026-11-09 |
+| `wooden_crate_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/wooden_crate_01 | Poly Haven | CC0 | Port and shopfront clutter | 2026-11-09 |
+| `Barrel_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/Barrel_01 | Poly Haven | CC0 | Port clutter | 2026-11-09 |
+| `outdoor_table_chair_set_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/outdoor_table_chair_set_01 | Poly Haven | CC0 | Cafe tables on Lungomare | 2026-11-09 |
+| `modular_electricity_poles` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/modular_electricity_poles | Poly Haven | CC0 | Power poles in Le Fornaci and the hills | 2026-11-09 |
+| `boulder_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/boulder_01 | Poly Haven | CC0 | Distant scenery: east-coast hills, scaled up (oc_m3_water.py) | 2026-11-09 |
+| `namaqualand_boulder_03` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/namaqualand_boulder_03 | Poly Haven | CC0 | Distant scenery: peaks north of Monte Ferrale, scaled up (oc_m3_water.py) | 2026-11-09 |
 
 *(Rows are added when you download each texture/model/HDRI from the AUDIT.md download list.)*
 

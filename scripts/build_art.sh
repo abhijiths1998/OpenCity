@@ -21,7 +21,8 @@ fi
 declare -A KEEP=( [metal_trash_can]='metal_trash_can(_handle_left|_handle_right)?' [fire_hydrant]='.*_aged' [fern_02]='fern_02_b' )
 mkdir -p SourceArt/Downloads/Props
 for slug in street_lamp_01 metal_trash_can fire_hydrant island_tree_01 island_tree_02 fern_02 ceramic_pot \
-            plastic_crate_01 wooden_crate_01 Barrel_01 outdoor_table_chair_set_01; do
+            plastic_crate_01 wooden_crate_01 Barrel_01 outdoor_table_chair_set_01 \
+            boulder_01 namaqualand_boulder_03; do
   "$BLENDER" -b --factory-startup -P Tools/blender/combine_gltf.py -- \
     SourceArt/Downloads/Models/$slug/*.gltf "SourceArt/Downloads/Props/SM_Prop_$slug.glb" ${KEEP[$slug]:+"${KEEP[$slug]}"} \
     | grep -E "COMBINED|Error"

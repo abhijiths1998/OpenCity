@@ -267,6 +267,16 @@
    "slug": "modular_electricity_poles",
    "res": "1k",
    "notes": "Power poles in Le Fornaci and the hills"
+  },
+  {
+   "slug": "boulder_01",
+   "res": "1k",
+   "notes": "Distant scenery: east-coast hills, scaled up (oc_m3_water.py)"
+  },
+  {
+   "slug": "namaqualand_boulder_03",
+   "res": "1k",
+   "notes": "Distant scenery: peaks north of Monte Ferrale, scaled up (oc_m3_water.py)"
   }
  ],
  "ambientcg": [

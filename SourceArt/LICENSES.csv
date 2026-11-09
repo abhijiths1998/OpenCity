@@ -42,3 +42,5 @@ SourceArt/Downloads/Decals/ChewingGum001,https://ambientcg.com/view?id=ChewingGu
 SourceArt/LUT/T_LUT_Marevia.png,Tools/make_lut.py,OpenCity,Project-owned,2026-11-09,Colour-grade LUT (ART_BIBLE grade)
 SourceArt/Vehicles/SportsCar (SM_SportsCar export + SM_SportsCar_Body),UE 5.8.4 Templates/TemplateResources/Standard/Vehicles,Epic Games,Unreal Engine EULA (use in Unreal Engine projects),2026-11-09,Template mesh exported unchanged; windows split into a Glass slot
 SourceArt/Downloads/painted_metal_shutter,https://polyhaven.com/a/painted_metal_shutter,Poly Haven,CC0,2026-11-09,"Kit: rolling shutters, railings, pipes, roof props (MI_Kit_Metal)"
+SourceArt/Downloads/Models/boulder_01,https://polyhaven.com/a/boulder_01,Poly Haven,CC0,2026-11-09,"Distant scenery: east-coast hills, scaled up (oc_m3_water.py)"
+SourceArt/Downloads/Models/namaqualand_boulder_03,https://polyhaven.com/a/namaqualand_boulder_03,Poly Haven,CC0,2026-11-09,"Distant scenery: peaks north of Monte Ferrale, scaled up (oc_m3_water.py)"

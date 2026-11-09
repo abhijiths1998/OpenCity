@@ -33,6 +33,8 @@ SPHERE = "/Engine/BasicShapes/Sphere"
 CONE = "/Engine/BasicShapes/Cone"
 CUBE = "/Engine/BasicShapes/Cube"
 
+BOULDER_A = "/Game/Environment/Props/SM_Prop_namaqualand_boulder_03/SM_Prop_namaqualand_boulder_03"
+BOULDER_B = "/Game/Environment/Props/SM_Prop_boulder_01/SM_Prop_boulder_01"
 SEA_EXTENT_M = 40000.0   # half size of the sea plane: past the horizon from any hill in the map
 
 _assets = {}
@@ -67,12 +69,28 @@ def visual(label, folder, center_m, size_m, mat, mesh, rot=(0, 0, 0), spatial=Tr
     return a
 
 
+def scan(label, folder, mesh, center_xy, base_z, size_m, mat, yaw):
+    """A rock scan scaled to size_m (x, y, z metres), its bounds centred on center_xy and its base at
+    base_z (layout metres)."""
+    m = asset(mesh)
+    ext = m.get_bounds().box_extent
+    scale = (size_m[0] * 50.0 / ext.x, size_m[1] * 50.0 / ext.y, size_m[2] * 50.0 / ext.z)
+    a = visual(label, folder, (center_xy[0], center_xy[1], base_z), (1, 1, 1), mat, mesh, rot=(0, 0, yaw),
+               spatial=False, shadows=False)
+    a.set_actor_scale3d(unreal.Vector(*scale))
+    origin, half = a.get_actor_bounds(False)
+    want = unreal.Vector(center_xy[0] * 100.0, -center_xy[1] * 100.0, base_z * 100.0 + half.z)
+    a.set_actor_location(a.get_actor_location() + (want - origin), False, False)
+    return a
+
+
 def river_half_width(y):  # Tools/make_marevia_layout.py
     if y < 260:
         return 25.0 + (260 - y) * 0.45
     return 25.0 if y < 2100 else 14.0
 
 
+CASCADE_DEG = 12.0  # river sections steeper than this get no water surface (QA 2026-11-09: slabs in the gorge)
 BANK_M = 12.0  # Tools/make_marevia_layout.py: banks rise from the bed over 12 m beside the channel
 
 
@@ -97,7 +115,11 @@ def build_water(layout):
         horiz = math.hypot(x1 - x0, y1 - y0)
         pitch = math.degrees(math.atan2(z1 - z0, horiz))
         yaw = math.degrees(math.atan2(-(y1 - y0), x1 - x0))
-        width = 2.0 * (river_half_width((y0 + y1) / 2.0) + BANK_M)
+        if abs(pitch) > CASCADE_DEG:
+            continue  # the gorge below the dam climbs at 25-42 degrees: a dry rock cascade, not a water sheet
+        # Steep reaches keep to the channel; a sheet as wide as the banks stood out of the relaxed terrain.
+        bank = BANK_M if abs(pitch) < 6.0 else 0.0
+        width = 2.0 * (river_half_width((y0 + y1) / 2.0) + bank)
         length = math.hypot(horiz, z1 - z0) + 1.0  # 0.5 m overlap at each joint: no cracks on bends
         visual(f"Water_RiverSurface_{n:03d}", "Water/Surface/River", ((x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0),
                (length, width, 1.0), "Water", PLANE, rot=(0, pitch, yaw), shadows=False)
@@ -112,7 +134,7 @@ def build_water(layout):
     north = rcy + ay
     visual("Water_ReservoirSurface", "Water/Surface", (rcx, (dam_y + north) / 2.0, level), (2 * ax, north - dam_y, 1.0),
            "Water", PLANE, spatial=False, shadows=False)
-    log(f"water surfaces: sea, reservoir and {n} river sections")
+    log(f"water surfaces: sea, reservoir and {n} river sections (none steeper than {CASCADE_DEG:.0f} deg)")
 
 
 def build_scenery(layout):
@@ -122,14 +144,14 @@ def build_scenery(layout):
     rng = random.Random(1951)
     count = 0
 
-    # Distant peaks: a ragged ridge 1.5-6 km behind Monte Ferrale (cones, rock above 300 m).
+    # Distant peaks: a ragged ridge 1.5-6 km behind Monte Ferrale.
     for i in range(16):
         x = ox - 2500.0 + i * (sx + 5000.0) / 15.0 + rng.uniform(-200, 200)
         h = rng.uniform(700.0, 1500.0)
         r = h * rng.uniform(1.4, 2.2)
-        y = north_edge + r + rng.uniform(300.0, 2500.0)  # the whole cone stays behind the map edge
-        visual(f"Scenery_Peak_{i:02d}", "Scenery/Peaks", (x, y, h / 2.0 - 60.0), (2 * r, 2 * r * rng.uniform(0.7, 1.0), h),
-               "Terrain", CONE, rot=(0, 0, rng.uniform(0, 360)), spatial=False, shadows=False)
+        y = north_edge + r + rng.uniform(300.0, 2500.0)  # the whole peak stays behind the map edge
+        scan(f"Scenery_Peak_{i:02d}", "Scenery/Peaks", BOULDER_A if i % 2 else BOULDER_B, (x, y), -80.0,
+             (2 * r, 2 * r * rng.uniform(0.7, 1.0), h + 80.0), "Terrain", rng.uniform(0, 360))
         count += 1
 
     # The coast continues east: low hills near the sea rising to the mountains in the north.
@@ -139,16 +161,16 @@ def build_scenery(layout):
         h = 40.0 + 520.0 * t * t + rng.uniform(-20, 40)
         size_x = rng.uniform(900, 1400)
         x = east_edge + size_x / 2.0 + rng.uniform(60.0, 300.0)  # the whole hill stays past the map edge
-        visual(f"Scenery_EastHill_{i:02d}", "Scenery/EastCoast", (x, y, -h * 0.15),
-               (size_x, rng.uniform(500, 800), 2.3 * h), "Hill", SPHERE, spatial=False, shadows=False)
+        scan(f"Scenery_EastHill_{i:02d}", "Scenery/EastCoast", BOULDER_B if i % 2 else BOULDER_A, (x, y), -0.3 * h,
+             (size_x, rng.uniform(500, 800), 1.3 * h), "Hill", rng.choice((-8.0, 0.0, 172.0, 180.0)))
         count += 1
 
     # Isola Ventura: a rocky island ~3.5 km offshore with an old sea fortress (STORY.md).
     ix, iy = ox + sx * 0.62, oy - 3500.0
     parts = [((0, 0), (2200, 900, 2 * 70), 0), ((-450, 80), (900, 600, 2 * 160), 10), ((520, -60), (700, 450, 2 * 110), -15)]
     for k, ((dx, dy), size, yaw) in enumerate(parts):
-        visual(f"Scenery_IsolaVentura_Rock{k}", "Scenery/IsolaVentura", (ix + dx, iy + dy, -size[2] * 0.12), size, "Terrain", SPHERE,
-               rot=(0, 0, yaw), spatial=False, shadows=False)
+        scan(f"Scenery_IsolaVentura_Rock{k}", "Scenery/IsolaVentura", BOULDER_A if k % 2 else BOULDER_B, (ix + dx, iy + dy),
+             -size[2] * 0.12, (size[0], size[1], size[2] * 0.62), "Terrain", yaw)
     fort_z = parts[1][1][2] * (0.5 - 0.12) - 6.0  # top of the western rock, fortress sunk 6 m
     visual("Scenery_IsolaVentura_Fortress", "Scenery/IsolaVentura", (ix - 450, iy + 80, fort_z + 12), (110, 70, 24), "Landmark", CUBE,
            spatial=False, shadows=False)
