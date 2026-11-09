@@ -475,6 +475,136 @@ GATES = [  # tag, opens with milestone, what stands there while locked
 ]
 
 
+# Landmarks whose ground-plan includes the road on purpose: the dam carries the pass road on its
+# crest, and the quarry yard is where the pass road's branch ends.
+LANDMARKS_ON_ROAD = {"dam", "quarry", "pier", "lighthouse"}
+LANDMARK_ROAD_MARGIN = 3.0   # m kept clear between a landmark's footprint and a road's edge
+LANDMARK_SEARCH = 150.0      # m: furthest a landmark moves from its planned spot
+
+
+def settle_landmarks(terrain, g):
+    """Move each landmark to the nearest spot (to its planned position, in its district) where its
+    footprint plus a margin is clear of every road corridor and of water. Roads came first, so a
+    landmark placed by hand on a street would otherwise stand in the middle of it."""
+    blocked = terrain < 1.5
+    ys = np.arange(terrain.shape[0]) + Y_MIN
+    xs = np.arange(terrain.shape[1])
+    rx = np.array([river_x(float(y)) for y in ys])
+    rhw = np.array([river_half_width(float(y)) for y in ys]) + 4.0
+    blocked |= (np.abs(xs[None, :] - rx[:, None]) <= rhw[:, None]) & (ys[:, None] < DAM_Y + 30)
+    for seg in g.segments:
+        ax, ay, _ = g.nodes[seg["a"]]
+        bx, by, _ = g.nodes[seg["b"]]
+        reach = seg["width"] / 2.0 + LANDMARK_ROAD_MARGIN
+        x0, x1 = int(max(0, min(ax, bx) - reach - 2)), int(min(W, max(ax, bx) + reach + 2)) + 1
+        y0, y1 = int(max(0, min(ay, by) - reach - 2 - Y_MIN)), int(min(H, max(ay, by) + reach + 2 - Y_MIN)) + 1
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        yy += Y_MIN
+        dx, dy = bx - ax, by - ay
+        t = np.clip(((xx - ax) * dx + (yy - ay) * dy) / max(dx * dx + dy * dy, 1e-6), 0.0, 1.0)
+        blocked[y0:y1, x0:x1] |= np.hypot(xx - (ax + t * dx), yy - (ay + t * dy)) < reach
+    rects = {n: r for n, r, _, _ in DISTRICTS}
+    placed = []
+    for name, dist, (x, y), (fw, fd), h, kind in LANDMARKS:
+        if kind in LANDMARKS_ON_ROAD:
+            placed.append((name, dist, (x, y), (fw, fd), h, kind))
+            continue
+        dx0, dy0, dx1, dy1 = rects[dist]
+        best = None
+        step = 2.0
+        rings = int(LANDMARK_SEARCH / step)
+        cands = sorted(((i * step, j * step) for i in range(-rings, rings + 1) for j in range(-rings, rings + 1)),
+                       key=lambda o: o[0] * o[0] + o[1] * o[1])
+        for ox, oy in cands:
+            if ox * ox + oy * oy > LANDMARK_SEARCH ** 2:
+                break
+            cx, cy = x + ox, y + oy
+            if not (dx0 + fw / 2 <= cx <= dx1 - fw / 2 and dy0 + fd / 2 <= cy <= dy1 - fd / 2):
+                continue
+            c0, c1 = int(cx - fw / 2), int(cx + fw / 2) + 1
+            r0, r1 = int(cy - fd / 2 - Y_MIN), int(cy + fd / 2 - Y_MIN) + 1
+            if c0 < 0 or r0 < 0 or c1 > W or r1 > H:
+                continue
+            if not blocked[r0:r1, c0:c1].any():
+                best = (round(cx, 1), round(cy, 1))
+                break
+        if best is None:
+            best = claim_block(g, terrain, name, dist, (x, y), (fw, fd), rects[dist])
+            placed.append((name, dist, best, (fw, fd), h, kind))
+            continue
+        if best != (x, y):
+            print(f"landmark {name}: moved {math.hypot(best[0] - x, best[1] - y):.0f} m off the roads to {best}")
+        placed.append((name, dist, best, (fw, fd), h, kind))
+    return placed
+
+
+CLAIMABLE_KINDS = {"alley", "street"}  # a large landmark may take over a block's minor streets
+
+
+def claim_block(g, terrain, name, dist, pos, size, rect):
+    """For a landmark too big to fit between streets (hospital, station): the nearest spot where
+    only minor, ungated streets cross its footprint and removing them keeps the network connected;
+    those streets are removed, like a real hospital or station taking a whole block."""
+    fw, fd = size
+    pts, seg_of, reach = [], [], []
+    for i, seg in enumerate(g.segments):
+        ax, ay, _ = g.nodes[seg["a"]]
+        bx, by, _ = g.nodes[seg["b"]]
+        n = max(2, int(math.hypot(bx - ax, by - ay) / 2.0) + 1)
+        for k in range(n):
+            t = k / (n - 1)
+            pts.append((ax + (bx - ax) * t, ay + (by - ay) * t))
+            seg_of.append(i)
+            reach.append(seg["width"] / 2.0 + LANDMARK_ROAD_MARGIN)
+    pts, seg_of, reach = np.array(pts), np.array(seg_of), np.array(reach)
+
+    def connected_without(drop):
+        adj = {}
+        for i, seg in enumerate(g.segments):
+            if i in drop:
+                continue
+            adj.setdefault(seg["a"], []).append(seg["b"])
+            adj.setdefault(seg["b"], []).append(seg["a"])
+        start = next(iter(adj))
+        seen, stack = {start}, [start]
+        while stack:
+            for m in adj[stack.pop()]:
+                if m not in seen:
+                    seen.add(m)
+                    stack.append(m)
+        return len(seen) == len(adj)
+
+    x, y = pos
+    for r in np.arange(0.0, LANDMARK_SEARCH, 4.0):
+        for a in np.arange(0.0, 360.0, 360.0 / max(1, int(2 * math.pi * r / 4.0))) if r > 0 else (0.0,):
+            cx, cy = x + r * math.cos(math.radians(a)), y + r * math.sin(math.radians(a))
+            if not (rect[0] + fw / 2 <= cx <= rect[2] - fw / 2 and rect[1] + fd / 2 <= cy <= rect[3] - fd / 2):
+                continue
+            c0, c1, r0, r1 = int(cx - fw / 2), int(cx + fw / 2) + 1, int(cy - fd / 2 - Y_MIN), int(cy + fd / 2 - Y_MIN) + 1
+            if (terrain[r0:r1, c0:c1] < 1.5).any():
+                continue
+            inside = (np.abs(pts[:, 0] - cx) < fw / 2 + reach) & (np.abs(pts[:, 1] - cy) < fd / 2 + reach)
+            drop = set(int(i) for i in np.unique(seg_of[inside]))
+            if any(g.segments[i]["kind"] not in CLAIMABLE_KINDS or g.segments[i]["gate"] or g.segments[i]["bridge"] for i in drop):
+                continue
+            if drop and not connected_without(drop):
+                continue
+            g.segments = [seg for i, seg in enumerate(g.segments) if i not in drop]
+            print(f"landmark {name}: claimed a block at ({cx:.0f}, {cy:.0f}), {math.hypot(cx - x, cy - y):.0f} m from plan, removing {len(drop)} minor street segment(s)")
+            return (round(cx, 1), round(cy, 1))
+    print(f"warning: no spot for landmark {name}; left on its planned spot (roads run through it)")
+    return pos
+
+
+def drop_orphan_nodes(g):
+    """Remove nodes no segment uses any more, and renumber the segments' node indices."""
+    used = sorted({seg["a"] for seg in g.segments} | {seg["b"] for seg in g.segments})
+    remap = {old: new for new, old in enumerate(used)}
+    g.nodes = [g.nodes[i] for i in used]
+    for seg in g.segments:
+        seg["a"], seg["b"] = remap[seg["a"]], remap[seg["b"]]
+
+
 # --- Preview ------------------------------------------------------------------------------
 
 DISTRICT_COLORS = {
@@ -484,7 +614,7 @@ DISTRICT_COLORS = {
 }
 
 
-def render_preview(path, terrain, g, buildings=()):
+def render_preview(path, terrain, g, buildings=(), landmarks=LANDMARKS):
     scale = 0.5  # px per metre
     pw, ph = int(W * scale), int(H * scale)
     t = terrain[::2, ::2][: ph, : pw]
@@ -522,7 +652,7 @@ def render_preview(path, terrain, g, buildings=()):
         d.polygon([to_px(b["pos"][0] + u * c - v * sn, b["pos"][1] + u * sn + v * c)
                    for u, v in ((-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd))],
                   fill=(150, 150, 155), outline=(105, 105, 110))
-    for name, _, (x, y), (fw, fd), _, _ in LANDMARKS:
+    for name, _, (x, y), (fw, fd), _, _ in landmarks:
         px, py = to_px(x, y)
         d.rectangle([px - fw * scale / 2, py - fd * scale / 2, px + fw * scale / 2, py + fd * scale / 2], outline=(0, 0, 0), fill=(255, 230, 0))
         d.text((px + 6, py - 6), name, fill=(0, 0, 0), font=font)
@@ -613,7 +743,7 @@ def rect_mask(cx, cy, w, d, yaw, grow=0.0):
     return y0, y1, x0, x1, (np.abs(u) <= hw) & (np.abs(v) <= hd)
 
 
-def place_buildings(terrain, best, g, rng):
+def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
     ground_ok = terrain >= 1.5
     ys = np.arange(terrain.shape[0]) + Y_MIN
     rx = np.array([river_x(float(y)) for y in ys])
@@ -623,7 +753,7 @@ def place_buildings(terrain, best, g, rng):
     for (x0, y0, x1, y1) in (DARSENA, RESERVOIR):
         ground_ok[max(0, int(y0 - Y_MIN)):int(y1 - Y_MIN) + 1, max(0, int(x0)):int(x1) + 1] = False
     blocked = ~ground_ok | (best < 1.5)
-    for _, _, (x, y), (fw, fd), _, _ in LANDMARKS:
+    for _, _, (x, y), (fw, fd), _, _ in landmarks:
         blocked[max(0, int(y - fd / 2 - 8 - Y_MIN)):int(y + fd / 2 + 8 - Y_MIN) + 2,
                 max(0, int(x - fw / 2 - 8)):int(x + fw / 2 + 8) + 2] = True
     # Bridges are not in `best` (their corridors aren't graded): keep their decks and approaches clear.
@@ -660,7 +790,8 @@ def place_buildings(terrain, best, g, rng):
         if L < 1e-6:
             continue
         ux, uy = (bx - ax) / L, (by - ay) / L
-        yaw = math.atan2(uy, ux)
+        # Rasterise exactly what gets stored (rounded), so the self-check below sees the same masks.
+        yaw = math.radians(round(math.degrees(math.atan2(uy, ux)), 1))
         edge = seg["width"] / 2 + (SIDEWALK_W if seg["kind"] in SIDEWALK_KINDS else 0.0) + 1.0
         for side in (1, -1):
             s = rng.uniform(0, 3)
@@ -670,8 +801,9 @@ def place_buildings(terrain, best, g, rng):
                 if s + w > L:
                     break
                 off = edge + rng.uniform(*P["setback"]) + P["extra"] + d / 2
-                cx = ax + ux * (s + w / 2) - uy * off * side
-                cy = ay + uy * (s + w / 2) + ux * off * side
+                cx = round(ax + ux * (s + w / 2) - uy * off * side, 2)
+                cy = round(ay + uy * (s + w / 2) + ux * off * side, 2)
+                w, d = round(w, 2), round(d, 2)
                 ok = rect[0] <= cx <= rect[2] and rect[1] <= cy <= rect[3]
                 if ok:
                     m = rect_mask(cx, cy, w, d, yaw)
@@ -694,7 +826,7 @@ def place_buildings(terrain, best, g, rng):
                 if ok:
                     occ[y0:y1, x0:x1] |= mk
                     ci = terrain[int(round(cy - Y_MIN)), int(round(cx))]
-                    out.append({"pos": [round(cx, 2), round(cy, 2)], "size": [round(w, 2), round(d, 2)],
+                    out.append({"pos": [round(cx, 2), round(cy, 2)], "size": [w, d],
                                 "yaw": round(math.degrees(yaw), 1), "base": round(float(gr.min()) - 1.0, 2),
                                 "top": round(float(ci) + rng.uniform(*P["h"]), 2),
                                 "style": BUILDING_STYLES.index(style), "district": dist})
@@ -717,12 +849,14 @@ def main():
     rng = random.Random(SEED)
     terrain = make_heightmap(np.random.default_rng(SEED))
     g = build_roads(terrain, rng)
+    landmarks = settle_landmarks(terrain, g)   # may remove minor streets under big landmarks
+    drop_orphan_nodes(g)
     best = flatten_roads(terrain, g)
     for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
 
     t0 = time.time()
-    buildings = place_buildings(terrain, best, g, random.Random(SEED + 7))
+    buildings = place_buildings(terrain, best, g, random.Random(SEED + 7), landmarks)
     bt = time.time() - t0
 
     # Connectivity: report pieces of the road network that can't be reached from the start.
@@ -761,7 +895,7 @@ def main():
             "darsena": DARSENA, "reservoir": RESERVOIR, "molo": MOLO, "breakwater": BREAKWATER,
         },
         "landmarks": [{"name": n, "district": dst, "pos": p, "footprint": f, "height": h, "kind": k,
-                       "ground_z": ground(p[0], p[1])} for n, dst, p, f, h, k in LANDMARKS],
+                       "ground_z": ground(p[0], p[1])} for n, dst, p, f, h, k in landmarks],
         "gates": [{"tag": t, "opens_with": m, "while_locked": w} for t, m, w in GATES],
         "roads": {"kinds": ROAD_KINDS, "sidewalk_kinds": sorted(SIDEWALK_KINDS), "sidewalk_width": SIDEWALK_W,
                   "nodes": g.nodes, "segments": g.segments},
@@ -773,7 +907,7 @@ def main():
 
     hm = np.clip((terrain - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN) * 65535.0, 0, 65535).astype(np.uint16)
     Image.fromarray(hm[::-1]).save(out / "marevia_height.png")
-    render_preview(out / "marevia_preview.png", terrain, g, buildings)
+    render_preview(out / "marevia_preview.png", terrain, g, buildings, landmarks)
 
     kinds = {}
     for s in g.segments:

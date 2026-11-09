@@ -18,6 +18,7 @@
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Containers/Ticker.h"
+#include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
@@ -140,6 +141,14 @@ namespace OCAutoDrive
 		return bHit;
 	}
 
+	/** Teleport a vehicle like AOCVehicle::ResetUpright does (TeleportPhysics, then zero velocities). */
+	void TeleportCar(AOCVehicle* V, const FVector& To, const FRotator& Rot)
+	{
+		V->SetActorLocationAndRotation(To, Rot, false, nullptr, ETeleportType::TeleportPhysics);
+		V->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		V->GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+	}
+
 	/** Teleport to the start of route segment AtSeg, facing along it, and wait for ground to stream in. */
 	void FDriver::Place(int32 AtSeg)
 	{
@@ -151,7 +160,7 @@ namespace OCAutoDrive
 		Seg = FMath::Clamp(AtSeg, 0, Route.Num() - 2);
 		const FVector From = Route[Seg].Pos;
 		const FVector Dir = (Route[Seg + 1].Pos - From).GetSafeNormal2D();
-		V->SetActorLocationAndRotation(From + FVector(0, 0, 150), FRotator(0.f, Dir.Rotation().Yaw, 0.f), false, nullptr, ETeleportType::ResetPhysics);
+		TeleportCar(V, From + FVector(0, 0, 150), FRotator(0.f, Dir.Rotation().Yaw, 0.f));
 		State = EState::Settling;
 		SettleClock = 0.0;
 		bGrounded = false;
@@ -216,15 +225,10 @@ namespace OCAutoDrive
 			// Hold the car above the start until World Partition has streamed in ground there, then
 			// set it down on the surface (never inside geometry: depenetration reads as a crash).
 			SettleClock += Dt;
-			UPrimitiveComponent* Body = Cast<UPrimitiveComponent>(V->GetRootComponent());
 			FHitResult Ground;
 			if (!bGrounded && !HasGround(Route[Seg].Pos, &Ground))
 			{
-				V->SetActorLocation(Route[Seg].Pos + FVector(0, 0, 150), false, nullptr, ETeleportType::ResetPhysics);
-				if (Body)
-				{
-					Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
-				}
+				TeleportCar(V, Route[Seg].Pos + FVector(0, 0, 150), V->GetActorRotation());
 				if (SettleClock > 30.0)
 				{
 					Finish(TEXT("ABORTED (no ground streamed in at the start after 30 s)"));
@@ -235,7 +239,7 @@ namespace OCAutoDrive
 			if (!bGrounded)
 			{
 				bGrounded = true;
-				V->SetActorLocation(Ground.ImpactPoint + FVector(0, 0, 60), false, nullptr, ETeleportType::ResetPhysics);
+				TeleportCar(V, Ground.ImpactPoint + FVector(0, 0, 60), V->GetActorRotation());
 				UE_LOG(LogOpenCity, Display, TEXT("OCDEV route: set down on %s at %s"), *GetNameSafe(Ground.GetActor()), *Ground.ImpactPoint.ToCompactString());
 			}
 			M->SetThrottleInput(0.f);
@@ -301,6 +305,10 @@ namespace OCAutoDrive
 		{
 			++Stuck;
 			UE_LOG(LogOpenCity, Warning, TEXT("OCDEV route STUCK at %s (%.0f m along, segment %d)"), *Pos.ToCompactString(), Along, Seg);
+			if (Stuck == 1)
+			{
+				GEngine->Exec(World.Get(), TEXT("HighResShot 1280x720")); // see what the car ran into
+			}
 			bRecover = true;
 		}
 		FlipClock = V->GetActorUpVector().Z < 0.3 ? FlipClock + Dt : 0.0;
@@ -382,7 +390,7 @@ namespace OCAutoDrive
 		FHitResult Ground;
 		if (!HasGround(Start, &Ground))
 		{
-			P->SetActorLocation(Start + FVector(0, 0, 300), false, nullptr, ETeleportType::ResetPhysics);
+			P->SetActorLocation(Start + FVector(0, 0, 300), false, nullptr, ETeleportType::TeleportPhysics);
 			if (SettleClock > 30.0)
 			{
 				Finish(TEXT("ABORTED (no ground streamed in at the start after 30 s)"));

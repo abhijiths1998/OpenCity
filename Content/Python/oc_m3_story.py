@@ -30,6 +30,9 @@ CUBE = "/Engine/BasicShapes/Cube"
 CYLINDER = "/Engine/BasicShapes/Cylinder"
 MAT = "/Game/Dev/Materials/M_Dev_"
 
+# Bridge parapets start this far (m) from each bank node, clear of the junction there.
+RAIL_CLEAR_M = 8.0
+
 # The two bridges that move; every other gate is a barrier.
 MOVING_BRIDGES = {"Gate.PonteMobile": "lift", "Gate.Molo": "swing"}
 
@@ -107,10 +110,15 @@ def build_bridges(layout, layers):
             yaw = ue_yaw(ux, uy)
             actors = [shape(f"Bridge_{s['bridge']}_{suffix}", folder, (mid[0], mid[1], mid[2] - 0.5),
                             (d1 - d0, width, 1.0), "Bridge", rot=(0, pitch, yaw))]
-            for side in (-1, 1):  # parapets along both edges
+            # Parapets along both edges, but only clear of the bank nodes: the deck runs 5 m onto the
+            # bank, and parapets there stood across the junction roads at each end.
+            r0, r1 = max(d0, RAIL_CLEAR_M), min(d1, length - RAIL_CLEAR_M)
+            q0, q1 = at(r0), at(r1)
+            rmid = tuple((q0[i] + q1[i]) / 2.0 for i in range(3))
+            for side in (-1, 1) if r1 - r0 > 1.0 else ():
                 ox, oy = -uy * side * (width / 2.0 - 0.2), ux * side * (width / 2.0 - 0.2)
                 actors.append(shape(f"Bridge_{s['bridge']}_{suffix}_Parapet{'L' if side < 0 else 'R'}", folder,
-                                    (mid[0] + ox, mid[1] + oy, mid[2] + 0.55), (d1 - d0, 0.4, 1.1), "Bridge",
+                                    (rmid[0] + ox, rmid[1] + oy, rmid[2] + 0.55), (r1 - r0, 0.4, 1.1), "Bridge",
                                     rot=(0, pitch, yaw)))
             for act in actors:
                 if layer:
