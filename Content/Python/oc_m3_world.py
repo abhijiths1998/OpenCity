@@ -8,13 +8,16 @@ one file per actor, so rebuilding in place is not reliable).
 Layout metres (x east, y north) -> Unreal cm (X east, Y south): see FOCRoadGraph::LayoutToWorld.
 """
 
+import heapq
 import json
+import math
 import os
 
 import unreal
 
 import oc_lib as L
 import oc_m3_story
+import oc_m3_water
 
 TAG = "oc_m3"
 MAP_PATH = "/Game/Maps/Marevia/L_Marevia"
@@ -25,6 +28,15 @@ WORLD_DIR = os.path.join(PROJECT_DIR, "SourceArt/World")
 CELL_SIZE_CM = 12800
 LOADING_RANGE_CM = 38400
 LANDSCAPE_GRID = 2  # components per streaming proxy edge (252 m)
+
+# HLOD (ARCHITECTURE.md section 7): two layers, built by scripts/build_hlod.sh.
+#   HLOD0 instanced: the real meshes (buildings, roads, bridges) and the landscape's own HLOD,
+#                    256 m cells shown out to 1 km, past the 384 m streaming range.
+#   HLOD1 approximated: one simplified mesh with baked textures per 1 km cell, out to 8 km, so
+#                    the whole map and the mountains stay visible from anywhere.
+HLOD_PATH = "/Game/World/HLOD"
+HLOD_CELLS_CM = [25600, 102400]
+HLOD_RANGES_CM = [102400, 800000]
 
 
 def log(msg):
@@ -40,6 +52,74 @@ def setup_streaming(world):
     if n == 0:
         raise RuntimeError("no streaming partitions configured")
     log(f"streaming: {n} partition(s), cell {CELL_SIZE_CM} cm, loading range {LOADING_RANGE_CM} cm")
+
+
+def setup_hlod(world):
+    factory = unreal.HLODLayerFactory()
+    top = L.get_or_create("HLOD1_Approximated", HLOD_PATH, unreal.HLODLayer, factory, TAG)
+    L.set_props(top, layer_type=unreal.HLODLayerType.MESH_APPROXIMATE, parent_layer=None)
+    L.save(top)
+    base = L.get_or_create("HLOD0_Instanced", HLOD_PATH, unreal.HLODLayer, factory, TAG)
+    L.set_props(base, layer_type=unreal.HLODLayerType.INSTANCING, parent_layer=top)
+    L.save(base)
+    levels = unreal.OCWorldBuilderLibrary.configure_hlod(world, base, HLOD_CELLS_CM, HLOD_RANGES_CM)
+    if levels != 2:
+        raise RuntimeError(f"HLOD setup failed ({levels} levels)")
+    log(f"HLOD: {base.get_name()} -> {top.get_name()}, cells {HLOD_CELLS_CM} cm, ranges {HLOD_RANGES_CM} cm")
+
+
+# Perf camera loop (scripts/perf_run.sh L_Marevia): through the two districts open in a new game,
+# 4 m over the roads at 25 m/s (city driving pace; ~190 s a lap). Waypoints in layout metres; the loop follows the road graph.
+PERF_WAYPOINTS = [(520, 1290), (760, 1000), (1500, 980), (1450, 1150), (1780, 1500), (1150, 1600), (520, 1290)]
+
+
+def road_path(layout, a, b):
+    """Shortest ungated road path (node indices) between the nodes nearest layout points a and b."""
+    nodes = layout["roads"]["nodes"]
+    adj = {}
+    for s in layout["roads"]["segments"]:
+        if s["gate"]:
+            continue
+        d = math.dist(nodes[s["a"]][:2], nodes[s["b"]][:2])
+        adj.setdefault(s["a"], []).append((s["b"], d))
+        adj.setdefault(s["b"], []).append((s["a"], d))
+    near = lambda p: min(range(len(nodes)), key=lambda i: math.dist(nodes[i][:2], p))
+    start, goal = near(a), near(b)
+    dist, came, todo = {start: 0.0}, {}, [(0.0, start)]
+    while todo:
+        d, n = heapq.heappop(todo)
+        if n == goal:
+            break
+        if d > dist[n]:
+            continue
+        for m, w in adj.get(n, []):
+            if d + w < dist.get(m, 1e18):
+                dist[m], came[m] = d + w, n
+                heapq.heappush(todo, (d + w, m))
+    path = [goal]
+    while path[-1] != start:
+        path.append(came[path[-1]])
+    return path[::-1]
+
+
+def build_perf_path(layout):
+    nodes = layout["roads"]["nodes"]
+    loop = []
+    for a, b in zip(PERF_WAYPOINTS, PERF_WAYPOINTS[1:]):
+        leg = road_path(layout, a, b)
+        loop.extend(leg if not loop else leg[1:])
+    loop = loop[:-1]  # closed spline: the last node is the first
+    cls = unreal.load_class(None, "/Script/OpenCity.OCPerfCameraPath")
+    perf = L.spawn(cls, to_world(*nodes[loop[0]][:2], nodes[loop[0]][2] + 4.0), (0, 0, 0), "PerfCameraPath_Marevia", "Dev")
+    perf.set_editor_property("is_spatially_loaded", False)
+    L.set_props(perf, generate_circle=False, speed_cm_per_sec=2500.0, camera_pitch=-6.0, warmup_seconds=8.0)
+    spline = perf.get_component_by_class(unreal.SplineComponent)
+    spline.clear_spline_points(False)
+    for i in loop:
+        x, y, z = nodes[i]
+        spline.add_spline_point(to_world(x, y, z + 4.0), unreal.SplineCoordinateSpace.WORLD, False)
+    spline.set_closed_loop(True, True)
+    log(f"perf camera loop: {len(loop)} road nodes, {spline.get_spline_length() / 100.0:.0f} m")
 
 
 def build_roads(world, layout):
@@ -73,6 +153,7 @@ def main():
         raise RuntimeError(f"could not create World Partition map {MAP_PATH} (delete it first)")
     world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
     setup_streaming(world)
+    setup_hlod(world)
 
     # Landscape: 1 m quads; heightmap 0..65535 spans hmin..hmax metres.
     #   world Z = Location.Z + Scale.Z * (v - 32768) / 128   must equal   100 * (hmin + v / 65535 * range)
@@ -104,6 +185,8 @@ def main():
     build_roads(world, layout)
     build_buildings(world)
     oc_m3_story.build(world, layout)
+    oc_m3_water.build(layout)
+    build_perf_path(layout)
 
     unreal.EditorLoadingAndSavingUtils.save_dirty_packages(True, True)
     log(f"saved {MAP_PATH}")

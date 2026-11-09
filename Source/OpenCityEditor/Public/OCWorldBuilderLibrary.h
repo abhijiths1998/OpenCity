@@ -7,6 +7,7 @@
 
 class AActor;
 class ALandscape;
+class UHLODLayer;
 class UDataLayerAsset;
 class UStaticMesh;
 class UMaterialInterface;
@@ -40,6 +41,15 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
 	static int32 ConfigureStreaming(UWorld* World, int32 CellSizeCm, int32 LoadingRangeCm);
+
+	/**
+	 * Use RootLayer (and its parent chain) as the world's HLOD layers: sets the World Partition's
+	 * default HLOD layer and replaces every runtime partition's HLOD setups with one per layer in
+	 * the chain, HLOD level i using CellSizesCm[i] and LoadingRangesCm[i]. Run before HLODs are
+	 * built (scripts/build_hlod.sh). Returns the number of HLOD levels per partition (0 on failure).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 ConfigureHLOD(UWorld* World, UHLODLayer* RootLayer, const TArray<int32>& CellSizesCm, const TArray<int32>& LoadingRangesCm);
 
 	/**
 	 * Build road surface meshes from the layout's road graph: road strips, junction discs,

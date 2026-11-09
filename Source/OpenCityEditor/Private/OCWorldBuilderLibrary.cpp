@@ -21,7 +21,9 @@
 #include "LandscapeSubsystem.h"
 #include "Materials/MaterialInterface.h"
 #include "OCLog.h"
+#include "WorldPartition/HLOD/HLODLayer.h"
 #include "WorldPartition/RuntimeHashSet/RuntimePartition.h"
+#include "WorldPartition/RuntimeHashSet/WorldPartitionRuntimeHashSet.h"
 #include "WorldPartition/WorldPartition.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "DataLayer/DataLayerEditorSubsystem.h"
@@ -161,6 +163,74 @@ int32 UOCWorldBuilderLibrary::ConfigureStreaming(UWorld* World, int32 CellSizeCm
 		++Changed;
 	}
 	return Changed;
+}
+
+int32 UOCWorldBuilderLibrary::ConfigureHLOD(UWorld* World, UHLODLayer* RootLayer, const TArray<int32>& CellSizesCm, const TArray<int32>& LoadingRangesCm)
+{
+	UWorldPartition* WP = World ? World->GetWorldPartition() : nullptr;
+	if (!WP || !WP->RuntimeHash || !RootLayer)
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("ConfigureHLOD: needs a World Partition world and an HLOD layer"));
+		return 0;
+	}
+	int32 Levels = 0;
+	for (const UHLODLayer* L = RootLayer; L; L = L->GetParentLayer())
+	{
+		++Levels;
+	}
+	if (CellSizesCm.Num() < Levels || LoadingRangesCm.Num() < Levels)
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("ConfigureHLOD: %s has %d levels but %d cell sizes and %d loading ranges were given"),
+			*RootLayer->GetName(), Levels, CellSizesCm.Num(), LoadingRangesCm.Num());
+		return 0;
+	}
+
+	// RuntimePartitions is private on the hash set; walk it through reflection (as ConfigureStreaming does).
+	UObject* Hash = WP->RuntimeHash;
+	FArrayProperty* PartitionsProp = FindFProperty<FArrayProperty>(Hash->GetClass(), TEXT("RuntimePartitions"));
+	FStructProperty* DescProp = PartitionsProp ? CastField<FStructProperty>(PartitionsProp->Inner) : nullptr;
+	if (!DescProp || DescProp->Struct != FRuntimePartitionDesc::StaticStruct())
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("ConfigureHLOD: %s has no RuntimePartitions of FRuntimePartitionDesc (engine changed?)"), *Hash->GetClass()->GetName());
+		return 0;
+	}
+
+	WP->Modify();
+	WP->SetDefaultHLODLayer(RootLayer);
+	Hash->Modify();
+	FScriptArrayHelper Partitions(PartitionsProp, PartitionsProp->ContainerPtrToValuePtr<void>(Hash));
+	for (int32 i = 0; i < Partitions.Num(); ++i)
+	{
+		FRuntimePartitionDesc& Desc = *reinterpret_cast<FRuntimePartitionDesc*>(Partitions.GetRawPtr(i));
+		if (!Desc.MainLayer)
+		{
+			continue;
+		}
+		// Same steps as UWorldPartitionRuntimeHashSet::SetDefaultValues, with our sizes.
+		Desc.HLODSetups.Reset();
+		int32 Index = 0;
+		for (const UHLODLayer* L = RootLayer; L; L = L->GetParentLayer(), ++Index)
+		{
+			FRuntimePartitionHLODSetup& Setup = Desc.HLODSetups.AddDefaulted_GetRef();
+			Setup.Name = L->GetFName();
+			Setup.HLODLayers = { L };
+			URuntimePartition* Layer = DuplicateObject<URuntimePartition>(Desc.MainLayer, Hash);
+			Layer->Name = Setup.Name;
+			Layer->bBlockOnSlowStreaming = false;
+			Layer->bClientOnlyVisible = true;
+			Layer->Priority = 0;
+			Layer->HLODIndex = Index;
+			Layer->LoadingRange = LoadingRangesCm[Index];
+			if (FIntProperty* CellProp = FindFProperty<FIntProperty>(Layer->GetClass(), TEXT("CellSize")))
+			{
+				CellProp->SetPropertyValue_InContainer(Layer, CellSizesCm[Index]);
+			}
+			Setup.PartitionLayer = Layer;
+			UE_LOG(LogOpenCity, Display, TEXT("ConfigureHLOD: partition '%s' HLOD %d = %s (%s): cell %d cm, loading range %d cm"),
+				*Desc.Name.ToString(), Index, *L->GetName(), *UEnum::GetValueAsString(L->GetLayerType()), CellSizesCm[Index], LoadingRangesCm[Index]);
+		}
+	}
+	return Levels;
 }
 
 namespace OCRoadMesh

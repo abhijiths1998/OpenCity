@@ -5,6 +5,7 @@
                                        (UV0 = lateral m, along m; UV1 = half width m, marked lanes per direction)
   /Game/Dev/Materials/M_Dev_Sidewalk   60 cm paving slabs (world-planar UV0 in metres)
   /Game/Dev/Materials/M_Dev_Bridge     flat concrete
+  /Game/Dev/Materials/M_Dev_Water      opaque grey-box water: sea, river and reservoir surfaces
 
 Run headless:  scripts/run_python.sh Content/Python/oc_dev_materials.py
 """
@@ -226,6 +227,15 @@ float3 c = lerp(wall, float3(0.06, 0.07, 0.08), win);
 return lerp(c, shut, shutter);
 """
 
+# Grey-box water (sea, river, reservoir): deep blue-green with slow broad patches; low roughness,
+# so it reflects the sky. Opaque on purpose: translucent water and shoreline foam come with
+# M_Master_Water in M4b.
+WATER_HLSL = HLSL_NOISE + value_noise_hlsl("big", "WP.xy / 9000.0") + value_noise_hlsl("ripple", "WP.xy / 700.0") + """
+float3 deep = float3(0.010, 0.045, 0.060);
+float3 teal = float3(0.020, 0.085, 0.090);
+return lerp(deep, teal, 0.6 * big + 0.25 * ripple);
+"""
+
 STRIPES_HLSL = """
 float t = frac((WP.x + WP.y + WP.z) / 100.0);
 return t < 0.5 ? float3(0.75, 0.08, 0.06) : float3(0.85, 0.85, 0.82);
@@ -265,3 +275,4 @@ make_custom_surface("M_Dev_Road", ROAD_HLSL,
                     lambda m: [("Road0", uv(m, 0, -700, -100)), ("Road1", uv(m, 1, -700, 50)), ("WP", world_pos(m, -700, 200))], 0.8)
 make_custom_surface("M_Dev_Sidewalk", SIDEWALK_HLSL, lambda m: [("UV", uv(m, 0, -700, 0))], 0.85)
 make_flat("M_Dev_Bridge", (0.45, 0.44, 0.42), 0.8)
+make_custom_surface("M_Dev_Water", WATER_HLSL, lambda m: [("WP", world_pos(m, -700, 0))], 0.12)

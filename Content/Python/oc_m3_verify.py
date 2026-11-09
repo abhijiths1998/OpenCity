@@ -67,6 +67,24 @@ def main():
         if s["bridge"]:
             check(f"bridge {s['bridge']}", any(lb.startswith(f"Bridge_{s['bridge']}") for lb in labels))
 
+    # Water surfaces and scenery (oc_m3_water.py), and the perf camera loop.
+    check("sea surface", "Water_SeaSurface" in by_label)
+    check("reservoir surface", "Water_ReservoirSurface" in by_label)
+    river_surfaces = sum(1 for lb in labels if lb.startswith("Water_RiverSurface_"))
+    check("river surfaces", river_surfaces >= 90, river_surfaces)
+    check("distant peaks", sum(1 for lb in labels if lb.startswith("Scenery_Peak_")) >= 10)
+    check("Isola Ventura", any(lb.startswith("Scenery_IsolaVentura_Fortress") for lb in labels))
+    check("perf camera loop", "PerfCameraPath_Marevia" in by_label)
+
+    # HLOD: the project's two layers are the world's default, and HLOD actors exist once built.
+    hlod0 = unreal.load_asset("/Game/World/HLOD/HLOD0_Instanced")
+    check("HLOD layers", hlod0 is not None and hlod0.get_editor_property("parent_layer") is not None)
+    hlod_actors = sum(1 for d in descs if "WorldPartitionHLOD" in str(d.native_class))
+    if os.environ.get("OC_VERIFY_HLOD") == "1":
+        check("HLOD actors built (scripts/build_hlod.sh)", hlod_actors > 0, hlod_actors)
+    else:
+        L.log("oc_m3_verify", f"INFO HLOD actors: {hlod_actors} (set OC_VERIFY_HLOD=1 to require them)")
+
     # Gates: each gate's locked props are in its Data Layer; moving bridges also have an open state.
     per_layer = {}
     for d in descs:
