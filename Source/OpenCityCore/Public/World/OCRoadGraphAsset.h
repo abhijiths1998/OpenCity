@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "World/OCLaneGraph.h"
 #include "World/OCRoadGraph.h"
 #include "OCRoadGraphAsset.generated.h"
 
@@ -26,11 +27,16 @@ public:
 	/** The parsed graph (empty if LayoutJson is invalid; the error is logged once). */
 	const FOCRoadGraph& GetGraph() const;
 
+	/** Driving lanes derived from the graph (built on first use). */
+	const FOCLaneGraph& GetLanes() const;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& Event) override;
 #endif
 
 private:
 	mutable FOCRoadGraph Graph;
+	mutable FOCLaneGraph Lanes;
 	mutable bool bParsed = false;
+	mutable bool bLanesBuilt = false;
 };

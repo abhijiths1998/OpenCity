@@ -17,10 +17,21 @@ const FOCRoadGraph& UOCRoadGraphAsset::GetGraph() const
 	return Graph;
 }
 
+const FOCLaneGraph& UOCRoadGraphAsset::GetLanes() const
+{
+	if (!bLanesBuilt)
+	{
+		bLanesBuilt = true;
+		Lanes.Build(GetGraph());
+	}
+	return Lanes;
+}
+
 #if WITH_EDITOR
 void UOCRoadGraphAsset::PostEditChangeProperty(FPropertyChangedEvent& Event)
 {
 	Super::PostEditChangeProperty(Event);
 	bParsed = false;
+	bLanesBuilt = false;
 }
 #endif
