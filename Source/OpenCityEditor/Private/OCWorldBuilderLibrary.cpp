@@ -120,6 +120,23 @@ ALandscape* UOCWorldBuilderLibrary::CreateLandscapeFromHeightmap(UWorld* World, 
 	return Landscape;
 }
 
+namespace OCStreaming
+{
+	/** CellSize is private (uint32 on grid partitions): set it through reflection, whatever its integer type. */
+	bool SetCellSize(URuntimePartition* Partition, int32 CellSizeCm)
+	{
+		FNumericProperty* Prop = FindFProperty<FNumericProperty>(Partition->GetClass(), TEXT("CellSize"));
+		if (!Prop || !Prop->IsInteger())
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("%s has no integer CellSize (engine changed?)"), *Partition->GetClass()->GetName());
+			return false;
+		}
+		Prop->SetIntPropertyValue(Prop->ContainerPtrToValuePtr<void>(Partition), static_cast<int64>(CellSizeCm));
+		return Prop->GetSignedIntPropertyValue(Prop->ContainerPtrToValuePtr<void>(Partition)) == CellSizeCm;
+	}
+}
+using OCStreaming::SetCellSize;
+
 int32 UOCWorldBuilderLibrary::ConfigureStreaming(UWorld* World, int32 CellSizeCm, int32 LoadingRangeCm)
 {
 	UWorldPartition* WP = World ? World->GetWorldPartition() : nullptr;
@@ -154,9 +171,9 @@ int32 UOCWorldBuilderLibrary::ConfigureStreaming(UWorld* World, int32 CellSizeCm
 		Main->Modify();
 		Main->LoadingRange = LoadingRangeCm;
 		// CellSize is private on grid partitions; set it through reflection where it exists.
-		if (FIntProperty* CellProp = FindFProperty<FIntProperty>(Main->GetClass(), TEXT("CellSize")))
+		if (!SetCellSize(Main, CellSizeCm))
 		{
-			CellProp->SetPropertyValue_InContainer(Main, CellSizeCm);
+			return 0;
 		}
 		UE_LOG(LogOpenCity, Display, TEXT("ConfigureStreaming: partition '%s' main layer %s: loading range %d cm, cell size %d cm"),
 			*NameProp->GetPropertyValue_InContainer(Desc).ToString(), *Main->GetClass()->GetName(), LoadingRangeCm, CellSizeCm);
@@ -221,9 +238,9 @@ int32 UOCWorldBuilderLibrary::ConfigureHLOD(UWorld* World, UHLODLayer* RootLayer
 			Layer->Priority = 0;
 			Layer->HLODIndex = Index;
 			Layer->LoadingRange = LoadingRangesCm[Index];
-			if (FIntProperty* CellProp = FindFProperty<FIntProperty>(Layer->GetClass(), TEXT("CellSize")))
+			if (!SetCellSize(Layer, CellSizesCm[Index]))
 			{
-				CellProp->SetPropertyValue_InContainer(Layer, CellSizesCm[Index]);
+				return 0;
 			}
 			Setup.PartitionLayer = Layer;
 			UE_LOG(LogOpenCity, Display, TEXT("ConfigureHLOD: partition '%s' HLOD %d = %s (%s): cell %d cm, loading range %d cm"),

@@ -2,7 +2,8 @@
 // that every route is drivable (slopes, bridges, the dam, the pass road) and that World Partition
 // streams ground in ahead of a car at top speed. Compiled out of Shipping.
 //
-//   oc.dev.route X0 Y0 X1 Y1 [X2 Y2 ...] [kmh=N]   drive via waypoints (layout metres), N = speed cap
+//   oc.dev.route X0 Y0 X1 Y1 [X2 Y2 ...] [kmh=N] [quit]   drive via waypoints (layout metres), N = speed cap;
+//                                                        quit exits the game when the route ends
 //   oc.dev.route stop
 //
 // The route is the fastest road path (with the gates as they are now) between the nodes nearest
@@ -59,6 +60,7 @@ namespace OCAutoDrive
 		int32 Stuck = 0, Flipped = 0, OffRoute = 0, NoGround = 0, Recoveries = 0;
 		bool bOffRoute = false;
 		bool bInTick = false;
+		bool bQuitWhenDone = false;
 		double WorstGroundAheadM = 1e9;  // nearest the car came to a stretch with no ground loaded
 
 		bool Tick(float Dt);
@@ -169,6 +171,10 @@ namespace OCAutoDrive
 			DriveSeconds > 0.0 ? DrivenM / DriveSeconds * 3.6 : 0.0, MaxKmh, Stuck, Flipped, OffRoute, NoGround, Recoveries,
 			WorstGroundAheadM < 1e8 ? *FString::Printf(TEXT("%.0f m"), WorstGroundAheadM) : TEXT("never"));
 		State = EState::Idle;
+		if (bQuitWhenDone)
+		{
+			FPlatformMisc::RequestExit(false, TEXT("oc.dev.route quit"));
+		}
 		// From inside Tick, returning false removes the ticker; otherwise remove it here.
 		if (Ticker.IsValid() && !bInTick)
 		{
@@ -361,6 +367,10 @@ namespace OCAutoDrive
 		double CapKmh = 250.0;
 		for (int32 i = 0; i < Args.Num(); ++i)
 		{
+			if (Args[i].Equals(TEXT("quit"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
 			if (Args[i].StartsWith(TEXT("kmh=")))
 			{
 				CapKmh = FCString::Atod(*Args[i].Mid(4));
@@ -446,6 +456,7 @@ namespace OCAutoDrive
 		GDriver.Vehicle = V;
 		GDriver.Route = MoveTemp(R);
 		GDriver.CapMps = CapKmh / 3.6;
+		GDriver.bQuitWhenDone = Args.ContainsByPredicate([](const FString& A) { return A.Equals(TEXT("quit"), ESearchCase::IgnoreCase); });
 		// A core ticker, every frame, only while a route is being driven: steering needs per-frame input.
 		GDriver.Ticker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float Dt) { return GDriver.Tick(Dt); }));
 		GDriver.Place(0);
@@ -454,7 +465,7 @@ namespace OCAutoDrive
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs CmdRoute(TEXT("oc.dev.route"),
-		TEXT("Autopilot the driven vehicle along roads: X0 Y0 X1 Y1 [X2 Y2 ...] [kmh=N] (layout metres), or 'stop'."),
+		TEXT("Autopilot the driven vehicle along roads: X0 Y0 X1 Y1 [X2 Y2 ...] [kmh=N] [quit] (layout metres), or 'stop'."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Route));
 }
 

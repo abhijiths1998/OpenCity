@@ -32,7 +32,8 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 | Verify M1 / M2 assets after reload | `scripts/run_python.sh Content/Python/oc_m1_verify.py` (and `oc_m2_verify.py`) |
 | Regenerate the Marevia layout (roads, districts, water, landmarks, gates, heightmap, preview) | `python3 -I Tools/make_marevia_layout.py` → `SourceArt/World/` |
 | Rebuild the Marevia world map from SourceArt/World | `scripts/build_world.sh [--regen]` (deletes and recreates the map; needs the GPU, about 80 s with warm shaders) |
-| Check the Marevia map against the M3 acceptance list | `scripts/run_python.sh Content/Python/oc_m3_verify.py` |
+| Build World Partition HLODs (after every world rebuild; needs the GPU) | `scripts/build_hlod.sh [Map] [--delete]` |
+| Check the Marevia map against the M3 acceptance list | `scripts/run_python.sh Content/Python/oc_m3_verify.py` (`OC_VERIFY_HLOD=1` also requires built HLODs) |
 | Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |
 
 Underlying tools:
@@ -47,7 +48,7 @@ Notes:
 - DDC is the engine's local Zen server at `~/.config/Epic/UnrealEngine/Common/Zen/Data`, outside the repo and shared by all projects. The first cook compiles every shader (about 11 min); later ones reuse it.
 - `build.sh` fails on any compiler warning in project code. Tests write reports to `Saved/Automation/`.
 - Later-milestone plugins (Water, Mass, ZoneGraph, CommonUI) are absent from `OpenCity.uproject` on purpose. Add them in their milestone.
-- Scripted runtime checks: non-Shipping builds have `oc.dev.*` console commands (`status`, `goto X Y Z`, `interact`, `exitvehicle`, `drive T S B`, `impact KMH`, `radio`, `resetvehicle`, `flip`, `tilt DEG`, `spawn coupe|offroad|bike`, `unlock <Story.Mission.X | X | all>`, `progress`, `resetprogress`). `-ocdevscript="2:oc.dev.status;3:oc.dev.interact;9:quit"` runs them on a timeline and the results land in the log. Use these to verify gameplay changes headfully without input.
+- Scripted runtime checks: non-Shipping builds have `oc.dev.*` console commands (`status`, `goto X Y Z`, `interact`, `exitvehicle`, `drive T S B`, `impact KMH`, `radio`, `resetvehicle`, `flip`, `tilt DEG`, `spawn coupe|offroad|bike`, `unlock <Story.Mission.X | X | all>`, `progress`, `resetprogress`, `route X0 Y0 X1 Y1 [...] [kmh=N] [quit]` autopilots the driven vehicle along the lane graph and logs STUCK/FLIPPED/OFFROUTE/NOGROUND plus a summary). `-ocdevscript="2:oc.dev.status;3:oc.dev.interact;9:quit"` runs them on a timeline and the results land in the log. Use these to verify gameplay changes headfully without input.
 - World checks: `oc.dev.viewfrom X Y Z Pitch Yaw [FOV]` places a camera (cm); `oc.dev.ground X Y` logs terrain height at layout metres. World Partition streams around the *camera*, so for overview shots first run `wp.Runtime.OverrideRuntimeLoadingRange -grid=MainPartition -range=600000` (not via `-dpcvars`: that crashes at startup).
 - `oc.dev.viewfrom` freezes the player character until `oc.dev.viewfrom off`, so it doesn't fall through ground that unloads while the camera is away.
 - Landscapes must be built with a GPU renderer (`OC_PY_RENDER=1` adds `-AllowCommandletRendering`). Without it collision gets the heights but the terrain renders flat.
