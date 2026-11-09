@@ -27,6 +27,7 @@ After downloading, run:
 """
 
 import argparse
+import datetime
 import csv
 import json
 import os
@@ -82,16 +83,22 @@ def discover_urls(slug, size):
     files = http_get_json(f"{POLYHAVEN_FILES}/{slug}")
     chosen = {}
     size_t = size_token(size)
-    fallbacks = ("16k", "8k", "4k", "2k", "1k", "512")
     for m, info_ in MAP_INFO.items():
         ph = info_["ph"]
         url = None
         entry = files.get(ph) if isinstance(files, dict) else None
         if isinstance(entry, dict):
-            # Poly Haven bundles each map in jpg/png/exr; prefer PNG (lossless).
-            fmt = entry.get("png") or entry.get("jpg") or entry.get("exr")
-            if isinstance(fmt, dict):
-                url = fmt.get("url")
+            # files[<map>][<resolution>][<format>] = {"url": ...}. Take the wanted size, else the
+            # next smaller one (never larger: 2K is the in-game cap). Normals as PNG (JPEG blocks
+            # show up in lighting); colour and packed ORM as JPEG.
+            order = ("2k", "1k", "512") if size_t == "2k" else ("1k", "512") if size_t == "1k" else (size_t,)
+            for res in order:
+                level = entry.get(res)
+                if isinstance(level, dict):
+                    fmt = (level.get("png") if m == "n" else None) or level.get("jpg") or level.get("png")
+                    if isinstance(fmt, dict) and fmt.get("url"):
+                        url = fmt["url"]
+                        break
         if url:
             chosen[m] = url
     return chosen
@@ -158,7 +165,7 @@ def main():
                 print(f"WARNING: no URL for {slug}/{m}; skipping")
                 continue
             url = urls[m]
-            ext = MAP_EXT[m]
+            ext = url.rsplit(".", 1)[-1].lower()  # the format discover_urls chose
             suffix = MAP_INFO[m]["suffix"]
             out_name = f"T_{slug}_{suffix}.{ext}"
             out_path = os.path.join(dest_dir, out_name)
@@ -175,12 +182,14 @@ def main():
             except Exception as e:
                 print(f"WARNING: failed {slug}/{m}: {e}")
 
+        if not any(f.startswith(f"T_{slug}_") for f in os.listdir(dest_dir)):
+            continue  # nothing on disk: no ledger row
         license_rows.append([
             f"SourceArt/Downloads/{slug}",
             entry.get("source_url", f"https://polyhaven.com/{slug}"),
             entry.get("author", "Poly Haven / CC0"),
             entry.get("license", "CC0"),
-            "2026-11-08",
+            datetime.date.today().isoformat(),
             entry.get("notes", ""),
         ])
 

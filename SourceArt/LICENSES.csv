@@ -1,3 +1,17 @@
 asset,source_url,author,license,downloaded,notes
 Content/Characters/Mannequins (Manny/Quinn meshes rigs anims),UE 5.8.4 Templates/TemplateResources/High/Characters,Epic Games,Unreal Engine EULA (use in Unreal Engine projects),2026-11-07,Placeholder characters
 Content/Vehicles (SportsCar OffroadCar PhysicsMaterials),UE 5.8.4 Templates/TemplateResources/Standard/Vehicles,Epic Games,Unreal Engine EULA (use in Unreal Engine projects),2026-11-07,Placeholder vehicles for M2
+SourceArt/Downloads/plastered_wall,https://polyhaven.com/a/plastered_wall,Poly Haven,CC0,2026-11-09,Kit: building walls (MI_Kit_Wall)
+SourceArt/Downloads/white_stucco,https://polyhaven.com/a/white_stucco,Poly Haven,CC0,2026-11-09,Kit: Lungomare and Le Colline walls (alternate plaster)
+SourceArt/Downloads/old_sandstone_02,https://polyhaven.com/a/old_sandstone_02,Poly Haven,CC0,2026-11-09,"Kit: stone trims, sills, cornices, quoins, plinths (MI_Kit_Trim)"
+SourceArt/Downloads/wood_peeling_paint_weathered,https://polyhaven.com/a/wood_peeling_paint_weathered,Poly Haven,CC0,2026-11-09,"Kit: shutters, doors, frames, tinted per building (MI_Kit_Wood)"
+SourceArt/Downloads/metal_plate,https://polyhaven.com/a/metal_plate,Poly Haven,CC0,2026-11-09,"Kit: railings, rolling shutters, pipes, roof props (MI_Kit_Metal)"
+SourceArt/Downloads/clay_roof_tiles,https://polyhaven.com/a/clay_roof_tiles,Poly Haven,CC0,2026-11-09,Kit: hip roofs (MI_Kit_Roof)
+SourceArt/Downloads/brushed_concrete,https://polyhaven.com/a/brushed_concrete,Poly Haven,CC0,2026-11-09,"Kit: flat roofs, copings, balcony slabs (MI_Kit_Concrete)"
+SourceArt/Downloads/asphalt_02,https://polyhaven.com/a/asphalt_02,Poly Haven,CC0,2026-11-09,Roads
+SourceArt/Downloads/concrete_pavers_02,https://polyhaven.com/a/concrete_pavers_02,Poly Haven,CC0,2026-11-09,Sidewalks and plazas
+SourceArt/Downloads/cobblestone_floor_01,https://polyhaven.com/a/cobblestone_floor_01,Poly Haven,CC0,2026-11-09,Old-town alleys (setts)
+SourceArt/Downloads/coast_sand_01,https://polyhaven.com/a/coast_sand_01,Poly Haven,CC0,2026-11-09,Landscape: beach
+SourceArt/Downloads/aerial_grass_rock,https://polyhaven.com/a/aerial_grass_rock,Poly Haven,CC0,2026-11-09,Landscape: grass and scrub
+SourceArt/Downloads/brown_mud_rocks_01,https://polyhaven.com/a/brown_mud_rocks_01,Poly Haven,CC0,2026-11-09,Landscape: dirt and slopes
+SourceArt/Downloads/cliff_side,https://polyhaven.com/a/cliff_side,Poly Haven,CC0,2026-11-09,"Landscape: rock, cliffs, mountains"

@@ -2,7 +2,7 @@
 
 **Setting:** Marevia, an original fictional Mediterranean-style coastal port city. Present day. Fully original — no names, assets, logos, story, characters, map or UI from any existing game, and no real brands (see CLAUDE.md).
 
-The playable area is 2 km × 2.8 km: the city by the sea plus a mountain band (Monte Ferrale) to the north. Distant peaks and Isola Ventura (offshore island) are scenery, unreachable in Part 1. Districts, gates and landmarks follow `STORY.md`.
+The playable area is 3 km × 3 km: the city by the sea plus a mountain band (Monte Ferrale) to the north. Distant peaks and Isola Ventura (offshore island) are scenery, unreachable in Part 1. Districts, gates and landmarks follow `STORY.md`.
 
 ---
 

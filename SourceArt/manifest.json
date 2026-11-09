@@ -1,50 +1,187 @@
 {
-  "_comment": "External CC0 source files. Tools/fetch_assets.py (M4a) downloads these into SourceArt/Downloads/, which is not committed. Every entry also needs a row in LICENSES.csv.",
-  "assets": [
-    {
-      "slug": "plastered_wall",
-      "size": 1024,
-      "maps": ["bc", "n", "orm", "e"],
-      "source_url": "https://polyhaven.com/a/plastered_wall",
-      "author": "Poly Haven / CC0",
-      "license": "CC0",
-      "notes": "Sun-faded plaster walls for Mediterranean buildings (Building kit, walls)"
-    },
-    {
-      "slug": "worn_concrete_floor",
-      "size": 1024,
-      "maps": ["bc", "n", "orm"],
-      "source_url": "https://polyhaven.com/a/worn_concrete_floor",
-      "author": "Poly Haven / CC0",
-      "license": "CC0",
-      "notes": "Sidewalks and curbs"
-    },
-    {
-      "slug": "clean_asphalt",
-      "size": 1024,
-      "maps": ["bc", "n", "orm"],
-      "source_url": "https://polyhaven.com/a/clean_asphalt",
-      "author": "Poly Haven / CC0",
-      "license": "CC0",
-      "notes": "Road surface"
-    },
-    {
-      "slug": "terracotta_floor_tiles",
-      "size": 1024,
-      "maps": ["bc", "n", "orm"],
-      "source_url": "https://polyhaven.com/a/terracotta_floor_tiles",
-      "author": "Poly Haven / CC0",
-      "license": "CC0",
-      "notes": "Terracotta roof and floor tiles"
-    },
-    {
-      "slug": "cobblestone_01",
-      "size": 1024,
-      "maps": ["bc", "n", "orm"],
-      "source_url": "https://polyhaven.com/a/cobblestone_01",
-      "author": "Poly Haven / CC0",
-      "license": "CC0",
-      "notes": "Street / plaza paving"
-    }
-  ]
+ "_comment": "External CC0 source files. Tools/fetch_assets.py (M4a) downloads these into SourceArt/Downloads/, which is not committed. Every entry also needs a row in LICENSES.csv.",
+ "assets": [
+  {
+   "slug": "plastered_wall",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/plastered_wall",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: building walls (MI_Kit_Wall)"
+  },
+  {
+   "slug": "white_stucco",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/white_stucco",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: Lungomare and Le Colline walls (alternate plaster)"
+  },
+  {
+   "slug": "old_sandstone_02",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/old_sandstone_02",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: stone trims, sills, cornices, quoins, plinths (MI_Kit_Trim)"
+  },
+  {
+   "slug": "wood_peeling_paint_weathered",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/wood_peeling_paint_weathered",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: shutters, doors, frames, tinted per building (MI_Kit_Wood)"
+  },
+  {
+   "slug": "metal_plate",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/metal_plate",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: railings, rolling shutters, pipes, roof props (MI_Kit_Metal)"
+  },
+  {
+   "slug": "clay_roof_tiles",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/clay_roof_tiles",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: hip roofs (MI_Kit_Roof)"
+  },
+  {
+   "slug": "brushed_concrete",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/brushed_concrete",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: flat roofs, copings, balcony slabs (MI_Kit_Concrete)"
+  },
+  {
+   "slug": "asphalt_02",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/asphalt_02",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Roads"
+  },
+  {
+   "slug": "concrete_pavers_02",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/concrete_pavers_02",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Sidewalks and plazas"
+  },
+  {
+   "slug": "cobblestone_floor_01",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/cobblestone_floor_01",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Old-town alleys (setts)"
+  },
+  {
+   "slug": "coast_sand_01",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/coast_sand_01",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Landscape: beach"
+  },
+  {
+   "slug": "aerial_grass_rock",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/aerial_grass_rock",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Landscape: grass and scrub"
+  },
+  {
+   "slug": "brown_mud_rocks_01",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/brown_mud_rocks_01",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Landscape: dirt and slopes"
+  },
+  {
+   "slug": "cliff_side",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/cliff_side",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Landscape: rock, cliffs, mountains"
+  }
+ ]
 }

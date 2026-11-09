@@ -4,7 +4,7 @@
 One source of truth for M3 onwards. Unreal builds the landscape, roads, blockout and
 gates from these files; traffic (M5), police (M7) and the minimap (M9) read the road graph.
 
-Coordinates: metres, x = east (0..2016), y = north (-300..2724; the coast is near y = 60). The sea is south (y < coast)
+Coordinates: metres, x = east (0..3024), y = north (-300..2724; the coast is near y = 60). The sea is south (y < coast)
 and west of the cliffs. Heights are metres above sea level.
 
 Outputs (default SourceArt/World/):
@@ -27,23 +27,43 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 SEED = 1974
-W, H = 2016, 3024  # metres; matches the landscape (16 x 24 components of 126 quads at 1 m)
+W, H = 3024, 3024  # metres; matches the landscape (24 x 24 components of 126 quads at 1 m)
 Y_MIN = -300        # the map starts 300 m out to sea, so the Molo Salvi pier is on it
 SEA_LEVEL = 0.0
+# The plan was first laid out for a 2016 m wide map. Every east-west plan coordinate below is written in
+# those original units and widened by X_SCALE through X()/P()/R(); only x is stretched, so block sizes,
+# road widths, river width and bridge lengths (all metres) stay as they were and the extra width
+# becomes more city blocks.
+X_SCALE = 1.5
+
+
+def X(x):
+    return x * X_SCALE
+
+
+def P(pts):
+    """Widen a list of (x, y) plan points."""
+    return [(X(x), y) for x, y in pts]
+
+
+def R(rect):
+    """Widen a rect (x0, y0, x1, y1)."""
+    x0, y0, x1, y1 = rect
+    return (X(x0), y0, X(x1), y1)
 HEIGHT_MIN, HEIGHT_MAX = -100.0, 700.0  # heightmap 0..65535 maps to this range (metres)
 
 # --- Water ------------------------------------------------------------------------
 
 def coast_y(x):
     """South coastline: the beach curves gently, the port side sits a little further out."""
-    return 60.0 + 25.0 * math.sin(x / 400.0) + (30.0 if x > 1050 else 0.0)
+    return 60.0 + 25.0 * math.sin(x / X(400.0)) + (30.0 if x > X(1050) else 0.0)
 
 
-WEST_CLIFF_X = 40.0  # west edge is cliffs dropping to the sea
+WEST_CLIFF_X = X(40.0)  # west edge is cliffs dropping to the sea
 
 # Fiume Ardo centreline from the dam down to the sea: (x, y) points, south to north.
-RIVER = [(1000, -40), (990, 150), (1010, 400), (985, 700), (1000, 1000), (1030, 1300),
-         (1010, 1600), (1050, 1850), (1110, 2100), (1090, 2300), (1120, 2440)]
+RIVER = P([(1000, -40), (990, 150), (1010, 400), (985, 700), (1000, 1000), (1030, 1300),
+           (1010, 1600), (1050, 1850), (1110, 2100), (1090, 2300), (1120, 2440)])
 
 
 def river_half_width(y):
@@ -61,8 +81,8 @@ def river_x(y):
     return pts[0][0] if y < pts[0][1] else pts[-1][0]
 
 
-DARSENA = (260, 60, 820, 230)       # inner harbour basin (x0, y0, x1, y1), open to the sea at the west
-RESERVOIR = (880, 2470, 1380, 2690)  # behind the dam
+DARSENA = R((260, 60, 820, 230))      # inner harbour basin (x0, y0, x1, y1), open to the sea at the west
+RESERVOIR = R((880, 2470, 1380, 2690)) # behind the dam
 DAM_Y = 2455
 
 
@@ -81,8 +101,8 @@ def water_kind(x, y):
 
 
 # Molo Salvi: the terminal pier south of the Darsena, reachable only by the swing bridge.
-MOLO = (260, -260, 840, 60)
-BREAKWATER = [(840, -200), (930, -240)]  # out to the lighthouse
+MOLO = R((260, -260, 840, 60))
+BREAKWATER = P([(840, -200), (930, -240)])  # out to the lighthouse
 
 
 def on_molo(x, y):
@@ -98,14 +118,14 @@ def is_land(x, y):
 
 DISTRICTS = [
     # name, rect (x0, y0, x1, y1), unlock milestone, road style
-    ("PortoVecchio", (60, 230, 975, 880), "Story.Mission.Funerale", "grid90"),
+    ("PortoVecchio", R((60, 230, 975, 880)), "Story.Mission.Funerale", "grid90"),
     ("MoloSalvi", MOLO, "Story.Act2.Start", "terminal"),
-    ("CittaAlta", (60, 880, 975, 1680), "", "oldtown"),
-    ("LeFornaci", (1030, 900, 1980, 1680), "", "grid120"),
-    ("Lungomare", (1160, 90, 1980, 900), "Story.Mission.LaFornace", "beach"),
-    ("BorgoMarino", (1030, 90, 1160, 900), "Story.Mission.LaFornace", "village"),
-    ("LeColline", (60, 1680, 1980, 2160), "Story.Mission.StradaCostiera", "hills"),
-    ("MonteFerrale", (60, 2160, 1980, 2724), "Story.Mission.LaCava", "mountain"),
+    ("CittaAlta", R((60, 880, 975, 1680)), "", "oldtown"),
+    ("LeFornaci", R((1030, 900, 1980, 1680)), "", "grid120"),
+    ("Lungomare", R((1160, 90, 1980, 900)), "Story.Mission.LaFornace", "beach"),
+    ("BorgoMarino", R((1030, 90, 1160, 900)), "Story.Mission.LaFornace", "village"),
+    ("LeColline", R((60, 1680, 1980, 2160)), "Story.Mission.StradaCostiera", "hills"),
+    ("MonteFerrale", R((60, 2160, 1980, 2724)), "Story.Mission.LaCava", "mountain"),
 ]
 
 
@@ -162,7 +182,7 @@ def make_heightmap(rng):
     # Gentle rise inland from the coast.
     h += np.clip((ys - 200) / 700.0, 0, 1) * 8.0
     # Città Alta: a rounded hill topped by the old town.
-    d = np.hypot((xs - 480) / 420.0, (ys - 1280) / 380.0)
+    d = np.hypot((xs - X(480)) / X(420.0), (ys - 1280) / 380.0)
     h += 48.0 * np.clip(1 - d, 0, 1) ** 1.6
     # Le Colline ramp, then Monte Ferrale.
     h += np.clip((ys - 1650) / 450.0, 0, 1) ** 1.3 * 110.0
@@ -187,7 +207,7 @@ def make_heightmap(rng):
     # West cliffs drop to the sea.
     h = np.where(xs < WEST_CLIFF_X + 25, np.minimum(h, (xs - WEST_CLIFF_X) * 1.5), h)
     # Carve water: sea floor, Darsena, river channel, reservoir basin.
-    coast = 60.0 + 25.0 * np.sin(xs / 400.0) + np.where(xs > 1050, 30.0, 0.0)
+    coast = 60.0 + 25.0 * np.sin(xs / X(400.0)) + np.where(xs > X(1050), 30.0, 0.0)
     shore = np.clip((ys - coast) / 40.0, 0, 1)  # beach slope over 40 m
     h = h * shore + (-6.0) * (1 - shore)
     dx0, dy0, dx1, dy1 = DARSENA
@@ -332,19 +352,19 @@ def build_roads(terrain, rng):
     g = RoadGraph(terrain)
     rx = river_x
     # District grids.
-    grid(g, rng, (60, 240, 975, 880), 95, 0, 8, "street", "PortoVecchio")
-    grid(g, rng, (60, 880, 975, 1680), 62, 14, 10, "alley", "CittaAlta", keep=0.85)
-    grid(g, rng, (1030, 900, 1980, 1680), 125, 0, 6, "street", "LeFornaci")
-    grid(g, rng, (1160, 160, 1980, 900), 105, -6, 6, "street", "Lungomare")
-    grid(g, rng, (1030, 160, 1160, 900), 60, 20, 8, "alley", "BorgoMarino", keep=0.8)
-    grid(g, rng, (300, -230, 820, 40), 110, 0, 0, "pier", "MoloSalvi")
+    grid(g, rng, R((60, 240, 975, 880)), 95, 0, 8, "street", "PortoVecchio")
+    grid(g, rng, R((60, 880, 975, 1680)), 62, 14, 10, "alley", "CittaAlta", keep=0.85)
+    grid(g, rng, R((1030, 900, 1980, 1680)), 125, 0, 6, "street", "LeFornaci")
+    grid(g, rng, R((1160, 160, 1980, 900)), 105, -6, 6, "street", "Lungomare")
+    grid(g, rng, R((1030, 160, 1160, 900)), 60, 20, 8, "alley", "BorgoMarino", keep=0.8)
+    grid(g, rng, R((300, -230, 820, 40)), 110, 0, 0, "pier", "MoloSalvi")
 
     # Arterials.
-    g.path([(140, 250), (140, 560), (150, 880), (180, 1200), (220, 1520)], "avenue")   # west avenue
-    g.path([(950, 260), (930, 560), (935, 880)], "avenue")                              # port riverside
-    g.path([(1200, 170), (1500, 175), (1800, 185), (1960, 200)], "avenue")              # Lungomare promenade
-    g.path([(1080, 960), (1300, 950), (1600, 945), (1950, 950)], "avenue")             # east avenue
-    g.path([(1100, 300), (1095, 600), (1090, 900), (1085, 1250), (1080, 1600)], "avenue")  # east riverside
+    g.path(P([(140, 250), (140, 560), (150, 880), (180, 1200), (220, 1520)]), "avenue")   # west avenue
+    g.path(P([(950, 260), (930, 560), (935, 880)]), "avenue")                              # port riverside
+    g.path(P([(1200, 170), (1500, 175), (1800, 185), (1960, 200)]), "avenue")              # Lungomare promenade
+    g.path(P([(1080, 960), (1300, 950), (1600, 945), (1950, 950)]), "avenue")             # east avenue
+    g.path(P([(1100, 300), (1095, 600), (1090, 900), (1085, 1250), (1080, 1600)]), "avenue")  # east riverside
 
     # Bridges over the Fiume Ardo (named, with gate tags where they are gates).
     def bridge(name, y, kind, gate=None):
@@ -359,28 +379,28 @@ def build_roads(terrain, rng):
     bridge("PonteDelleColline", 1900, "street", gate="Gate.Colline")
 
     # Swing bridge to Molo Salvi across the Darsena.
-    g.path([(560, 260), (560, 30)], "pier", bridge="PonteGirevole", gate="Gate.Molo")
+    g.path(P([(560, 260), (560, 30)]), "pier", bridge="PonteGirevole", gate="Gate.Molo")
 
     # Coast road: up the west cliffs from the port to the hills, with curves.
-    coast_pts = [(90, 300), (70, 700), (75, 1100), (95, 1450), (160, 1700), (300, 1850),
-                 (420, 1960), (600, 2030), (850, 2000), (1000, 1930)]
+    coast_pts = P([(90, 300), (70, 700), (75, 1100), (95, 1450), (160, 1700), (300, 1850),
+                 (420, 1960), (600, 2030), (850, 2000), (1000, 1930)])
     g.path(coast_pts, "coast", gate=None)
     # Hills roads and gates (checkpoints where roads leave the open districts).
-    g.path([(520, 1660), (540, 1760), (480, 1900), (450, 1960)], "street", gate="Gate.Colline")  # to Villa Salvi
-    g.path([(1400, 1660), (1380, 1800), (1300, 1900), (1180, 1905)], "street", gate="Gate.Colline")
+    g.path(P([(520, 1660), (540, 1760), (480, 1900), (450, 1960)]), "street", gate="Gate.Colline")  # to Villa Salvi
+    g.path(P([(1400, 1660), (1380, 1800), (1300, 1900), (1180, 1905)]), "street", gate="Gate.Colline")
     # Monte Ferrale pass road: long hairpins up the hillside to the dam, then along the dam crest.
     # Heights follow a steady grade (grade_chain), not the steep mountain terrain; the corridor
     # grading cuts and fills the ground to match, which also raises the dam's embankment.
     crest = make_heightmap.reservoir_level + 2.0
-    pass_ids = g.path([(1300, 1905), (1750, 1990), (1300, 2110), (1800, 2230), (1430, 2340), (1395, DAM_Y),
-                       (1130, DAM_Y), (870, DAM_Y)], "pass", gate="Gate.Ferrale")
+    pass_ids = g.path(P([(1300, 1905), (1750, 1990), (1300, 2110), (1800, 2230), (1430, 2340), (1395, DAM_Y),
+                       (1130, DAM_Y), (870, DAM_Y)]), "pass", gate="Gate.Ferrale")
     grade_chain(g, pass_ids[:6], g.nodes[pass_ids[0]][2], crest)
     for i in pass_ids[5:]:
         g.nodes[i][2] = round(crest, 2)                               # along the dam crest
-    quarry = g.path([(1800, 2230), (1700, 2380)], "pass")              # quarry spur
-    mast = g.path([(1700, 2380), (1960, 2440), (1600, 2520), (1960, 2600), (1820, 2680)], "pass")  # radio mast
+    quarry = g.path(P([(1800, 2230), (1700, 2380)]), "pass")              # quarry spur
+    mast = g.path(P([(1700, 2380), (1960, 2440), (1600, 2520), (1960, 2600), (1820, 2680)]), "pass")  # radio mast
     grade_chain(g, mast, g.nodes[quarry[-1]][2], g.nodes[mast[-1]][2])
-    hermitage = g.path([(870, DAM_Y), (600, 2480), (820, 2560), (560, 2600), (500, 2640)], "pass")
+    hermitage = g.path(P([(870, DAM_Y), (600, 2480), (820, 2560), (560, 2600), (500, 2640)]), "pass")
     grade_chain(g, hermitage, crest, g.nodes[hermitage[-1]][2])
 
     # Stitch: join every road end that is still loose (bridge ends, arterial ends) and the
@@ -443,26 +463,26 @@ def build_roads(terrain, rng):
 # --- Landmarks and gates ---------------------------------------------------------------
 
 LANDMARKS = [  # name, district, (x, y), footprint (w, d) m, height m, kind
-    ("LaCala", "PortoVecchio", (700, 275), (24, 16), 7, "ruin"),
-    ("FishMarket", "PortoVecchio", (420, 330), (70, 35), 9, "hall"),
-    ("FerryPier", "PortoVecchio", (880, 240), (20, 80), 2, "pier"),
-    ("SalviTerminal", "MoloSalvi", (520, -120), (60, 40), 55, "tower"),
-    ("Faro", "MoloSalvi", (930, -240), (8, 8), 28, "lighthouse"),
-    ("SantaLucia", "CittaAlta", (520, 1320), (30, 55), 30, "church"),
-    ("CastrovanniTownhouse", "CittaAlta", (380, 1180), (22, 18), 14, "house"),
-    ("PoliceHQ", "CittaAlta", (760, 1000), (45, 35), 18, "civic"),
-    ("OspedaleSanMartino", "CittaAlta", (250, 1500), (60, 40), 22, "civic"),
-    ("BeppesGarage", "LeFornaci", (1450, 1150), (50, 40), 8, "yard"),
-    ("AbandonedKiln", "LeFornaci", (1780, 1500), (60, 45), 40, "kiln"),
-    ("StazioneCentrale", "LeFornaci", (1500, 980), (120, 30), 14, "station"),
-    ("ClubMedusa", "Lungomare", (1450, 250), (40, 30), 10, "club"),
-    ("HotelRiviera", "Lungomare", (1750, 300), (40, 25), 38, "hotel"),
-    ("VillaSalvi", "LeColline", (450, 1960), (40, 30), 12, "villa"),
-    ("Lookout", "LeColline", (250, 2030), (15, 15), 3, "lookout"),
-    ("LaCava", "MonteFerrale", (1700, 2380), (120, 80), 15, "quarry"),
-    ("DigaDelFerrale", "MonteFerrale", (1130, DAM_Y), (500, 15), 40, "dam"),
-    ("EremoDelleAquile", "MonteFerrale", (500, 2640), (25, 20), 12, "hermitage"),
-    ("RadioMast", "MonteFerrale", (1820, 2680), (8, 8), 60, "mast"),
+    ("LaCala", "PortoVecchio", (X(700), 275), (24, 16), 7, "ruin"),
+    ("FishMarket", "PortoVecchio", (X(420), 330), (70, 35), 9, "hall"),
+    ("FerryPier", "PortoVecchio", (X(880), 240), (20, 80), 2, "pier"),
+    ("SalviTerminal", "MoloSalvi", (X(520), -120), (60, 40), 55, "tower"),
+    ("Faro", "MoloSalvi", (X(930), -240), (8, 8), 28, "lighthouse"),
+    ("SantaLucia", "CittaAlta", (X(520), 1320), (30, 55), 30, "church"),
+    ("CastrovanniTownhouse", "CittaAlta", (X(380), 1180), (22, 18), 14, "house"),
+    ("PoliceHQ", "CittaAlta", (X(760), 1000), (45, 35), 18, "civic"),
+    ("OspedaleSanMartino", "CittaAlta", (X(250), 1500), (60, 40), 22, "civic"),
+    ("BeppesGarage", "LeFornaci", (X(1450), 1150), (50, 40), 8, "yard"),
+    ("AbandonedKiln", "LeFornaci", (X(1780), 1500), (60, 45), 40, "kiln"),
+    ("StazioneCentrale", "LeFornaci", (X(1500), 980), (120, 30), 14, "station"),
+    ("ClubMedusa", "Lungomare", (X(1450), 250), (40, 30), 10, "club"),
+    ("HotelRiviera", "Lungomare", (X(1750), 300), (40, 25), 38, "hotel"),
+    ("VillaSalvi", "LeColline", (X(450), 1960), (40, 30), 12, "villa"),
+    ("Lookout", "LeColline", (X(250), 2030), (15, 15), 3, "lookout"),
+    ("LaCava", "MonteFerrale", (X(1700), 2380), (120, 80), 15, "quarry"),
+    ("DigaDelFerrale", "MonteFerrale", (X(1130), DAM_Y), (X(500), 15), 40, "dam"),
+    ("EremoDelleAquile", "MonteFerrale", (X(500), 2640), (25, 20), 12, "hermitage"),
+    ("RadioMast", "MonteFerrale", (X(1820), 2680), (8, 8), 60, "mast"),
 ]
 
 GATES = [  # tag, opens with milestone, what stands there while locked
@@ -728,6 +748,11 @@ BUILDING_PARAMS = {
 }
 
 
+STOREY_H = 3.2       # m floor to floor (KIT_SPEC.md)
+BAY = 2.0            # m: building widths and depths are whole multiples of this
+MIN_FOOTPRINT = 4.0  # m
+
+
 def rect_mask(cx, cy, w, d, yaw, grow=0.0):
     """Pixels (centres at integer m) inside a rotated rectangle: (y0, y1, x0, x1, bool mask) or None."""
     c, sn = math.cos(yaw), math.sin(yaw)
@@ -796,14 +821,16 @@ def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
         for side in (1, -1):
             s = rng.uniform(0, 3)
             while s < L:
-                w, d = rng.uniform(*P["w"]), rng.uniform(*P["d"])
+                # Footprints snap to the modular facade kit's 2 m bay grid (KIT_SPEC.md), min 4 m.
+                w = max(MIN_FOOTPRINT, BAY * round(rng.uniform(*P["w"]) / BAY))
+                d = max(MIN_FOOTPRINT, BAY * round(rng.uniform(*P["d"]) / BAY))
                 gap = rng.uniform(*P["gap"])
                 if s + w > L:
                     break
                 off = edge + rng.uniform(*P["setback"]) + P["extra"] + d / 2
                 cx = round(ax + ux * (s + w / 2) - uy * off * side, 2)
                 cy = round(ay + uy * (s + w / 2) + ux * off * side, 2)
-                w, d = round(w, 2), round(d, 2)
+                w, d = float(w), float(d)
                 ok = rect[0] <= cx <= rect[2] and rect[1] <= cy <= rect[3]
                 if ok:
                     m = rect_mask(cx, cy, w, d, yaw)
@@ -826,9 +853,11 @@ def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
                 if ok:
                     occ[y0:y1, x0:x1] |= mk
                     ci = terrain[int(round(cy - Y_MIN)), int(round(cx))]
+                    storeys = max(1, round(rng.uniform(*P["h"]) / STOREY_H))
                     out.append({"pos": [round(cx, 2), round(cy, 2)], "size": [w, d],
                                 "yaw": round(math.degrees(yaw), 1), "base": round(float(gr.min()) - 1.0, 2),
-                                "top": round(float(ci) + rng.uniform(*P["h"]), 2),
+                                "storeys": storeys,
+                                "top": round(float(ci) + storeys * STOREY_H, 2),
                                 "style": BUILDING_STYLES.index(style), "district": dist})
                     s += w + gap
                 else:
@@ -864,7 +893,7 @@ def main():
     for s in g.segments:
         adj[s["a"]].add(s["b"])
         adj[s["b"]].add(s["a"])
-    start = min(range(len(g.nodes)), key=lambda i: (g.nodes[i][0] - 520) ** 2 + (g.nodes[i][1] - 1290) ** 2)
+    start = min(range(len(g.nodes)), key=lambda i: (g.nodes[i][0] - X(520)) ** 2 + (g.nodes[i][1] - 1290) ** 2)
     seen, stack = {start}, [start]
     while stack:
         for n in adj[stack.pop()]:
@@ -901,7 +930,7 @@ def main():
                   "nodes": g.nodes, "segments": g.segments},
         "building_styles": BUILDING_STYLES,
         "buildings": buildings,
-        "start": {"pos": [520, 1290], "district": "CittaAlta", "ground_z": ground(520, 1290)},
+        "start": {"pos": [X(520), 1290], "district": "CittaAlta", "ground_z": ground(X(520), 1290)},
     }
     (out / "marevia_layout.json").write_text(json.dumps(layout, indent=1))
 

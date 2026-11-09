@@ -128,7 +128,7 @@ bool FOCRoadGraphMareviaTest::RunTest(const FString& Parameters)
 		AddError(Error);
 		return false;
 	}
-	const int32 Start = G.FindNearestNode(FOCRoadGraph::LayoutToWorld(520.0, 1290.0, 0.0)); // Città Alta
+	const int32 Start = G.FindNearestNode(FOCRoadGraph::LayoutToWorld(780.0, 1290.0, 0.0)); // Città Alta
 	TestEqual(TEXT("Whole network connected with all gates open"), G.CountReachable(Start), G.NumNodes());
 
 	const TSet<FName> AllClosed = { TEXT("Gate.PortCordon"), TEXT("Gate.Colline"), TEXT("Gate.Ferrale"),
@@ -172,7 +172,7 @@ bool FOCRoadGraphMareviaTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("No gate leaks at new game"), Leaks, 0);
 
 	// The Lungomare promenade is behind the Ponte Mobile and the rail crossing at the start.
-	const int32 Promenade = G.FindNearestNode(FOCRoadGraph::LayoutToWorld(1500.0, 175.0, 0.0));
+	const int32 Promenade = G.FindNearestNode(FOCRoadGraph::LayoutToWorld(2250.0, 175.0, 0.0));
 	TestTrue(TEXT("Lungomare locked at start"), G.FindPath(Start, Promenade, AllClosed).IsEmpty());
 	TSet<FName> AfterLaFornace = AllClosed;
 	AfterLaFornace.Remove(TEXT("Gate.PonteMobile"));

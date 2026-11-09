@@ -71,7 +71,7 @@ def setup_hlod(world):
 
 # Perf camera loop (scripts/perf_run.sh L_Marevia): through the two districts open in a new game,
 # 4 m over the roads at 25 m/s (city driving pace; ~190 s a lap). Waypoints in layout metres; the loop follows the road graph.
-PERF_WAYPOINTS = [(520, 1290), (760, 1000), (1500, 980), (1450, 1150), (1780, 1500), (1150, 1600), (520, 1290)]
+PERF_WAYPOINTS = [(780, 1290), (1140, 1000), (2250, 980), (2175, 1150), (2670, 1500), (1725, 1600), (780, 1290)]
 
 
 def road_path(layout, a, b):

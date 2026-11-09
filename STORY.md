@@ -42,7 +42,7 @@ He comes back to Marevia to find out who did it, and to make them pay.
 
 ## Places in Marevia
 
-The playable map is **2 km wide × 2.8 km deep**: the city by the sea, plus a band of mountains to the north. Distant peaks behind the mountains, and an island offshore, are scenery you can see but not reach in Part 1. Water splits the city, and the bridges are the gates (see "Unlocking the city"). M3 builds all of this in grey-box.
+The playable map is **3 km wide × 3 km deep**: the city by the sea, plus a band of mountains to the north. Distant peaks behind the mountains, and an island offshore, are scenery you can see but not reach in Part 1. Water splits the city, and the bridges are the gates (see "Unlocking the city"). M3 builds all of this in grey-box.
 
 ```
         (distant peaks: scenery)        N

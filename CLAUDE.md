@@ -10,7 +10,7 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 - Project: `~/Projects/OpenCity`
 - Compiler: the toolchain bundled with Unreal. Don't use system gcc or clang to build.
 - The editor must run through XWayland (`SDL_VIDEODRIVER=x11`). Never use `SDL_VIDEODRIVER=wayland`.
-- GPU has 6 GB and is shared with the desktop. RAM is 24 GB, CPU 4 cores / 8 threads.
+- GPU has 6 GB and is shared with the desktop; the game budget stays 5,000 MiB (confirmed 2026-11-09). RAM is 24 GB, CPU 4 cores / 8 threads.
 
 ## Commands
 
@@ -112,6 +112,7 @@ Content/
 - Build after every C++ change, and fix all errors and warnings before calling a step done.
 - Run tests for any logic touched.
 - Small commits after each working step. Commit before long or risky editor sessions, because this machine has had hard GPU freezes.
+- Blender: the system package is broken; use the portable LTS build at `~/Applications/blender-4.2/blender` (headless: `-b -P script.py`). Lightmap UVs are not needed (fully dynamic lighting).
 - Use Editor Python for repeatable asset work. If a step must be done by hand, give a short checklist with exact menu paths.
 - Say plainly when something could not be tested headless, and what the user needs to check in the editor.
 - Report real measurements only. Never present a Target as a result.
@@ -124,4 +125,5 @@ Content/
 - Don't commit `Binaries/`, `Intermediate/`, `Saved/`, `DerivedDataCache/`, or raw CC0 downloads.
 - Don't change the engine version or `r.Substrate`, or enable Experimental features without approval. Approved exceptions are listed in `ARCHITECTURE.md` section 10 (Chaos Vehicles, Water, Mass, ZoneGraph). Mesh Terrain and Fast Geometry Streaming are not approved.
 - No `git push --force`, history rewrites or LFS pruning without approval.
-- No Fab, Bridge or Megascans dependency, and no asset without a row in `SourceArt/LICENSES.csv`.
+- Final art comes from Poly Haven / ambientCG (CC0), Fab free or monthly-free assets and Megascans you own (check the license of each one), or our own Blender kit (`Tools/blender/`). No asset without a row in `ASSET_SOURCES.md` and `SourceArt/LICENSES.csv`. No runtime dependency on the Fab or Bridge plugins. (Approved 2026-11-09.)
+- Code-made geometry is blockout only and named `BLOCKOUT_*`; no procedurally invented textures as final art.

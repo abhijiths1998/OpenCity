@@ -83,7 +83,7 @@ bool FOCUnlockScheduleMareviaTest::RunTest(const FString& Parameters)
 		S.AddRule(Tag(*Gate), Tag(*Opens));
 	}
 
-	const int32 Start = G.FindNearestNode(FOCRoadGraph::LayoutToWorld(520.0, 1290.0, 0.0));
+	const int32 Start = G.FindNearestNode(FOCRoadGraph::LayoutToWorld(780.0, 1290.0, 0.0));
 	FGameplayTagContainer Done;
 	int32 Reach = G.CountReachable(Start, S.ClosedGates(Done));
 	TestEqual(TEXT("All six gates closed in a new game"), S.ClosedGates(Done).Num(), 6);

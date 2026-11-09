@@ -76,11 +76,11 @@ These need your login or `sudo`, so they're yours to do:
 
 ## M3: Open world (L)
 
-**Build:** World Partition level (2 × 2.8 km playable), Landscape with coast, hills and the Monte Ferrale mountain band (plus distant peaks and Isola Ventura as non-playable scenery), road graph asset, PCG roads and building blockout, HLOD, ocean. The district layout follows `STORY.md`: the districts, the water between them (Fiume Ardo, the Diga del Ferrale reservoir, the estuary, the Darsena), the bridges, and a grey-box blockout of every story landmark. Area gates: `UOCProgressionSubsystem`, unlock data, Data Layer gates (raised bridge, cordon, checkpoint, swing bridge), locked-area volumes, and deep-water reset. Missions don't exist until M8, so gates are opened by `oc.dev.unlock` for now.
+**Build:** World Partition level (3 × 3 km playable), Landscape with coast, hills and the Monte Ferrale mountain band (plus distant peaks and Isola Ventura as non-playable scenery), road graph asset, PCG roads and building blockout, HLOD, ocean. The district layout follows `STORY.md`: the districts, the water between them (Fiume Ardo, the Diga del Ferrale reservoir, the estuary, the Darsena), the bridges, and a grey-box blockout of every story landmark. Area gates: `UOCProgressionSubsystem`, unlock data, Data Layer gates (raised bridge, cordon, checkpoint, swing bridge), locked-area volumes, and deep-water reset. Missions don't exist until M8, so gates are opened by `oc.dev.unlock` for now.
 
 **Acceptance:**
 
-- [ ] 2 × 2.8 km map drivable from end to end in grey-box, including the mountain pass road and over the dam
+- [ ] 3 × 3 km map drivable from end to end in grey-box, including the mountain pass road and over the dam
 - [ ] Road graph drives both road geometry and lane data
 - [x] Every story landmark in `STORY.md` exists as a named grey-box in the right district
 - [ ] River, estuary and Darsena exist, with drivable bridges; falling into deep water resets you to the bank
