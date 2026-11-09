@@ -4,7 +4,9 @@
 #include "GameFramework/Actor.h"
 #include "OCKitBuildingChunk.generated.h"
 
+class UDecalComponent;
 class UInstancedStaticMeshComponent;
+class UMaterialInterface;
 class UStaticMesh;
 
 /**
@@ -28,5 +30,8 @@ public:
 #if WITH_EDITOR
 	/** The instanced component for Mesh, created on first use (editor-time assembly only). */
 	UInstancedStaticMeshComponent* GetOrAddPiece(UStaticMesh* Mesh);
+
+	/** A decal at a world transform; HalfSize = (projection depth, width, length) / 2 in cm. */
+	UDecalComponent* AddDecal(UMaterialInterface* Material, const FTransform& WorldTransform, const FVector& HalfSize);
 #endif
 };

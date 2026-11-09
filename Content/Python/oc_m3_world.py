@@ -195,6 +195,19 @@ def setup_look():
                      override_vignette_intensity=True, vignette_intensity=0.25,
                      override_white_temp=True, white_temp=6200.0).items():
         st.set_editor_property(k, v)
+    lut = unreal.load_asset("/Game/Environment/Textures/LUT/T_LUT_Marevia")
+    if lut:  # Tools/make_lut.py: ART_BIBLE grade (warm highlights, cool shadows)
+        st.set_editor_property("override_color_grading_lut", True)
+        st.set_editor_property("color_grading_lut", lut)
+        st.set_editor_property("override_color_grading_intensity", True)
+        st.set_editor_property("color_grading_intensity", 1.0)
+    rain = unreal.load_asset("/Game/Materials/M_PP_Rain")
+    if rain:  # rain streaks and dimming, scaled by MPC_World.RainAmount (free when it isn't raining)
+        wb = unreal.WeightedBlendable()
+        L.set_props(wb, weight=1.0, object=rain)
+        blend = st.get_editor_property("weighted_blendables")
+        blend.set_editor_property("array", [wb])
+        st.set_editor_property("weighted_blendables", blend)
     ppv.set_editor_property("settings", st)
     log("look: sun, haze, clouds (High+), post-process (exposure range, motion blur 0.15)")
 
@@ -247,6 +260,11 @@ def main():
             world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"),
             layout["roads"]["sidewalk_width"] * 100.0, 25200.0, 1951)
         log(f"street props: {n}")
+    if unreal.load_asset("/Game/Environment/Materials/Decals/MI_Decal_ManholeCover001"):
+        n = unreal.OCWorldBuilderLibrary.build_road_decals(
+            world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"),
+            layout["roads"]["sidewalk_width"] * 100.0, 25200.0, 2207)
+        log(f"road decals: {n}")
     oc_m3_story.build(world, layout)
     oc_m3_water.build(layout)
     build_perf_path(layout)

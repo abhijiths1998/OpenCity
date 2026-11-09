@@ -30,3 +30,13 @@ SourceArt/Downloads/Models/Barrel_01,https://polyhaven.com/a/Barrel_01,Poly Have
 SourceArt/Downloads/Models/outdoor_table_chair_set_01,https://polyhaven.com/a/outdoor_table_chair_set_01,Poly Haven,CC0,2026-11-09,Cafe tables on Lungomare
 SourceArt/Downloads/Models/modular_electricity_poles,https://polyhaven.com/a/modular_electricity_poles,Poly Haven,CC0,2026-11-09,Power poles in Le Fornaci and the hills
 SourceArt/Kit/FBX,Tools/blender/make_kit.py,OpenCity,Project-owned,2026-11-09,Modular Mediterranean building kit (Blender-generated)
+SourceArt/Downloads/Decals/Leaking012A,https://ambientcg.com/view?id=Leaking012A,ambientCG,CC0,2026-11-09,Wall drip stains under windows and AC units
+SourceArt/Downloads/Decals/Leaking013A,https://ambientcg.com/view?id=Leaking013A,ambientCG,CC0,2026-11-09,Wall drip stains
+SourceArt/Downloads/Decals/Leaking016A,https://ambientcg.com/view?id=Leaking016A,ambientCG,CC0,2026-11-09,Wall drip stains
+SourceArt/Downloads/Decals/Leaking019A,https://ambientcg.com/view?id=Leaking019A,ambientCG,CC0,2026-11-09,Wall drip stains
+SourceArt/Downloads/Decals/ManholeCover001,https://ambientcg.com/view?id=ManholeCover001,ambientCG,CC0,2026-11-09,Road manholes
+SourceArt/Downloads/Decals/ManholeCover004,https://ambientcg.com/view?id=ManholeCover004,ambientCG,CC0,2026-11-09,Road manholes
+SourceArt/Downloads/Decals/TireTracks001,https://ambientcg.com/view?id=TireTracks001,ambientCG,CC0,2026-11-09,Tyre marks at junctions
+SourceArt/Downloads/Decals/AsphaltDamage001,https://ambientcg.com/view?id=AsphaltDamage001,ambientCG,CC0,2026-11-09,Potholes and broken asphalt
+SourceArt/Downloads/Decals/ChewingGum001,https://ambientcg.com/view?id=ChewingGum001,ambientCG,CC0,2026-11-09,Pavement clutter
+SourceArt/LUT/T_LUT_Marevia.png,Tools/make_lut.py,OpenCity,Project-owned,2026-11-09,Colour-grade LUT (ART_BIBLE grade)

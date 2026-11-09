@@ -5,7 +5,10 @@
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Components/SpotLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
+#include "Components/SkyAtmosphereComponent.h"
 #include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
 #include "Engine/SkyLight.h"
 #include "Engine/SpotLight.h"
 #include "Engine/StaticMesh.h"
@@ -20,6 +23,7 @@
 #include "OCLog.h"
 #include "TimerManager.h"
 #include "World/OCKitBuildingChunk.h"
+#include "World/OCWeatherPreset.h"
 #include "World/OCWorldStateSettings.h"
 
 namespace OCWorldState
@@ -29,6 +33,8 @@ namespace OCWorldState
 	constexpr double LampSearchCm = 30000.0;     // only chunks within 300 m of the camera
 	const FName NightName(TEXT("NightAmount"));
 	const FName HourName(TEXT("TimeOfDay"));
+	const FName RainName(TEXT("RainAmount"));
+	const FName WetName(TEXT("Wetness"));
 }
 
 bool UOCWorldStateSubsystem::ShouldCreateSubsystem(UObject* Outer) const
@@ -61,6 +67,31 @@ void UOCWorldStateSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	{
 		SkyLight = *It;
 	}
+	if (TActorIterator<AExponentialHeightFog> It(&InWorld); It)
+	{
+		Fog = *It;
+		BaseFogDensity = It->GetComponent()->FogDensity;
+	}
+	for (TActorIterator<AActor> It(&InWorld); It; ++It)
+	{
+		if (It->FindComponentByClass<USkyAtmosphereComponent>())
+		{
+			Atmosphere = Cast<ASkyAtmosphere>(*It);
+			break;
+		}
+	}
+	// Weather: the settings' start preset, or -ocweather=<name>.
+	const UOCWeatherPreset* StartPreset = S->StartWeather.LoadSynchronous();
+	FString WeatherArg;
+	if (FParse::Value(FCommandLine::Get(), TEXT("ocweather="), WeatherArg))
+	{
+		if (const UOCWeatherPreset* P = FindWeather(WeatherArg))
+		{
+			StartPreset = P;
+		}
+	}
+	Current = From = To = FWeather::From(StartPreset);
+	Wetness = Current.WetTarget;
 	for (int32 i = 0; i < S->StreetLightPool; ++i)
 	{
 		FActorSpawnParameters P;
@@ -105,8 +136,80 @@ void UOCWorldStateSubsystem::SetTimeOfDay(float NewHour)
 	UpdateStreetLights();
 }
 
+UOCWorldStateSubsystem::FWeather UOCWorldStateSubsystem::FWeather::From(const UOCWeatherPreset* P)
+{
+	FWeather W;
+	if (P)
+	{
+		W.Sun = P->SunScale;
+		W.Sky = P->SkyLightScale;
+		W.Fog = P->FogScale;
+		W.Rayleigh = P->RayleighScale;
+		W.Mie = P->MieScale;
+		W.Rain = P->RainAmount;
+		W.WetTarget = P->WetnessTarget;
+	}
+	return W;
+}
+
+UOCWorldStateSubsystem::FWeather UOCWorldStateSubsystem::FWeather::Lerp(const FWeather& A, const FWeather& B, float T)
+{
+	FWeather W;
+	W.Sun = FMath::Lerp(A.Sun, B.Sun, T);
+	W.Sky = FMath::Lerp(A.Sky, B.Sky, T);
+	W.Fog = FMath::Lerp(A.Fog, B.Fog, T);
+	W.Rayleigh = FMath::Lerp(A.Rayleigh, B.Rayleigh, T);
+	W.Mie = FMath::Lerp(A.Mie, B.Mie, T);
+	W.Rain = FMath::Lerp(A.Rain, B.Rain, T);
+	W.WetTarget = FMath::Lerp(A.WetTarget, B.WetTarget, T);
+	return W;
+}
+
+const UOCWeatherPreset* UOCWorldStateSubsystem::FindWeather(const FString& Name) const
+{
+	for (const TSoftObjectPtr<UOCWeatherPreset>& Soft : GetDefault<UOCWorldStateSettings>()->WeatherPresets)
+	{
+		const UOCWeatherPreset* P = Soft.LoadSynchronous();
+		if (P && (P->GetName().Equals(Name, ESearchCase::IgnoreCase) || P->GetName().Equals(TEXT("DA_Weather_") + Name, ESearchCase::IgnoreCase)))
+		{
+			return P;
+		}
+	}
+	return nullptr;
+}
+
+void UOCWorldStateSubsystem::SetWeather(const UOCWeatherPreset* Preset, float Seconds)
+{
+	From = Current;
+	To = FWeather::From(Preset);
+	BlendLength = Seconds >= 0.f ? Seconds : GetDefault<UOCWorldStateSettings>()->WeatherBlendSeconds;
+	BlendTime = 0.f;
+	if (BlendLength <= 0.f)
+	{
+		Current = To;
+		Wetness = FMath::Max(To.WetTarget, To.Rain);  // instant change (QA, debugging): no soaking time
+	}
+	Apply();
+}
+
+void UOCWorldStateSubsystem::StepWeather(float Dt)
+{
+	if (BlendTime < BlendLength)
+	{
+		BlendTime = FMath::Min(BlendTime + Dt, BlendLength);
+		const float T = FMath::SmoothStep(0.f, 1.f, BlendTime / FMath::Max(BlendLength, 0.01f));
+		Current = FWeather::Lerp(From, To, T);
+	}
+	// Surfaces soak while it rains and dry slowly after, toward the weather's wetness.
+	const UOCWorldStateSettings* S = GetDefault<UOCWorldStateSettings>();
+	const float Target = FMath::Max(Current.WetTarget, Current.Rain);
+	const float Rate = Wetness < Target ? 1.f / S->SoakSeconds * FMath::Max(Current.Rain, 0.25f) : 1.f / S->DrySeconds;
+	Wetness = Wetness < Target ? FMath::Min(Target, Wetness + Rate * Dt) : FMath::Max(Target, Wetness - Rate * Dt);
+}
+
 void UOCWorldStateSubsystem::Step()
 {
+	StepWeather(OCWorldState::StepSeconds);
 	if (bRunning)
 	{
 		Hour = FOCSunModel::Wrap(Hour + OCWorldState::StepSeconds * 24.f / FMath::Max(1.f, DayMinutes * 60.f));
@@ -134,11 +237,21 @@ void UOCWorldStateSubsystem::Apply()
 		UDirectionalLightComponent* C = Light->GetComponent();
 		const float Low = FMath::SmoothStep(0.f, 25.f, Elevation);
 		C->SetLightColor(bDay ? FMath::Lerp(S->LowSunColor, S->NoonColor, Low) : FLinearColor(0.55f, 0.65f, 1.f));
-		C->SetIntensity(bDay ? S->SunIntensity * FMath::SmoothStep(-1.f, 6.f, Elevation) : 0.12f);
+		C->SetIntensity((bDay ? S->SunIntensity * FMath::SmoothStep(-1.f, 6.f, Elevation) : 0.12f) * Current.Sun);
 	}
 	if (ASkyLight* Sky = SkyLight.Get())
 	{
-		Sky->GetLightComponent()->SetIntensity(FMath::Lerp(1.f, S->NightSkyLightIntensity, Night));
+		Sky->GetLightComponent()->SetIntensity(FMath::Lerp(1.f, S->NightSkyLightIntensity, Night) * Current.Sky);
+	}
+	if (AExponentialHeightFog* F = Fog.Get(); F && BaseFogDensity > 0.f)
+	{
+		F->GetComponent()->SetFogDensity(BaseFogDensity * Current.Fog);
+	}
+	if (ASkyAtmosphere* A = Atmosphere.Get())
+	{
+		USkyAtmosphereComponent* C = A->FindComponentByClass<USkyAtmosphereComponent>();
+		C->SetRayleighScatteringScale(0.0331f * Current.Rayleigh);  // engine default 0.0331
+		C->SetMieScatteringScale(0.003996f * Current.Mie);          // engine default 0.003996
 	}
 	if (Parameters)
 	{
@@ -146,6 +259,8 @@ void UOCWorldStateSubsystem::Apply()
 		{
 			MPC->SetScalarParameterValue(OCWorldState::NightName, Night);
 			MPC->SetScalarParameterValue(OCWorldState::HourName, Hour);
+			MPC->SetScalarParameterValue(OCWorldState::RainName, Current.Rain);
+			MPC->SetScalarParameterValue(OCWorldState::WetName, Wetness);
 		}
 	}
 }
@@ -228,6 +343,18 @@ namespace OCWorldState
 				S->SetTimeOfDay(FCString::Atof(*Args[0]));
 				UE_LOG(LogOpenCity, Display, TEXT("OCDEV tod %.2f (night %.2f)"), S->GetTimeOfDay(), S->GetNightAmount());
 			}
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdWeather(TEXT("oc.weather"), TEXT("Blend to a weather preset: Clear | Cloudy | Rain [seconds]."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			UOCWorldStateSubsystem* S = Get(World);
+			const UOCWeatherPreset* P = S && Args.Num() > 0 ? S->FindWeather(Args[0]) : nullptr;
+			if (P)
+			{
+				S->SetWeather(P, Args.Num() > 1 ? FCString::Atof(*Args[1]) : -1.f);
+			}
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV weather %s: %s"), Args.Num() > 0 ? *Args[0] : TEXT("?"), P ? TEXT("blending") : TEXT("unknown preset"));
 		}));
 
 	FAutoConsoleCommandWithWorldAndArgs CmdTodRun(TEXT("oc.tod.run"), TEXT("Run (1) or stop (0) the day/night clock."),

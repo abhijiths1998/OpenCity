@@ -10,7 +10,9 @@
 
 #include "OCWorldBuilderLibrary.h"
 
+#include "Components/DecalComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "Dom/JsonObject.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -647,5 +649,119 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 		Actor->SetFolderPath(TEXT("Props"));
 	}
 	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetProps: %d props (%d lamps, %d trees) in %d chunks"), Count, Lamps, TreeCount, Chunks.Num());
+	return Count;
+}
+
+
+int32 UOCWorldBuilderLibrary::BuildRoadDecals(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+	float SidewalkWidthCm, float ChunkSizeCm, int32 Seed)
+{
+	FString Text;
+	TSharedPtr<FJsonObject> Root;
+	OCWorld::FHeightField Height;
+	FOCRoadGraph Roads;
+	FString Error;
+	if (!World || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root.IsValid()
+		|| !Height.Load(HeightmapPng, Root) || !Roads.LoadFromLayoutJson(Text, Error))
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRoadDecals: cannot read the layout or heightmap"));
+		return 0;
+	}
+	auto Mat = [](const TCHAR* Id) { return LoadObject<UMaterialInterface>(nullptr, *FString::Printf(TEXT("/Game/Environment/Materials/Decals/MI_Decal_%s.MI_Decal_%s"), Id, Id)); };
+	UMaterialInterface* Manholes[2] = { Mat(TEXT("ManholeCover001")), Mat(TEXT("ManholeCover004")) };
+	UMaterialInterface* Tyres = Mat(TEXT("TireTracks001"));
+	UMaterialInterface* Damage = Mat(TEXT("AsphaltDamage001"));
+	UMaterialInterface* Gum = Mat(TEXT("ChewingGum001"));
+	if (!Manholes[0])
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRoadDecals: decals not imported (Content/Python/oc_decals.py)"));
+		return 0;
+	}
+
+	struct FDecal { UMaterialInterface* Mat; FTransform T; FVector Half; };
+	TMap<FIntPoint, TArray<FDecal>> Chunks;
+	FRandomStream R(Seed);
+	const TArray<FOCRoadNode>& Nodes = Roads.GetNodes();
+	auto Put = [&](UMaterialInterface* M, const FVector& At, double YawDeg, const FVector& Half, double AboveCm)
+	{
+		if (!M)
+		{
+			return;
+		}
+		// Projection along -Z: the decal's X axis points down.
+		const FVector P(At.X, At.Y, Height.HeightCm(At.X, At.Y) + AboveCm);
+		Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(P.X / ChunkSizeCm), FMath::FloorToInt32(P.Y / ChunkSizeCm)))
+			.Add({ M, FTransform(FRotator(-90.0, YawDeg, 0.0), P), Half });
+	};
+
+	for (const FOCRoadSegment& S : Roads.GetSegments())
+	{
+		const bool bCity = S.Kind == TEXT("avenue") || S.Kind == TEXT("street") || S.Kind == TEXT("coast") || S.Kind == TEXT("alley");
+		if (!bCity || !S.Bridge.IsNone())
+		{
+			continue;
+		}
+		const FVector A = Nodes[S.A].Location, B = Nodes[S.B].Location;
+		const double Len = FVector::Dist2D(A, B);
+		if (Len < 2500.0)
+		{
+			continue;
+		}
+		const FVector Dir = FVector(B - A).GetSafeNormal2D();
+		const FVector Right(-Dir.Y, Dir.X, 0.0);
+		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
+		const double Lane = S.WidthCm / (4.0 * FMath::Max(1, S.LanesPerDirection));
+		auto At = [&](double D, double Lateral) { return A + Dir * D + Right * Lateral; };
+
+		for (double D = R.FRandRange(1500.f, 4000.f); D < Len - 1200.0; D += R.FRandRange(6000.f, 8000.f))
+		{
+			Put(Manholes[R.RandRange(0, 1)], At(D, (R.FRand() < 0.5 ? -1.0 : 1.0) * Lane), R.FRandRange(0.f, 360.f), FVector(30.0, 45.0, 45.0), 15.0);
+		}
+		for (int32 End = 0; End < 2; ++End)
+		{
+			if (R.FRand() < 0.4f)  // braking marks on the approach to a junction
+			{
+				const double D = End == 0 ? 1100.0 : Len - 1100.0;
+				const double Side = End == 0 ? -1.0 : 1.0;  // the lane heading into that junction
+				Put(Tyres, At(D, Side * Lane), Yaw + 90.0, FVector(30.0, 100.0, 380.0), 15.0);
+			}
+		}
+		for (double D = R.FRandRange(2000.f, 9000.f); D < Len - 1000.0; D += R.FRandRange(12000.f, 18000.f))
+		{
+			Put(Damage, At(D, R.FRandRange(-0.4f, 0.4f) * S.WidthCm), R.FRandRange(0.f, 360.f), FVector(30.0, 110.0, 110.0), 15.0);
+		}
+		if (S.Kind != TEXT("alley"))
+		{
+			for (double D = R.FRandRange(500.f, 3000.f); D < Len - 500.0; D += R.FRandRange(2500.f, 4500.f))
+			{
+				const double Side = R.FRand() < 0.5 ? -1.0 : 1.0;
+				Put(Gum, At(D, Side * (S.WidthCm * 0.5 + R.FRandRange(0.2f, 0.8f) * SidewalkWidthCm)), R.FRandRange(0.f, 360.f), FVector(30.0, 50.0, 50.0), 27.0);
+			}
+		}
+	}
+
+	int32 Count = 0;
+	for (const TPair<FIntPoint, TArray<FDecal>>& Pair : Chunks)
+	{
+		FBox Bounds(ForceInit);
+		for (const FDecal& D : Pair.Value)
+		{
+			Bounds += D.T.GetLocation();
+		}
+		AOCKitBuildingChunk* Actor = World->SpawnActor<AOCKitBuildingChunk>(FVector(Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.Min.Z), FRotator::ZeroRotator);
+		if (!Actor)
+		{
+			continue;
+		}
+		for (const FDecal& D : Pair.Value)
+		{
+			Actor->AddDecal(D.Mat, D.T, D.Half);
+			++Count;
+		}
+		Actor->SetActorLabel(FString::Printf(TEXT("Road_Decals_%d_%d"), Pair.Key.X, Pair.Key.Y));
+		Actor->SetFolderPath(TEXT("Decals"));
+	}
+	UE_LOG(LogOpenCity, Display, TEXT("BuildRoadDecals: %d decals in %d chunks"), Count, Chunks.Num());
 	return Count;
 }

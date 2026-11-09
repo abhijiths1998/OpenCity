@@ -14,6 +14,7 @@ cd "$PROJECT_ROOT"
 if [[ "${1:-}" != "--skip-fetch" ]]; then
   python3 -I Tools/fetch_assets.py
   python3 -I Tools/fetch_models.py
+  python3 -I Tools/fetch_ambientcg.py
 fi
 
 # Props: one mesh each; packs with several variants keep one (object-name regex).
@@ -28,7 +29,16 @@ done
 
 "$BLENDER" -b --factory-startup -P Tools/blender/make_kit.py | grep -vE "^(Blender|Read|Info)" | tail -5
 
-OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_art_materials.py
+python3 -I Tools/make_lut.py
+scripts/run_python.sh Content/Python/oc_decals.py          # before the masters: walls use a leak scan as grime
+# The water normals are copied from the engine's DatasmithContent plugin, which this project doesn't
+# mount; enable it for this one step (see oc_art_materials.import_water_normals).
+cp OpenCity.uproject Saved/OpenCity.uproject.bak
+python3 -c "import json;p='OpenCity.uproject';d=json.load(open(p));d.setdefault('Plugins',[]).append({'Name':'DatasmithContent','Enabled':True});json.dump(d,open(p,'w'),indent='\t')"
+OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_art_materials.py; status=$?
+cp Saved/OpenCity.uproject.bak OpenCity.uproject
+[[ $status -eq 0 ]] || exit $status
+scripts/run_python.sh Content/Python/oc_weather.py
 scripts/run_python.sh Content/Python/oc_import_props.py
 scripts/run_python.sh Content/Python/oc_import_kit.py
 echo "ART OK. Next: scripts/build_world.sh && scripts/build_hlod.sh"

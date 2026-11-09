@@ -501,11 +501,17 @@ def build_roads(terrain, rng):
         if ((x - rcx) / rax) ** 2 + ((y - rcy) / ray) ** 2 < 1.0:
             return True  # the reservoir
         return y < DAM_Y + 20 and abs(x - river_x(y)) < river_half_width(y) + 14
+    quarry_end = (X(1700), 2380)
+    qw, qd = 120 / 2 + 15, 80 / 2 + 15  # La Cava's yard (LANDMARKS footprint) plus a margin
+
+    def wet_or_quarry(x, y):
+        # Only the spur enters the quarry yard: its gravel piles and conveyor stand in it.
+        return wet(x, y) or (abs(x - quarry_end[0]) < qw and abs(y - quarry_end[1]) < qd)
     dam_e, dam_w = (X(1395), DAM_Y), (X(870), DAM_Y)
     # The climb ends just east of the dam where the land is already at crest height, so the crest
     # road continues level (ending below the crest made a 70% ramp onto the dam).
     abutment = (dam_e[0] + 60.0, DAM_Y)
-    climb = route_road(terrain, (X(1300), 1905), abutment, avoid=wet)
+    climb = route_road(terrain, (X(1300), 1905), abutment, avoid=wet_or_quarry)
     pass_ids = g.path(climb + [dam_e, (X(1130), DAM_Y), dam_w], "pass", gate="Gate.Ferrale")
     n_climb = len(climb)
     grade_chain(g, pass_ids[n_climb - 1:n_climb + 1], g.nodes[pass_ids[n_climb - 1]][2], crest)
@@ -514,10 +520,10 @@ def build_roads(terrain, rng):
     # Branches start from the pass node nearest their destination.
     def branch_from(target):
         return min(pass_ids[:n_climb], key=lambda i: math.dist(g.nodes[i][:2], target))
-    quarry_end = (X(1700), 2380)
     q0 = branch_from(quarry_end)
     quarry = g.path([tuple(g.nodes[q0][:2])] + route_road(terrain, tuple(g.nodes[q0][:2]), quarry_end, avoid=wet)[1:], "pass")
-    mast = g.path(route_road(terrain, quarry_end, (X(1820), 2680), avoid=wet), "pass")
+    gate_n = (quarry_end[0], quarry_end[1] + qd + 3.0)  # out of the yard's north side
+    mast = g.path([quarry_end] + route_road(terrain, gate_n, (X(1820), 2680), avoid=wet_or_quarry), "pass")
     hermitage = g.path(route_road(terrain, dam_w, (X(500), 2640), avoid=wet), "pass")
     print(f"mountain roads: pass {len(climb)} nodes, quarry {len(quarry)}, mast {len(mast)}, hermitage {len(hermitage)}")
 

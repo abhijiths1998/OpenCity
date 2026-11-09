@@ -5,6 +5,7 @@
 #include "OCWorldStateSettings.generated.h"
 
 class UMaterialParameterCollection;
+class UOCWeatherPreset;
 
 /** Project Settings > Game > OpenCity World State (DefaultGame.ini): the day/night cycle. */
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "OpenCity World State"))
@@ -62,6 +63,26 @@ public:
 
 	UPROPERTY(Config, EditAnywhere, Category = "Night")
 	FLinearColor StreetLightColor = FLinearColor(1.f, 0.66f, 0.34f);
+
+	/** Weather at start; -ocweather=<name> picks another preset from WeatherPresets by name. */
+	UPROPERTY(Config, EditAnywhere, Category = "Weather")
+	TSoftObjectPtr<UOCWeatherPreset> StartWeather;
+
+	/** All presets, for oc.weather <name> (asset names without the DA_Weather_ prefix). */
+	UPROPERTY(Config, EditAnywhere, Category = "Weather")
+	TArray<TSoftObjectPtr<UOCWeatherPreset>> WeatherPresets;
+
+	/** Seconds to blend from one preset to the next. */
+	UPROPERTY(Config, EditAnywhere, Category = "Weather", meta = (ClampMin = "0"))
+	float WeatherBlendSeconds = 20.f;
+
+	/** Seconds for surfaces to soak through (0 -> 1 wetness) in full rain. */
+	UPROPERTY(Config, EditAnywhere, Category = "Weather", meta = (ClampMin = "1"))
+	float SoakSeconds = 60.f;
+
+	/** Seconds for fully wet surfaces to dry. */
+	UPROPERTY(Config, EditAnywhere, Category = "Weather", meta = (ClampMin = "1"))
+	float DrySeconds = 180.f;
 
 	virtual FName GetCategoryName() const override { return TEXT("Game"); }
 };

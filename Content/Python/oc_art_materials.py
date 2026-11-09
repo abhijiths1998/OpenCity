@@ -41,16 +41,16 @@ TOOLS = unreal.AssetToolsHelpers.get_asset_tools()
 
 # Instance name -> (texture slug, tile size m, tint, settings)
 INSTANCES = {
-    "MI_Kit_Wall": ("plastered_wall", 2.5, (1.0, 0.97, 0.92), dict(TintSlot=0, Macro=0.6, RoughMul=1.0, RoughAdd=0.05)),
-    "MI_Kit_WallStucco": ("white_stucco", 2.0, (1.0, 0.98, 0.94), dict(TintSlot=0, Macro=0.5)),
-    "MI_Kit_Trim": ("old_sandstone_02", 1.5, (1.0, 0.98, 0.93), dict(TintSlot=-1, Macro=0.3)),
+    "MI_Kit_Wall": ("plastered_wall", 2.5, (1.0, 0.97, 0.92), dict(TintSlot=0, Macro=0.6, RoughMul=1.0, RoughAdd=0.05, GrimeAmount=0.7)),
+    "MI_Kit_WallStucco": ("white_stucco", 2.0, (1.0, 0.98, 0.94), dict(TintSlot=0, Macro=0.5, GrimeAmount=0.6)),
+    "MI_Kit_Trim": ("old_sandstone_02", 1.5, (1.0, 0.98, 0.93), dict(TintSlot=-1, Macro=0.3, GrimeAmount=0.3)),
     "MI_Kit_Wood": ("wood_peeling_paint_weathered", 1.2, (1.0, 1.0, 1.0), dict(TintSlot=1, Macro=0.2)),
     "MI_Kit_Metal": ("metal_plate", 1.0, (0.35, 0.36, 0.37), dict(TintSlot=-1, Macro=0.2, RoughMul=0.8)),
     "MI_Kit_Roof": ("clay_roof_tiles", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5, ProjectionMode=1)),
-    "MI_Kit_Concrete": ("brushed_concrete", 2.0, (0.95, 0.94, 0.92), dict(TintSlot=-1, Macro=0.5)),
+    "MI_Kit_Concrete": ("brushed_concrete", 2.0, (0.95, 0.94, 0.92), dict(TintSlot=-1, Macro=0.5, PuddleAmount=0.3)),
     "MI_Road_Asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.7)),
     "MI_Road_Setts": ("cobblestone_floor_01", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5)),
-    "MI_Sidewalk": ("concrete_pavers_02", 1.5, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5)),
+    "MI_Sidewalk": ("concrete_pavers_02", 1.5, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5, PuddleAmount=0.45)),
     # Box-projected (ProjectionMode 3) for grey-box landmarks, bridges and distant scenery.
     "MI_Box_Stucco": ("white_stucco", 2.0, (1.0, 0.95, 0.88), dict(TintSlot=-1, Macro=0.5, ProjectionMode=3)),
     "MI_Box_Stone": ("old_sandstone_02", 2.0, (1.0, 0.97, 0.92), dict(TintSlot=-1, Macro=0.4, ProjectionMode=3)),
@@ -108,6 +108,15 @@ bc *= lerp(1.0, clamp(lumBig / lumMean, 0.65, 1.35), Macro);
 // Tints: material tint x per-instance tint (slot A = custom data 0-2, slot B = 3-5).
 float3 inst = Slot < -0.5 ? float3(1.0, 1.0, 1.0) : (Slot < 0.5 ? float3(I0, I1, I2) : float3(I3, I4, I5));
 bc *= Tint * inst;
+
+// Grime: scanned leak stains (ambientCG, oc_decals.py), one per 4 m bay and storey on kit walls,
+// shifted and scaled by the building's wear (custom data 6). No decal actors on buildings.
+if (GrimeAmt > 0.001 && Mode < 0.5)
+{
+    float2 g = UV / float2(4.0, 3.2) + float2(I6 * 0.37, 0.0);
+    float stain = 1.0 - Texture2DSample(GrimeT, GrimeTSampler, frac(g)).r;
+    bc *= 1.0 - saturate(stain * 1.4) * GrimeAmt * (0.35 + 0.65 * I6);
+}
 
 // Normal (DirectX, BC5): rebuild Z, scale, to world.
 float2 nxy = (Texture2DSample(NTex, NTexSampler, uv).rg * 2.0 - 1.0) * NStrength;
@@ -228,7 +237,7 @@ def custom(mat, code, inputs, outputs, x, y):
     return e
 
 
-def build_surface_master(defaults, name="M_Master_Surface", two_sided=False):
+def build_surface_master(defaults, mpc, ripples, name="M_Master_Surface", two_sided=False):
     mat = fresh_material(name)
     mat.set_editor_property("two_sided", two_sided)  # two-sided variant: foliage (leaves are cut geometry)
     mat.set_editor_property("tangent_space_normal", False)  # the Custom node outputs a world normal
@@ -248,9 +257,14 @@ def build_surface_master(defaults, name="M_Master_Surface", two_sided=False):
               ("RoughAdd", scalar(mat, "RoughAdd", 0.0, -1100, 160)),
               ("MetalMul", scalar(mat, "MetalMul", 1.0, -1100, 240))]
     data = [(f"I{i}", instance_data(mat, i, 1.0, -800, 350 + 70 * i)) for i in range(6)]
+    data.append(("I6", instance_data(mat, 6, 0.5, -800, 350 + 70 * 6)))  # wear
+    grime = unreal.load_asset("/Game/Environment/Textures/Decals/Leaking012A/T_Leaking012A_Color")
+    data.append(("GrimeT", tex_object(mat, "Grime", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, grime, -800, 900)))
+    data.append(("GrimeAmt", scalar(mat, "GrimeAmount", 0.0, -800, 1000)))
     f1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
-    node = custom(mat, SURFACE_HLSL,
-                  [("BCTex", bc), ("NTex", nm), ("ORMTex", orm), ("UV", uv), ("WP", wp), ("VN", vn)] + params + data,
+    node = custom(mat, SURFACE_HLSL.replace("return bc;", "float3 nGeo = n;\nfloat pn = lumBig / lumMean * 0.5;\n" + WET_HLSL + "\nreturn bc;"),
+                  [("BCTex", bc), ("NTex", nm), ("ORMTex", orm), ("UV", uv), ("WP", wp), ("VN", vn)] + params + data
+                  + wet_inputs(mat, mpc, ripples),
                   [("WorldNormal", unreal.CustomMaterialOutputType.CMOT_FLOAT3), ("AO", f1), ("Rough", f1), ("Metal", f1)],
                   -300, 0)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
@@ -275,12 +289,18 @@ def build_world_parameters():
     """MPC_World: written only by UOCWorldStateSubsystem (ARCHITECTURE.md)."""
     mpc = L.get_or_create("MPC_World", "/Game/Core", unreal.MaterialParameterCollection,
                           unreal.MaterialParameterCollectionFactoryNew(), TAG)
-    params = []
-    for name, value in (("NightAmount", 0.0), ("TimeOfDay", 12.0), ("Wetness", 0.0)):
-        p = unreal.CollectionScalarParameter()
-        L.set_props(p, parameter_name=name, default_value=value)
-        params.append(p)
-    mpc.set_editor_property("scalar_parameters", params)
+    # Keep existing entries (their IDs are what materials reference); only add missing ones.
+    params = list(mpc.get_editor_property("scalar_parameters"))
+    have = {str(p.get_editor_property("parameter_name")) for p in params}
+    added = False
+    for name, value in (("NightAmount", 0.0), ("TimeOfDay", 12.0), ("Wetness", 0.0), ("RainAmount", 0.0)):
+        if name not in have:
+            p = unreal.CollectionScalarParameter()
+            L.set_props(p, parameter_name=name, default_value=value)
+            params.append(p)
+            added = True
+    if added:  # re-assigning recompiles every material that uses the collection
+        mpc.set_editor_property("scalar_parameters", params)
     L.save(mpc)
     return mpc
 
@@ -333,6 +353,28 @@ def build_glass_master(mpc):
     L.save(mat)
     log(f"built {mat.get_path_name()}")
     return mat
+
+
+WET_HLSL = r"""
+// --- Wetness and rain (MPC_World.Wetness / RainAmount, one value each; ROADMAP M4b) ---
+// Porous surfaces darken, everything turns glossy, flat hollows (pn = 0..1 puddle noise) fill
+// with standing water that shows drifting rain ripples. A uniform branch: free when dry.
+if (Wet > 0.001)
+{
+    float wetv = saturate(Wet);
+    float upv = saturate((nGeo.z - 0.75) / 0.2);
+    float pool = saturate((pn - 1.0 + wetv * PuddleAmt) * 5.0) * upv * wetv;
+    bc *= lerp(1.0, 0.6, wetv * (1.0 - pool));
+    bc = lerp(bc, bc * 0.3 + float3(0.01, 0.012, 0.014), pool);
+    Rough = lerp(Rough, 0.15, wetv * 0.85);
+    Rough = lerp(Rough, 0.03, pool);
+    float2 ruv = WP.xy / 220.0;
+    float2 r1 = Texture2DSample(RipN, RipNSampler, ruv + float2(0.031, 0.017) * Time).rg * 2.0 - 1.0;
+    float2 r2 = Texture2DSample(RipN, RipNSampler, ruv * 1.7 - float2(0.023, 0.041) * Time).rg * 2.0 - 1.0;
+    float2 rip = (r1 + r2) * (0.12 + 0.4 * Rain);
+    WorldNormal = normalize(lerp(WorldNormal, normalize(float3(rip, 1.0)), pool));
+}
+"""
 
 
 ROAD_HLSL = r"""
@@ -395,6 +437,9 @@ float3 tn = float3(n2, sqrt(saturate(1.0 - dot(n2, n2))));
 WorldNormal = normalize(mul(tn, (float3x3)Parameters.TangentToWorld));
 Rough = lerp(saturate(orm.g), 0.55, mk);
 AO = orm.r;
+float3 nGeo = normalize(VN);
+float pn = saturate(big * 2.2 - 0.3) * (1.0 - mk);
+""" + WET_HLSL + """
 return bc;
 """
 
@@ -432,6 +477,9 @@ float3 tn = float3(nn, sqrt(saturate(1.0 - dot(nn, nn))));
 WorldNormal = normalize(mul(tn, (float3x3)Parameters.TangentToWorld));
 Rough = saturate(orm.g);
 AO = orm.r;
+float3 nGeo = n;
+float pn = saturate(vary + 0.5) * (1.0 - w.z);
+""" + WET_HLSL + """
 // Dry Mediterranean grass: less saturated, a touch darker than the raw scan.
 float g = dot(bc, float3(0.3, 0.59, 0.11));
 bc = lerp(bc, lerp(float3(g, g, g), bc, 0.65) * 0.9, w.x);
@@ -446,7 +494,77 @@ def textures_for(textures, slug):
     return t
 
 
-def build_textured_master(name, code, sets, tiles, landscape=False):
+
+
+def wet_inputs(mat, mpc, ripples):
+    """Inputs the WET_HLSL block needs (besides bc, Rough, WorldNormal, nGeo, pn, WP)."""
+    return [("Wet", mpc_scalar(mat, mpc, "Wetness", -1100, 600)),
+            ("Rain", mpc_scalar(mat, mpc, "RainAmount", -1100, 680)),
+            ("Time", MEL.create_material_expression(mat, unreal.MaterialExpressionTime, -1100, 760)),
+            ("RipN", tex_object(mat, "Ripples", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, ripples, -1100, 840)),
+            ("PuddleAmt", scalar(mat, "PuddleAmount", 0.0, -1100, 920))]
+
+
+WATER_HLSL = r"""
+// Sea, river and reservoir: layered drifting water normals (two scales plus a slow swell), rain
+// roughens the surface. Opaque (cheap); Lumen reflects the sky and the coast.
+float2 uv = WP.xy / 100.0;
+float2 a = Texture2DSample(WN, WNSampler, uv / 18.0 + float2(0.010, 0.006) * Time).rg * 2.0 - 1.0;
+float2 b = Texture2DSample(WN, WNSampler, uv / 7.0 - float2(0.008, 0.013) * Time).rg * 2.0 - 1.0;
+float2 c = Texture2DSample(LF, LFSampler, uv / 60.0 + float2(0.003, 0.002) * Time).rg * 2.0 - 1.0;
+float2 r = Texture2DSample(WN, WNSampler, uv / 1.5 + float2(0.05, 0.03) * Time).rg * 2.0 - 1.0;
+float2 nn = (a * 0.6 + b * 0.4 + c * 0.5 + r * 0.5 * Rain) * Strength;
+WorldNormal = normalize(float3(nn, 1.0));
+float facing = saturate(dot(normalize(Cam - WP), float3(0.0, 0.0, 1.0)));
+Rough = 0.03 + 0.06 * Rain;
+return lerp(Deep, Shallow, facing * 0.6) * lerp(1.0, 0.7, Rain);
+"""
+
+
+RAIN_PP_HLSL = r"""
+// Rain over the screen (MPC_World.RainAmount): three layers of falling streaks, slightly
+// lightened and blurred-looking, and the scene dimmed under the overcast.
+float3 col = Scene;
+if (Rain > 0.001)
+{
+    float streak = 0.0;
+    for (int i = 0; i < 3; i++)
+    {
+        float s = 38.0 + i * 29.0;
+        float2 p = float2(UV.x * s * 1.6 + i * 7.3, UV.y * s * 0.11 + Time * (2.3 + i * 0.8));
+        float2 cell = floor(p);
+        float h = frac(sin(dot(cell, float2(12.9898, 78.233))) * 43758.5453);
+        float2 f = frac(p);
+        streak += step(0.93, h) * smoothstep(0.0, 0.2, f.y) * smoothstep(1.0, 0.55, f.y) * saturate(1.0 - abs(f.x - 0.5) * 7.0);
+    }
+    col = lerp(col, col * 0.8 + 0.1, saturate(streak) * 0.45 * Rain);
+    col *= lerp(1.0, 0.9, Rain);
+}
+return col;
+"""
+
+
+def import_water_normals():
+    """Water normal maps from the engine's DatasmithContent plugin (authored by Epic; usable in
+    Unreal projects under the Epic EULA), copied into the project. No scanned CC0 water normals exist."""
+    lib = unreal.EditorAssetLibrary
+    out = {}
+    for name in ("T_Water_N", "T_Water_LF_N"):
+        dst = f"{TEX_ROOT}/Water/{name}"
+        if not lib.does_asset_exist(dst):
+            # Plugin content isn't in a commandlet's asset registry until scanned.
+            unreal.AssetRegistryHelpers.get_asset_registry().scan_paths_synchronous(["/DatasmithContent/Materials/Water"], True)
+            src = unreal.load_asset(f"/DatasmithContent/Materials/Water/Textures/{name}")
+            if src:
+                TOOLS.duplicate_asset(name, f"{TEX_ROOT}/Water", src)
+                L.save(unreal.load_asset(dst))
+        out[name] = unreal.load_asset(dst)
+        if out[name] is None:
+            raise RuntimeError(f"could not copy {name} from DatasmithContent")
+    return out
+
+
+def build_textured_master(name, code, sets, tiles, landscape=False, extra=()):
     """A master whose Custom node samples several texture sets: sets = [(prefix, slug)], tiles = {param: default}."""
     mat = fresh_material(name)
     if landscape:
@@ -471,6 +589,7 @@ def build_textured_master(name, code, sets, tiles, landscape=False):
     for p, v in tiles.items():
         inputs.append((p, scalar(mat, p, v, -1100, yy)))
         yy += 80
+    inputs += [(n, e(mat)) for n, e in extra]
     f1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
     node = custom(mat, code, inputs, [("WorldNormal", unreal.CustomMaterialOutputType.CMOT_FLOAT3), ("AO", f1), ("Rough", f1)], -300, 0)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
@@ -501,14 +620,103 @@ def make_instance(name, parent, textures, tile, tint, settings):
     return mi
 
 
+def WET_EXTRA(mpc, ripples, puddles):
+    """extra inputs for build_textured_master: the wetness block's parameters, built once per material."""
+    cache = {}
+
+    def get(mat, key):
+        if mat not in cache:
+            ins = dict(wet_inputs(mat, mpc, ripples))
+            ins["PuddleAmt"].set_editor_property("default_value", puddles)
+            cache[mat] = ins
+        return cache[mat][key]
+    return [(k, (lambda m, k=k: get(m, k))) for k in ("Wet", "Rain", "Time", "RipN", "PuddleAmt")]
+
+
+def build_water_master(mpc, water):
+    mat = fresh_material("M_Master_Water")
+    mat.set_editor_property("tangent_space_normal", False)
+    inputs = [("WN", tex_object(mat, "WaterNormal", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, water["T_Water_N"], -1100, -300)),
+              ("LF", tex_object(mat, "SwellNormal", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL, water["T_Water_LF_N"], -1100, -150)),
+              ("WP", MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -1100, 0)),
+              ("Cam", MEL.create_material_expression(mat, unreal.MaterialExpressionCameraPositionWS, -1100, 80)),
+              ("Time", MEL.create_material_expression(mat, unreal.MaterialExpressionTime, -1100, 160)),
+              ("Rain", mpc_scalar(mat, mpc, "RainAmount", -1100, 240)),
+              ("Strength", scalar(mat, "WaveStrength", 0.35, -1100, 320)),
+              ("Deep", vector(mat, "DeepColor", (0.008, 0.035, 0.05), -1100, 400)),
+              ("Shallow", vector(mat, "ShallowColor", (0.025, 0.09, 0.09), -1100, 480))]
+    node = custom(mat, WATER_HLSL, inputs, [("WorldNormal", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
+                                             ("Rough", unreal.CustomMaterialOutputType.CMOT_FLOAT1)], -300, 0)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(node, "WorldNormal", unreal.MaterialProperty.MP_NORMAL)
+    MEL.connect_material_property(node, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
+    mat.set_editor_property("two_sided", True)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    mi = L.get_or_create("MI_Water", MI_ROOT, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew(), TAG)
+    MEL.set_material_instance_parent(mi, mat)
+    L.save(mi)
+    log(f"built {mat.get_path_name()} and MI_Water")
+
+
+def build_rain_post_process(mpc):
+    mat = L.get_or_create("M_PP_Rain", MAT_ROOT, unreal.Material, unreal.MaterialFactoryNew(), TAG)
+    MEL.delete_all_material_expressions(mat)
+    mat.set_editor_property("material_domain", unreal.MaterialDomain.MD_POST_PROCESS)
+    scene = MEL.create_material_expression(mat, unreal.MaterialExpressionSceneTexture, -1100, -200)
+    scene.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_POST_PROCESS_INPUT0)
+    uv = MEL.create_material_expression(mat, unreal.MaterialExpressionTextureCoordinate, -1100, 0)
+    inputs = [("Scene", scene), ("UV", uv),
+              ("Time", MEL.create_material_expression(mat, unreal.MaterialExpressionTime, -1100, 100)),
+              ("Rain", mpc_scalar(mat, mpc, "RainAmount", -1100, 200))]
+    e = MEL.create_material_expression(mat, unreal.MaterialExpressionCustom, -300, 0)
+    e.set_editor_property("code", RAIN_PP_HLSL)
+    e.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    ins = []
+    for n, _ in inputs:
+        ci = unreal.CustomInput()
+        ci.set_editor_property("input_name", n)
+        ins.append(ci)
+    e.set_editor_property("inputs", ins)
+    for n, src in inputs:
+        MEL.connect_material_expressions(src, "Color" if n == "Scene" else "", e, n)
+    MEL.connect_material_property(e, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    log(f"built {mat.get_path_name()}")
+
+
+def import_lut():
+    """The colour-grade LUT made by Tools/make_lut.py (256 x 16 strip, no mips, uncompressed)."""
+    src = os.path.join(PROJECT_DIR, "SourceArt/LUT/T_LUT_Marevia.png")
+    if not os.path.exists(src):
+        log("no LUT (python3 -I Tools/make_lut.py)")
+        return None
+    t = unreal.AssetImportTask()
+    L.set_props(t, filename=src, destination_path="/Game/Environment/Textures/LUT", replace_existing=True, automated=True, save=False)
+    TOOLS.import_asset_tasks([t])
+    lut = unreal.load_asset("/Game/Environment/Textures/LUT/T_LUT_Marevia")
+    L.set_props(lut, lod_group=unreal.TextureGroup.TEXTUREGROUP_COLOR_LOOKUP_TABLE, srgb=False,
+                compression_settings=unreal.TextureCompressionSettings.TC_VECTOR_DISPLACEMENTMAP,
+                mip_gen_settings=unreal.TextureMipGenSettings.TMGS_NO_MIPMAPS)
+    L.save(lut)
+    log("imported T_LUT_Marevia")
+    return lut
+
+
 def main():
+    import_lut()
     textures = import_textures()
+    water = import_water_normals()
     first = textures.get("plastered_wall", {})
-    surface = build_surface_master(first)
     mpc = build_world_parameters()
+    ripples = water["T_Water_N"]
+    surface = build_surface_master(first, mpc, ripples)
     glass = build_glass_master(mpc)
     build_lamp_master(mpc)
-    build_surface_master(first, "M_Master_SurfaceTwoSided", two_sided=True)
+    build_surface_master(first, mpc, ripples, "M_Master_SurfaceTwoSided", two_sided=True)
+    build_water_master(mpc, water)
+    build_rain_post_process(mpc)
     made = []
     for name, (slug, tile, tint, settings) in INSTANCES.items():
         if slug not in textures:
@@ -523,11 +731,11 @@ def main():
     build_textured_master("M_Master_Road", ROAD_HLSL,
                           [("A", textures_for(textures, "asphalt_02")), ("S", textures_for(textures, "cobblestone_floor_01")),
                            ("P", textures_for(textures, "concrete_pavers_02"))],
-                          {"TileA": 4.0, "TileS": 2.0, "TileP": 3.0})
+                          {"TileA": 4.0, "TileS": 2.0, "TileP": 3.0}, extra=WET_EXTRA(mpc, ripples, 0.6))
     build_textured_master("M_Master_Landscape", LAND_HLSL,
                           [("G", textures_for(textures, "aerial_grass_rock")), ("D", textures_for(textures, "brown_mud_rocks_01")),
                            ("R", textures_for(textures, "cliff_side")), ("S", textures_for(textures, "coast_sand_01"))],
-                          {"TileG": 6.0, "TileD": 4.0, "TileR": 8.0, "TileS": 4.0}, landscape=True)
+                          {"TileG": 6.0, "TileD": 4.0, "TileR": 8.0, "TileS": 4.0}, landscape=True, extra=WET_EXTRA(mpc, ripples, 0.5))
     log(f"instances: {', '.join(made)}")
 
 

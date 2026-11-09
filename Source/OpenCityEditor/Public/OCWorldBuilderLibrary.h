@@ -95,6 +95,16 @@ public:
 		float SidewalkWidthCm, float ChunkSizeCm, int32 Seed);
 
 	/**
+	 * Road decals (oc_decals.py instances): manholes about every 70 m in a lane, tyre marks on 40% of
+	 * junction approaches, broken asphalt about every 150 m, chewing gum on pavements. Bridges and
+	 * the mountain roads' junction stubs are skipped. One AOCKitBuildingChunk per ChunkSizeCm square
+	 * (folder "Decals"). Returns the number of decals.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 BuildRoadDecals(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+		float SidewalkWidthCm, float ChunkSizeCm, int32 Seed);
+
+	/**
 	 * A runtime Data Layer asset (created at PackagePath/Name, or reused) with an instance in the
 	 * world, initially Activated or Unloaded. Returns the asset, or null on failure.
 	 */

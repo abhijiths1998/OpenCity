@@ -1,5 +1,6 @@
 #include "World/OCKitBuildingChunk.h"
 
+#include "Components/DecalComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Engine/StaticMesh.h"
@@ -43,5 +44,18 @@ UInstancedStaticMeshComponent* AOCKitBuildingChunk::GetOrAddPiece(UStaticMesh* M
 	AddInstanceComponent(C);
 	C->RegisterComponent();
 	return C;
+}
+
+UDecalComponent* AOCKitBuildingChunk::AddDecal(UMaterialInterface* Material, const FTransform& WorldTransform, const FVector& HalfSize)
+{
+	UDecalComponent* D = NewObject<UDecalComponent>(this);
+	D->SetupAttachment(RootComponent);
+	D->SetDecalMaterial(Material);
+	D->DecalSize = HalfSize;
+	D->SetFadeScreenSize(0.002f);  // fade small, distant decals out
+	AddInstanceComponent(D);
+	D->RegisterComponent();
+	D->SetWorldTransform(WorldTransform);
+	return D;
 }
 #endif
