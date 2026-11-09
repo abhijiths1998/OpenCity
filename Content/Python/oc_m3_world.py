@@ -35,6 +35,7 @@ LANDSCAPE_GRID = 2  # components per streaming proxy edge (252 m)
 #   HLOD1 merged: one merged mesh per 1 km cell, out to 8 km, so
 #                    the whole map and the mountains stay visible from anywhere.
 HLOD_PATH = "/Game/World/HLOD"
+KIT_PATH = "/Game/Environment/Meshes/Kit"
 HLOD_CELLS_CM = [25600, 102400]
 HLOD_RANGES_CM = [102400, 800000]
 
@@ -124,11 +125,17 @@ def build_perf_path(layout):
     log(f"perf camera loop: {len(loop)} road nodes, {spline.get_spline_length() / 100.0:.0f} m")
 
 
+def art(path, fallback):
+    """Final-art material if oc_art_materials.py has built it, else the grey-box one."""
+    return unreal.load_asset(path) or unreal.load_asset(fallback)
+
+
 def build_roads(world, layout):
     roads = layout["roads"]
     n = unreal.OCWorldBuilderLibrary.build_road_meshes(
         world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"), "/Game/World/Roads",
-        unreal.load_asset("/Game/Dev/Materials/M_Dev_Road"), unreal.load_asset("/Game/Dev/Materials/M_Dev_Sidewalk"),
+        art("/Game/Materials/M_Master_Road", "/Game/Dev/Materials/M_Dev_Road"),
+        art("/Game/Environment/Materials/MI_Sidewalk", "/Game/Dev/Materials/M_Dev_Sidewalk"),
         [unreal.Name(k) for k in roads["sidewalk_kinds"]], roads["sidewalk_width"] * 100.0, 25200.0)
     if n == 0:
         raise RuntimeError("no road chunks built")
@@ -142,6 +149,55 @@ def build_buildings(world):
     if n == 0:
         raise RuntimeError("no buildings built")
     log(f"buildings: {n}")
+    if unreal.load_asset(f"{KIT_PATH}/SM_Kit_Wall_400") is None:
+        log("kit not imported (oc_import_kit.py): buildings stay grey-box")
+        return
+    pieces = unreal.OCWorldBuilderLibrary.build_kit_buildings(
+        world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"), KIT_PATH, 25200.0, 1951)
+    if pieces == 0:
+        raise RuntimeError("kit buildings failed (see LogOpenCity)")
+    # The blockout boxes stay as each building's collision, unseen.
+    hidden = 0
+    for a in unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors():
+        if a.get_class().get_name() == "OCBlockoutActor":
+            for c in a.get_components_by_class(unreal.InstancedStaticMeshComponent):
+                c.set_visibility(False)
+                c.set_hidden_in_game(True)
+                c.set_cast_shadow(False)
+            hidden += 1
+    log(f"kit buildings: {pieces} pieces; {hidden} blockout chunks hidden (collision only)")
+
+
+def setup_look():
+    """Marevia daylight look (ART_BIBLE.md): warm afternoon sun, haze for depth, clouds on High+,
+    an unbound post-process volume with a clamped exposure range and mild motion blur."""
+    actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
+    for a in actors:
+        if isinstance(a, unreal.DirectionalLight):
+            a.set_actor_rotation(unreal.Rotator(0.0, -32.0, 125.0), False)  # (roll, pitch, yaw): 32 deg up, from the south-west
+            c = a.get_component_by_class(unreal.DirectionalLightComponent)
+            L.set_props(c, light_color=unreal.Color(255, 240, 220, 255))
+        elif isinstance(a, unreal.ExponentialHeightFog):
+            L.set_props(a.get_component_by_class(unreal.ExponentialHeightFogComponent), fog_density=0.012,
+                        fog_height_falloff=0.08, fog_inscattering_luminance=unreal.LinearColor(0.55, 0.62, 0.72, 1.0),
+                        start_distance=3000.0)
+    cloud = L.spawn(unreal.VolumetricCloud, label="Clouds", folder="Lighting")  # r.VolumetricCloud off on Low/Medium
+    cloud.set_editor_property("is_spatially_loaded", False)
+    ppv = L.spawn(unreal.PostProcessVolume, label="PostProcess_Marevia", folder="Lighting")
+    ppv.set_editor_property("unbound", True)
+    ppv.set_editor_property("is_spatially_loaded", False)
+    st = ppv.get_editor_property("settings")
+    for k, v in dict(override_auto_exposure_min_brightness=True, auto_exposure_min_brightness=-1.0,
+                     override_auto_exposure_max_brightness=True, auto_exposure_max_brightness=3.0,
+                     override_auto_exposure_bias=True, auto_exposure_bias=0.3,
+                     override_motion_blur_amount=True, motion_blur_amount=0.15,
+                     override_motion_blur_max=True, motion_blur_max=2.0,
+                     override_bloom_intensity=True, bloom_intensity=0.35,
+                     override_vignette_intensity=True, vignette_intensity=0.25,
+                     override_white_temp=True, white_temp=6200.0).items():
+        st.set_editor_property(k, v)
+    ppv.set_editor_property("settings", st)
+    log("look: sun, haze, clouds (High+), post-process (exposure range, motion blur 0.15)")
 
 
 def main():
@@ -167,7 +223,7 @@ def main():
     scale = unreal.Vector(100.0, 100.0, scale_z)
     landscape = unreal.OCWorldBuilderLibrary.create_landscape_from_heightmap(
         world, os.path.join(WORLD_DIR, "marevia_height.png"), location, scale, 2, 63, LANDSCAPE_GRID,
-        unreal.load_asset("/Game/Dev/Materials/M_Dev_Terrain"))  # grey-box height colours; M4 replaces it
+        art("/Game/Materials/M_Master_Landscape", "/Game/Dev/Materials/M_Dev_Terrain"))  # auto-material (oc_art_materials.py)
     if landscape is None:
         raise RuntimeError("landscape creation failed (see LogOpenCity)")
     landscape.set_actor_label("Landscape_Marevia")
@@ -184,6 +240,7 @@ def main():
                  (0, 0, 0), "PlayerStart_CittaAlta")
     ps.set_editor_property("is_spatially_loaded", False)
 
+    setup_look()
     build_roads(world, layout)
     build_buildings(world)
     oc_m3_story.build(world, layout)

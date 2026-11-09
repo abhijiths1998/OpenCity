@@ -74,6 +74,17 @@ public:
 	static int32 BuildBuildings(UWorld* World, const FString& LayoutJsonPath, UStaticMesh* Mesh, UMaterialInterface* Material, float ChunkSizeCm);
 
 	/**
+	 * Buildings from the modular kit (Tools/blender/KIT_SPEC.md, meshes SM_Kit_* in KitFolder) for every
+	 * building in the layout: plinth, street-facing ground floor (shops, a door, barred windows),
+	 * shuttered upper floors and balconies, corner quoins, cornice, hip or flat roof with clutter.
+	 * One AOCKitBuildingChunk per ChunkSizeCm square (folder "Buildings/Kit"), visual only.
+	 * Variation is seeded per building from Seed. Returns the number of piece instances.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 BuildKitBuildings(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+		const FString& KitFolder, float ChunkSizeCm, int32 Seed);
+
+	/**
 	 * A runtime Data Layer asset (created at PackagePath/Name, or reused) with an instance in the
 	 * world, initially Activated or Unloaded. Returns the asset, or null on failure.
 	 */

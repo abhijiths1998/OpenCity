@@ -183,5 +183,77 @@
    "license": "CC0",
    "notes": "Landscape: rock, cliffs, mountains"
   }
+ ],
+ "models": [
+  {
+   "slug": "street_lamp_01",
+   "res": "1k",
+   "notes": "Street lights along streets and avenues"
+  },
+  {
+   "slug": "street_lamp_02",
+   "res": "1k",
+   "notes": "Street lights, old town variant"
+  },
+  {
+   "slug": "modular_street_seating",
+   "res": "1k",
+   "notes": "Benches at junctions and plazas"
+  },
+  {
+   "slug": "metal_trash_can",
+   "res": "1k",
+   "notes": "Bins at junctions"
+  },
+  {
+   "slug": "fire_hydrant",
+   "res": "1k",
+   "notes": "Street clutter"
+  },
+  {
+   "slug": "island_tree_01",
+   "res": "1k",
+   "notes": "Boulevard and seafront trees"
+  },
+  {
+   "slug": "island_tree_02",
+   "res": "1k",
+   "notes": "Boulevard and seafront trees"
+  },
+  {
+   "slug": "fern_02",
+   "res": "1k",
+   "notes": "Planters, verges"
+  },
+  {
+   "slug": "ceramic_pot",
+   "res": "1k",
+   "notes": "Potted plants by doors"
+  },
+  {
+   "slug": "plastic_crate_01",
+   "res": "1k",
+   "notes": "Shopfront clutter"
+  },
+  {
+   "slug": "wooden_crate_01",
+   "res": "1k",
+   "notes": "Port and shopfront clutter"
+  },
+  {
+   "slug": "Barrel_01",
+   "res": "1k",
+   "notes": "Port clutter"
+  },
+  {
+   "slug": "outdoor_table_chair_set_01",
+   "res": "1k",
+   "notes": "Cafe tables on Lungomare"
+  },
+  {
+   "slug": "modular_electricity_poles",
+   "res": "1k",
+   "notes": "Power poles in Le Fornaci and the hills"
+  }
  ]
 }
