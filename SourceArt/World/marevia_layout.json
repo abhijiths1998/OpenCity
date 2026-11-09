@@ -1165,7 +1165,7 @@
    ],
    "height": 12,
    "kind": "hermitage",
-   "ground_z": 477.57
+   "ground_z": 476.09
   },
   {
    "name": "RadioMast",
@@ -1180,7 +1180,7 @@
    ],
    "height": 60,
    "kind": "mast",
-   "ground_z": 498.4
+   "ground_z": 465.17
   }
  ],
  "gates": [
