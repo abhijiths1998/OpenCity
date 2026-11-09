@@ -1,0 +1,28 @@
+{
+ "_comment": "Infrastructure proposed in INFRA_DESIGN.md and NOT yet in the layout (awaiting approval). Layout metres: x east, y north. Tools/render_network_plan.py draws these dashed over the built networks; on approval they move into Tools/make_marevia_layout.py as data.",
+ "autostrada": {
+  "name": "Autostrada A-Marevia (Autostrade del Levante Marino, original operator)",
+  "profile": "autostrada",
+  "points": [[3600, 1520], [3150, 1480], [2970, 1470]],
+  "interchange": {"type": "trumpet", "at": [2830, 1440]},
+  "toll_plaza": {"name": "Casello Marevia", "at": [2700, 1400], "booths": 6},
+  "link": [[2700, 1400], [2520, 1300], [2400, 1160]],
+  "viaduct": [[3150, 1480], [2970, 1470]]
+ },
+ "rail": [
+  {"id": "LineaLitoranea", "kind": "regional", "electrification": "3kV_DC", "operator": "Ferrovie Litorali Mareviesi",
+   "points": [[90, 1080], [700, 1060], [1300, 1040], [1500, 1020], [1900, 990], [2250, 975], [2600, 820], [2850, 420], [2970, 150]],
+   "stations": [{"name": "Marevia Centrale", "at": [2250, 975]}, {"name": "Marevia Porta Ovest", "at": [700, 1060]}],
+   "tunnel": [[90, 1080], [1300, 1040]],
+   "bridge": [[1430, 1030], [1570, 1015]],
+   "viaduct": {"name": "Viadotto degli Archi (brick arches)", "points": [[2600, 820], [2850, 420], [2970, 150]]},
+   "level_crossings": [[1900, 990]]},
+  {"id": "Tram1", "kind": "tram", "electrification": "750V_DC", "operator": "Tranvie Urbane Marevia",
+   "note": "corridor from the road data (segments with tram = true); Phase 7 replaces its alley stretches with the ring viale"}
+ ],
+ "ring_viale": {"name": "Viale delle Mura (ring where the walls stood)", "profile": "viale", "follows": "core ellipse + 45 m"},
+ "walls_and_gates": {"wall": "core ellipse", "gates": ["Porta Marina (south)", "Porta San Rocco (east)", "Porta dei Colli (north)", "Porta Ovest (west)", "Porta Nuova (19th-century breach, south-east)"]},
+ "torrent": {"id": "TorrenteRivazza", "type": "torrent", "seasonal": true,
+  "points": [[2560, 2300], [2520, 2050], [2600, 1800], [2650, 1690]],
+  "culvert_to_sea": [[2650, 1690], [2700, 900], [2780, 120]]}
+}

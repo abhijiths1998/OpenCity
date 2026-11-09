@@ -2,7 +2,7 @@
 
 Solo open-world action game. Unreal Engine 5.8.x, C++, native Linux, Vulkan SM6. Fully original: no names, assets, logos, story, characters, map or UI from any existing game, and no real brands.
 
-Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before making changes. World layout, mission content and radio text must follow `STORY.md`. Work on one milestone at a time, and don't start the next without approval.
+Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md`, `STORY.md` and `INFRA_DESIGN.md` (roads, rail, water) before making changes. World layout, mission content and radio text must follow `STORY.md`. Work on one milestone at a time, and don't start the next without approval.
 
 ## Environment
 
@@ -36,6 +36,8 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 | Build World Partition HLODs (after every world rebuild; needs the GPU) | `scripts/build_hlod.sh [Map] [--delete]` |
 | Check the Marevia map against the M3 acceptance list | `scripts/run_python.sh Content/Python/oc_m3_verify.py` (`OC_VERIFY_HLOD=1` also requires built HLODs) |
 | Apply the post-process look (`oc_look.py`) to L_Marevia without a rebuild | `scripts/run_python.sh Content/Python/oc_m4b_look.py` |
+| Validate road/rail/water networks (`--import` rewrites the data assets from the layout first) | `scripts/run_python.sh Content/Python/oc_validate_networks.py [--import]` → `Saved/Validation/networks.md` |
+| Draw the network plan (built + proposed) | `python3 -I Tools/render_network_plan.py` → `SourceArt/Infra/network_plan.png` |
 | Material instruction counts vs ART_PIPELINE budgets | `OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_material_stats.py` (MATSTAT lines) |
 | Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |
 

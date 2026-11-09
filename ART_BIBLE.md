@@ -1,6 +1,6 @@
 # OpenCity — ART_BIBLE.md (M4a Step 2)
 
-**Setting:** Marevia, an original fictional Mediterranean-style coastal port city. Present day. Fully original — no names, assets, logos, story, characters, map or UI from any existing game, and no real brands (see CLAUDE.md).
+**Setting:** Marevia, an original fictional coastal port town in a fictional Italian region (Ligurian and Campanian mood, no real place copied); right-hand traffic, Italian road rules (`INFRA_DESIGN.md`). Present day. Fully original — no names, assets, logos, story, characters, map or UI from any existing game, and no real brands (see CLAUDE.md).
 
 The playable area is 3 km × 3 km: the city by the sea plus a mountain band (Monte Ferrale) to the north. Distant peaks and Isola Ventura (offshore island) are scenery, unreachable in Part 1. Districts, gates and landmarks follow `STORY.md`.
 
@@ -34,6 +34,8 @@ Art direction: warm Mediterranean light, high contrast at noon, layered fog in v
 | Asphalt | Roads | Patches, cracks, tire marks, puddles via decals |
 | Concrete pavement slabs | Sidewalks, plazas | 60 cm slabs, slight wear |
 | Cobblestone / setts | Old Town narrow streets | Historic feel, uneven |
+| Sampietrini, porfido, lastricato, travertine kerbs | Centro storico streets and piazzas, 19th-century kerbs | Paving per segment (`paving` in the road data, INFRA_DESIGN.md); sources still to find (Phase 4) |
+| White gravel (strade bianche) | Le Colline farm roads | Lined with cypresses |
 
 Every final texture is a real scanned/authored PBR source (Poly Haven / ambientCG / CC0 / Fab free / owned Megascans), imported at 2K max for hero, 1K for props, tiling for large surfaces. Track every asset in `ASSET_SOURCES.md` (name, source URL, license, where used) — supersedes the existing `SourceArt/LICENSES.csv` habit; keep both in sync.
 

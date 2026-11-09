@@ -1107,6 +1107,175 @@ def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
     return out
 
 
+# --- Infrastructure metadata (INFRA_DESIGN.md) -----------------------------------------------
+
+PROFILES_PATH = Path(__file__).resolve().parent.parent / "SourceArt/Infra/road_profiles.json"
+CORE = (700.0, 1230.0, 400.0, 290.0)  # Città Alta's walled core: ellipse centre x, y and radii (m), around Santa Lucia
+ERA_WEAR = {"roman": 0.85, "medieval": 0.8, "c19": 0.6, "postwar": 0.65, "modern": 0.3}
+
+
+def in_core(x, y):
+    cx, cy, rx, ry = CORE
+    return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0
+
+
+def classify_segment(seg, mid, district, dead_end):
+    """Profile, paving, era, parking and ZTL for one segment, from its geometry family and place.
+    Geometry is untouched: Phase 3 rebuilds widths to the profiles (INFRA_DESIGN.md)."""
+    kind, x, y = seg["kind"], mid[0], mid[1]
+    core = district == "CittaAlta" and in_core(x, y)
+    if kind == "pier":
+        return "banchina_porto", "concrete", "postwar", "none", False
+    if kind == "coast":
+        return "costiera", "asphalt", "postwar", "none", False
+    if kind == "pass":
+        return "montana_tornanti", "asphalt", "postwar", "none", False
+    if kind == "avenue":
+        if district in ("Lungomare", "BorgoMarino") and y < 300:
+            return "lungomare", "asphalt", "c19", "blue", False
+        return "viale", "asphalt", "c19", "blue", False
+    if kind == "alley":
+        if core:
+            return "centro_storico", "lastricato", "medieval", "none", True
+        if district == "CittaAlta":
+            return "centro_storico", "sampietrini", "c19", "none", False
+        return "urbana_locale", "asphalt", "postwar", "white", False
+    # streets
+    if core:
+        return "centro_storico", "sampietrini", "medieval", "none", True
+    if district == "CittaAlta":
+        return "urbana_quartiere", "asphalt", "c19", "blue", False
+    if district == "LeColline" and dead_end:
+        return "strada_bianca", "gravel_white", "c19", "none", False
+    if district in ("LeColline", "MonteFerrale"):
+        return "locale_f2", "asphalt", "postwar", "none", False
+    if district == "Lungomare":
+        return "urbana_quartiere", "asphalt", "modern", "blue", False
+    if district == "BorgoMarino":
+        return "urbana_quartiere", "asphalt", "c19", "white", False
+    return "urbana_quartiere", "asphalt", "postwar", "white", False
+
+
+def tram_route(g, landmarks):
+    """Planned tram (INFRA_DESIGN.md, Phase 7): Stazione Centrale to Città Alta's civic centre over
+    Ponte San Rocco, preferring avenues, then streets; alleys only where nothing else connects."""
+    import heapq
+    pos = {lm[0]: lm[2] for lm in landmarks}  # (name, district, pos, footprint, height, kind)
+    def nearest(p):
+        return min(range(len(g.nodes)), key=lambda i: (g.nodes[i][0] - p[0]) ** 2 + (g.nodes[i][1] - p[1]) ** 2)
+    a, b = nearest(pos["StazioneCentrale"]), nearest(pos["PoliceHQ"])
+    adj = {}
+    for i, sg in enumerate(g.segments):
+        if sg["kind"] in ("avenue", "street", "alley") and not sg["gate"]:
+            adj.setdefault(sg["a"], []).append((sg["b"], i))
+            adj.setdefault(sg["b"], []).append((sg["a"], i))
+    dist, came, todo = {a: 0.0}, {a: None}, [(0.0, a)]
+    while todo:
+        d, n = heapq.heappop(todo)
+        if n == b:
+            break
+        if d > dist[n]:
+            continue
+        for m, i in adj.get(n, []):
+            nd = d + math.dist(g.nodes[n][:2], g.nodes[m][:2]) * {"avenue": 0.6, "street": 1.0}.get(g.segments[i]["kind"], 3.0)
+            if nd < dist.get(m, 1e18):
+                dist[m], came[m] = nd, (n, i)
+                heapq.heappush(todo, (nd, m))
+    segs, n = set(), b
+    while came.get(n):
+        n, i = came[n]
+        segs.add(i)
+    return segs
+
+
+def annotate_networks(g, landmarks, rng):
+    """Add INFRA_DESIGN.md metadata to every road segment and return (profiles, junctions)."""
+    profiles = {k: v for k, v in json.loads(PROFILES_PATH.read_text()).items() if not k.startswith("_")}
+    degree = [0] * len(g.nodes)
+    for sg in g.segments:
+        degree[sg["a"]] += 1
+        degree[sg["b"]] += 1
+    tram = tram_route(g, landmarks)
+    for i, sg in enumerate(g.segments):
+        a, b = g.nodes[sg["a"]], g.nodes[sg["b"]]
+        mid = ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+        district = district_at(*mid)
+        profile, paving, era, parking, ztl = classify_segment(sg, mid, district, min(degree[sg["a"]], degree[sg["b"]]) == 1)
+        if profile not in profiles:
+            raise ValueError(f"segment {i}: profile {profile} missing from {PROFILES_PATH}")
+        sg.update(profile=profile, paving=paving, era=era, parking=parking, ztl=ztl, one_way=False,
+                  tram=i in tram, wear=round(min(1.0, max(0.0, ERA_WEAR[era] + rng.uniform(-0.15, 0.15))), 2))
+        # Italian limits: the profile's design maximum (urban 50), Zona 30 inside the walls.
+        sg["speed_kmh"] = min(sg["speed_kmh"], profiles[profile]["design_speed_max_kmh"], 30 if ztl else 999)
+
+    junctions = []
+    by_node = {}
+    for i, sg in enumerate(g.segments):
+        by_node.setdefault(sg["a"], []).append(sg)
+        by_node.setdefault(sg["b"], []).append(sg)
+    piazza = min(range(len(g.nodes)), key=lambda i: (g.nodes[i][0] - 702) ** 2 + (g.nodes[i][1] - 1224) ** 2)  # Santa Lucia
+    for n, segs in by_node.items():
+        x, y = g.nodes[n][0], g.nodes[n][1]
+        district = district_at(x, y)
+        ztl = {sg["ztl"] for sg in segs}
+        bridge = {bool(sg["bridge"]) for sg in segs}
+        avenues = sum(sg["kind"] == "avenue" for sg in segs)
+        if len(ztl) == 2:
+            kind = "ztl_gate"
+        elif len(bridge) == 2:
+            kind = "bridge_head"
+        elif n == piazza and len(segs) >= 3:
+            kind = "piazza"
+        elif len(segs) < 3:
+            continue
+        elif avenues >= 2 and district in ("PortoVecchio", "LeFornaci", "Lungomare"):
+            kind = "roundabout"
+        elif avenues >= 2:
+            kind = "signalized"
+        elif len(segs) == 3 and district in ("CittaAlta", "LeColline", "BorgoMarino", "MonteFerrale"):
+            kind = "blind_t"
+        else:
+            kind = "priority"
+        # Nothing in the world shows these controls yet (signals, roundabouts, gates): Phase 5.
+        junctions.append({"node": n, "type": kind, "planned": True})
+    return profiles, junctions
+
+
+def water_network(river_profile, reservoir_level):
+    """Water bodies with depth, flow and edge treatments (INFRA_DESIGN.md "Water"). Edge ranges are
+    metres along the centreline (rivers) or along x (coast and basins)."""
+    along, total = [0.0], 0.0
+    for p, q in zip(RIVER, RIVER[1:]):
+        total += math.dist(p, q)
+        along.append(total)
+    def at_y(yv):  # metres along the river centreline where it reaches y
+        for (p, q), a0, a1 in zip(zip(RIVER, RIVER[1:]), along, along[1:]):
+            if p[1] <= yv <= q[1]:
+                return round(a0 + (a1 - a0) * (yv - p[1]) / max(q[1] - p[1], 1e-6), 1)
+        return round(total, 1)
+    rx0, ry0, rx1, ry1 = RESERVOIR
+    return {"bodies": [
+        {"id": "GolfoDiMarevia", "type": "sea", "depth_m": 30.0, "flow_mps": 0.0, "level_m": SEA_LEVEL,
+         "edges": [{"treatment": "breakwater", "side": "all", "from_m": MOLO[0], "to_m": BREAKWATER[-1][0]},
+                   {"treatment": "quay", "side": "all", "from_m": DARSENA[0], "to_m": X(1000)},
+                   {"treatment": "delta", "side": "all", "from_m": X(1000) - 40, "to_m": X(1160)},
+                   {"treatment": "beach_sand", "side": "all", "from_m": X(1160), "to_m": W}]},
+        {"id": "Darsena", "type": "port", "depth_m": 6.0, "flow_mps": 0.0, "level_m": SEA_LEVEL,
+         "edges": [{"treatment": "quay", "side": "all", "from_m": DARSENA[0], "to_m": DARSENA[2]}]},
+        {"id": "FiumeArdo", "type": "river", "depth_m": 2.5, "flow_mps": 0.8, "level_m": SEA_LEVEL, "rises_with_weather": True,
+         "centerline": [list(p) for p in RIVER],
+         "edges": [{"treatment": "embankment_wall", "side": "both", "from_m": at_y(40), "to_m": at_y(1650)},
+                   {"treatment": "walkway_low", "side": "both", "from_m": at_y(300), "to_m": at_y(1500)},
+                   {"treatment": "natural_bank", "side": "both", "from_m": at_y(1650), "to_m": at_y(2040)},
+                   {"treatment": "cliff", "side": "both", "from_m": at_y(2040), "to_m": round(total, 1)}]},
+        {"id": "FociArdo", "type": "estuary", "depth_m": 1.0, "flow_mps": 0.3, "level_m": SEA_LEVEL,
+         "edges": [{"treatment": "delta", "side": "both", "from_m": 0.0, "to_m": at_y(40)}]},
+        {"id": "LagoFerrale", "type": "reservoir", "depth_m": 25.0, "flow_mps": 0.0, "level_m": reservoir_level,
+         "edges": [{"treatment": "dam", "side": "south", "from_m": rx0, "to_m": rx1},
+                   {"treatment": "natural_bank", "side": "north", "from_m": rx0, "to_m": rx1}]},
+    ]}
+
+
 def main():
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "SourceArt/World")
     out.mkdir(parents=True, exist_ok=True)
@@ -1120,6 +1289,8 @@ def main():
     clamp_iters = clamp_slopes(terrain, best)
     for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
+
+    profiles, junctions = annotate_networks(g, landmarks, random.Random(SEED + 11))
 
     t0 = time.time()
     buildings = place_buildings(terrain, best, g, random.Random(SEED + 7), landmarks)
@@ -1165,7 +1336,10 @@ def main():
                        "ground_z": ground(p[0], p[1])} for n, dst, p, f, h, k in landmarks],
         "gates": [{"tag": t, "opens_with": m, "while_locked": w} for t, m, w in GATES],
         "roads": {"kinds": ROAD_KINDS, "sidewalk_kinds": sorted(SIDEWALK_KINDS), "sidewalk_width": SIDEWALK_W,
-                  "nodes": g.nodes, "segments": g.segments},
+                  "nodes": g.nodes, "segments": g.segments, "profiles": profiles, "junctions": junctions},
+        # Rail (regional line, tram, funicular) is designed in INFRA_DESIGN.md and waits for approval.
+        "rail": {"lines": []},
+        "water_network": water_network(make_heightmap.river_profile, make_heightmap.reservoir_level),
         "building_styles": BUILDING_STYLES,
         "buildings": buildings,
         "start": {"pos": [X(520), 1290], "district": "CittaAlta", "ground_z": ground(X(520), 1290)},
@@ -1180,6 +1354,10 @@ def main():
     for s in g.segments:
         kinds[s["kind"]] = kinds.get(s["kind"], 0) + 1
     gated = sum(1 for s in g.segments if s["gate"])
+    prof = {}
+    for sg in g.segments:
+        prof[sg["profile"]] = prof.get(sg["profile"], 0) + 1
+    print(f"profiles {prof}; ZTL {sum(sg['ztl'] for sg in g.segments)}, tram {sum(sg['tram'] for sg in g.segments)}, junctions {len(junctions)}")
     print(f"nodes {len(g.nodes)}, segments {len(g.segments)} {kinds}, gated {gated}, "
           f"bridges {sum(1 for s in g.segments if s['bridge'])}, unreachable nodes {len(unreachable)}")
     per = {}

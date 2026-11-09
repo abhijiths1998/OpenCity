@@ -23,6 +23,7 @@ import random
 import unreal
 
 import oc_lib as L
+import oc_networks
 
 TAG = "oc_m3"
 LAYER_PATH = "/Game/World/DataLayers"
@@ -455,11 +456,7 @@ def build_water_volumes(layout):
 # Data assets
 
 def build_data(layout, layers):
-    roads = L.data_asset("DA_MareviaRoads", "/Game/World", unreal.OCRoadGraphAsset, TAG)
-    roads.set_editor_property("layout_json", json.dumps({"roads": layout["roads"]}, separators=(",", ":")))
-    st = layout["start"]
-    roads.set_editor_property("start_location", unreal.Vector(*cm(st["pos"][0], st["pos"][1], st["ground_z"])))
-    L.save(roads)
+    roads, _rail, _water = oc_networks.write_network_assets(layout)  # road, rail and water data (INFRA_DESIGN.md)
 
     tag = unreal.OCWorldBuilderLibrary.make_tag
     areas = []

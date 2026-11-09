@@ -86,7 +86,7 @@ void FOCLaneGraph::Build(const FOCRoadGraph& Roads)
 			: AtNode[n].Num() == 2 ? 0.5 * HalfWidest : 0.0;
 	}
 
-	// Lanes: both directions of every segment.
+	// Lanes: both directions of every two-way segment.
 	for (int32 s = 0; s < Segments.Num(); ++s)
 	{
 		const FOCRoadSegment& Seg = Segments[s];
@@ -94,7 +94,7 @@ void FOCLaneGraph::Build(const FOCRoadGraph& Roads)
 		{
 			continue;
 		}
-		for (int32 Dir = 0; Dir < 2; ++Dir)
+		for (int32 Dir = 0; Dir < (Seg.bOneWay ? 1 : 2); ++Dir)  // one-way: A to B only
 		{
 			const int32 From = Dir == 0 ? Seg.A : Seg.B;
 			const int32 To = Dir == 0 ? Seg.B : Seg.A;
@@ -116,10 +116,12 @@ void FOCLaneGraph::Build(const FOCRoadGraph& Roads)
 				L.FromNode = From;
 				L.ToNode = To;
 				L.Index = i;
-				const FVector Offset = Right * LaneOffsetCm(Seg.WidthCm, N, i);
+				// Two-way: lanes fill the right half. One-way: they share the whole carriageway.
+				const double OffsetCm = Seg.bOneWay ? (i - (N - 1) * 0.5) * Seg.WidthCm / N : LaneOffsetCm(Seg.WidthCm, N, i);
+				const FVector Offset = Right * OffsetCm;
 				L.Start = S0 + Offset;
 				L.End = S1 + Offset;
-				L.WidthCm = Seg.WidthCm / (2.f * N);
+				L.WidthCm = Seg.bOneWay ? Seg.WidthCm / N : Seg.WidthCm / (2.f * N);
 				L.SpeedKmh = Seg.SpeedKmh;
 				L.Gate = Seg.Gate;
 				Group.Add(Lanes.Add(L));

@@ -4,6 +4,17 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
+float FOCRoadProfile::CarriagewayCm() const
+{
+	return 2.f * LanesPerDirection * LaneCm + 2.f * (ShoulderLeftCm + ShoulderRightCm + EmergencyLaneCm) + MedianCm + ParkingCm;
+}
+
+const TArray<int32>& FOCRoadGraph::SegmentsAt(int32 Node) const
+{
+	static const TArray<int32> None;
+	return Adjacency.IsValidIndex(Node) ? Adjacency[Node] : None;
+}
+
 float FOCRoadSegment::LengthCm(const TArray<FOCRoadNode>& Nodes) const
 {
 	return Nodes.IsValidIndex(A) && Nodes.IsValidIndex(B)
@@ -92,7 +103,73 @@ bool FOCRoadGraph::LoadFromLayoutJson(const FString& JsonText, FString& OutError
 		FString Str;
 		if (O->TryGetStringField(TEXT("bridge"), Str)) { S.Bridge = FName(*Str); }
 		if (O->TryGetStringField(TEXT("gate"), Str)) { S.Gate = FName(*Str); }
+		// Infrastructure metadata (optional; INFRA_DESIGN.md).
+		if (O->TryGetStringField(TEXT("profile"), Str)) { S.Profile = FName(*Str); }
+		if (O->TryGetStringField(TEXT("paving"), Str)) { S.Paving = FName(*Str); }
+		if (O->TryGetStringField(TEXT("era"), Str)) { S.Era = FName(*Str); }
+		if (O->TryGetStringField(TEXT("parking"), Str)) { S.Parking = FName(*Str); }
+		O->TryGetBoolField(TEXT("one_way"), S.bOneWay);
+		O->TryGetBoolField(TEXT("ztl"), S.bZTL);
+		O->TryGetBoolField(TEXT("tram"), S.bTram);
+		double Wear = S.Wear;
+		if (O->TryGetNumberField(TEXT("wear"), Wear)) { S.Wear = static_cast<float>(Wear); }
 		Segments.Add(S);
+	}
+
+	Profiles.Reset();
+	const TSharedPtr<FJsonObject>* ProfileObj = nullptr;
+	if ((*Roads)->TryGetObjectField(TEXT("profiles"), ProfileObj))
+	{
+		for (const auto& Pair : (*ProfileObj)->Values)
+		{
+			const TSharedPtr<FJsonObject> P = Pair.Value->AsObject();
+			if (!P.IsValid())
+			{
+				continue;
+			}
+			FOCRoadProfile R;
+			R.Id = FName(*Pair.Key);
+			FString Str;
+			if (P->TryGetStringField(TEXT("dm_type"), Str) && !Str.IsEmpty()) { R.DMType = FName(*Str); }
+			if (P->TryGetStringField(TEXT("paving"), Str)) { R.Paving = FName(*Str); }
+			P->TryGetBoolField(TEXT("urban"), R.bUrban);
+			auto Num = [&P](const TCHAR* Key, float& Out)
+			{
+				double V;
+				if (P->TryGetNumberField(Key, V)) { Out = static_cast<float>(V); }
+			};
+			double Lanes = R.LanesPerDirection;
+			if (P->TryGetNumberField(TEXT("lanes_per_dir"), Lanes)) { R.LanesPerDirection = static_cast<int32>(Lanes); }
+			Num(TEXT("lane_cm"), R.LaneCm);
+			Num(TEXT("shoulder_left_cm"), R.ShoulderLeftCm);
+			Num(TEXT("shoulder_right_cm"), R.ShoulderRightCm);
+			Num(TEXT("emergency_lane_cm"), R.EmergencyLaneCm);
+			Num(TEXT("median_cm"), R.MedianCm);
+			Num(TEXT("footpath_cm"), R.FootpathCm);
+			Num(TEXT("parking_cm"), R.ParkingCm);
+			Num(TEXT("max_grade_pct"), R.MaxGradePct);
+			Num(TEXT("min_radius_m"), R.MinRadiusM);
+			Num(TEXT("design_speed_max_kmh"), R.DesignSpeedMaxKmh);
+			Profiles.Add(R.Id, R);
+		}
+	}
+	Junctions.Reset();
+	const TArray<TSharedPtr<FJsonValue>>* JunctionArr = nullptr;
+	if ((*Roads)->TryGetArrayField(TEXT("junctions"), JunctionArr))
+	{
+		for (const TSharedPtr<FJsonValue>& V : *JunctionArr)
+		{
+			const TSharedPtr<FJsonObject> J = V->AsObject();
+			if (!J.IsValid())
+			{
+				continue;
+			}
+			FOCRoadJunction R;
+			R.Node = static_cast<int32>(J->GetNumberField(TEXT("node")));
+			R.Type = FName(*J->GetStringField(TEXT("type")));
+			J->TryGetBoolField(TEXT("planned"), R.bPlanned);
+			Junctions.Add(R);
+		}
 	}
 	RebuildAdjacency();
 	return true;
@@ -165,7 +242,7 @@ TArray<int32> FOCRoadGraph::FindPath(int32 Start, int32 Goal, const TSet<FName>&
 		for (const int32 SegIdx : Adjacency[N])
 		{
 			const FOCRoadSegment& S = Segments[SegIdx];
-			if (!S.Gate.IsNone() && ClosedGates.Contains(S.Gate))
+			if ((!S.Gate.IsNone() && ClosedGates.Contains(S.Gate)) || !S.AllowsFrom(N))
 			{
 				continue;
 			}
@@ -215,7 +292,7 @@ TBitArray<> FOCRoadGraph::ReachableFrom(int32 Start, const TSet<FName>& ClosedGa
 		for (const int32 SegIdx : Adjacency[N])
 		{
 			const FOCRoadSegment& S = Segments[SegIdx];
-			if (!S.Gate.IsNone() && ClosedGates.Contains(S.Gate))
+			if ((!S.Gate.IsNone() && ClosedGates.Contains(S.Gate)) || !S.AllowsFrom(N))
 			{
 				continue;
 			}

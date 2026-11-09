@@ -23,8 +23,10 @@
 
 | Item | Value | Notes |
 |---|---|---|
-| Road lane width | 350 cm | Single driving lane |
-| Sidewalk width | 250–400 cm | Pedestrian clear width |
+| Road lane width | 250-375 cm by class | Per road profile (D.M. 5/11/2001): autostrada 375, urban district 300, local 275, centro storico 250; full table in `INFRA_DESIGN.md` section 4 and `SourceArt/Infra/road_profiles.json` |
+| Sidewalk width | 80-600 cm by class | Minimum 150 clear (200 with kiosks or bins); centro storico 60-100, viale porticoes 400, lungomare promenade 600 |
+| Carriageway cross slope | 2.5% | D.M. 5/11/2001 section 5.2.7 |
+| Parking bay | 200 × 500 parallel, 230 × 500 perpendicular | Lines 12 cm: blue paid, white free, yellow reserved |
 | Curb height | 15 cm | Road to sidewalk |
 | City block | 80–150 m | Block dimension |
 | Streetlight spacing | 25–30 m | Along boulevards and main streets |
