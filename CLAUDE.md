@@ -23,6 +23,7 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 | Run editor Python | `scripts/run_python.sh <script> [args]` |
 | Package Linux Shipping | `scripts/package.sh` |
 | Generate clangd database | `scripts/gen_clangd.sh` |
+| Visual QA screenshots (bookmarks x hours) | `scripts/qa_shots.sh [hours=13,19.4,22.5] [quality] [only=District,...]` (`OC_QA_WEATHER=Rain`, `OC_QA_VIEWMODE=shadercomplexity`) |
 | Perf run (fixed camera path) | `scripts/perf_run.sh [Map] [Preset 0-3] [Laps]` (`OC_PERF_EXEC="r.Foo 0"` for cvar A/B; never `-dpcvars` with `r.*`, it crashes at startup) |
 | Plugin load check | `scripts/plugin_smoke.sh [Plugin,...]` |
 | Stability gate (60 min) | `scripts/stability/stress_gate.sh [minutes]` |
@@ -34,6 +35,7 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md` and `STORY.md` before ma
 | Rebuild the Marevia world map from SourceArt/World | `scripts/build_world.sh [--regen]` (deletes and recreates the map; needs the GPU, about 80 s with warm shaders) |
 | Build World Partition HLODs (after every world rebuild; needs the GPU) | `scripts/build_hlod.sh [Map] [--delete]` |
 | Check the Marevia map against the M3 acceptance list | `scripts/run_python.sh Content/Python/oc_m3_verify.py` (`OC_VERIFY_HLOD=1` also requires built HLODs) |
+| Apply the post-process look (`oc_look.py`) to L_Marevia without a rebuild | `scripts/run_python.sh Content/Python/oc_m4b_look.py` |
 | Material instruction counts vs ART_PIPELINE budgets | `OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_material_stats.py` (MATSTAT lines) |
 | Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |
 

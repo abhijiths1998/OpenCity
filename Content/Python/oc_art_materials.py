@@ -46,7 +46,8 @@ INSTANCES = {
     "MI_Kit_WallStucco": ("white_stucco", 2.0, (1.0, 0.98, 0.94), dict(TintSlot=0, Macro=0.5, GrimeAmount=0.6)),
     "MI_Kit_Trim": ("old_sandstone_02", 1.5, (1.0, 0.98, 0.93), dict(TintSlot=-1, Macro=0.3, GrimeAmount=0.3)),
     "MI_Kit_Wood": ("wood_peeling_paint_weathered", 1.2, (1.0, 1.0, 1.0), dict(TintSlot=1, Macro=0.2)),
-    "MI_Kit_Metal": ("metal_plate", 1.0, (0.35, 0.36, 0.37), dict(TintSlot=-1, Macro=0.2, RoughMul=0.8)),
+    # Ribbed painted shutter metal: the tread plate used before read wrong on shop shutters (QA 2026-11-09).
+    "MI_Kit_Metal": ("painted_metal_shutter", 1.0, (0.85, 0.87, 0.88), dict(TintSlot=-1, Macro=0.2)),
     "MI_Kit_Roof": ("clay_roof_tiles", 2.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.5, ProjectionMode=1)),
     "MI_Kit_Concrete": ("brushed_concrete", 2.0, (0.95, 0.94, 0.92), dict(TintSlot=-1, Macro=0.5, PuddleAmount=0.3, WetGround=True)),
     "MI_Road_Asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0), dict(TintSlot=-1, Macro=0.7, WetGround=True)),

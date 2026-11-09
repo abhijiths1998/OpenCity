@@ -21,7 +21,8 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `T
 | `white_stucco` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/white_stucco | Poly Haven | CC0 | Kit: Lungomare and Le Colline walls (alternate plaster) | 2026-11-09 |
 | `old_sandstone_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/old_sandstone_02 | Poly Haven | CC0 | Kit: stone trims, sills, cornices, quoins, plinths (MI_Kit_Trim) | 2026-11-09 |
 | `wood_peeling_paint_weathered` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/wood_peeling_paint_weathered | Poly Haven | CC0 | Kit: shutters, doors, frames, tinted per building (MI_Kit_Wood) | 2026-11-09 |
-| `metal_plate` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/metal_plate | Poly Haven | CC0 | Kit: railings, rolling shutters, pipes, roof props (MI_Kit_Metal) | 2026-11-09 |
+| `metal_plate` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/metal_plate | Poly Haven | CC0 | Grey-box metal on landmarks (MI_Box_Metal) | 2026-11-09 |
+| `painted_metal_shutter` (BC, N, ORM, 1K) | Poly Haven | https://polyhaven.com/a/painted_metal_shutter | Poly Haven | CC0 | Kit: rolling shutters, railings, pipes, roof props (MI_Kit_Metal) | 2026-11-09 |
 | `clay_roof_tiles` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/clay_roof_tiles | Poly Haven | CC0 | Kit: hip roofs (MI_Kit_Roof) | 2026-11-09 |
 | `brushed_concrete` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/brushed_concrete | Poly Haven | CC0 | Kit: flat roofs, copings, balcony slabs (MI_Kit_Concrete) | 2026-11-09 |
 | `asphalt_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/asphalt_02 | Poly Haven | CC0 | Roads | 2026-11-09 |

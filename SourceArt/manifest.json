@@ -64,7 +64,7 @@
    "source_url": "https://polyhaven.com/a/metal_plate",
    "author": "Poly Haven",
    "license": "CC0",
-   "notes": "Kit: railings, rolling shutters, pipes, roof props (MI_Kit_Metal)"
+   "notes": "Grey-box metal on landmarks (MI_Box_Metal); was the kit metal until 2026-11-09 (read as tread plate on shop shutters)"
   },
   {
    "slug": "clay_roof_tiles",
@@ -182,6 +182,19 @@
    "author": "Poly Haven",
    "license": "CC0",
    "notes": "Landscape: rock, cliffs, mountains"
+  },
+  {
+   "slug": "painted_metal_shutter",
+   "size": 1024,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/painted_metal_shutter",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: rolling shutters, railings, pipes, roof props (MI_Kit_Metal)"
   }
  ],
  "models": [

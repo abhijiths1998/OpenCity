@@ -16,6 +16,7 @@ import os
 import unreal
 
 import oc_lib as L
+import oc_look
 import oc_m3_story
 import oc_m3_water
 
@@ -185,30 +186,7 @@ def setup_look():
     ppv = L.spawn(unreal.PostProcessVolume, label="PostProcess_Marevia", folder="Lighting")
     ppv.set_editor_property("unbound", True)
     ppv.set_editor_property("is_spatially_loaded", False)
-    st = ppv.get_editor_property("settings")
-    for k, v in dict(override_auto_exposure_min_brightness=True, auto_exposure_min_brightness=-1.0,
-                     override_auto_exposure_max_brightness=True, auto_exposure_max_brightness=3.0,
-                     override_auto_exposure_bias=True, auto_exposure_bias=0.3,
-                     override_motion_blur_amount=True, motion_blur_amount=0.15,
-                     override_motion_blur_max=True, motion_blur_max=2.0,
-                     override_bloom_intensity=True, bloom_intensity=0.35,
-                     override_vignette_intensity=True, vignette_intensity=0.25,
-                     override_white_temp=True, white_temp=6200.0).items():
-        st.set_editor_property(k, v)
-    lut = unreal.load_asset("/Game/Environment/Textures/LUT/T_LUT_Marevia")
-    if lut:  # Tools/make_lut.py: ART_BIBLE grade (warm highlights, cool shadows)
-        st.set_editor_property("override_color_grading_lut", True)
-        st.set_editor_property("color_grading_lut", lut)
-        st.set_editor_property("override_color_grading_intensity", True)
-        st.set_editor_property("color_grading_intensity", 1.0)
-    rain = unreal.load_asset("/Game/Materials/M_PP_Rain")
-    if rain:  # rain streaks and dimming, scaled by MPC_World.RainAmount (free when it isn't raining)
-        wb = unreal.WeightedBlendable()
-        L.set_props(wb, weight=1.0, object=rain)
-        blend = st.get_editor_property("weighted_blendables")
-        blend.set_editor_property("array", [wb])
-        st.set_editor_property("weighted_blendables", blend)
-    ppv.set_editor_property("settings", st)
+    ppv.set_editor_property("settings", oc_look.apply(ppv.get_editor_property("settings")))  # shared with oc_m4b_look.py
     log("look: sun, haze, clouds (High+), post-process (exposure range, motion blur 0.15)")
 
 
