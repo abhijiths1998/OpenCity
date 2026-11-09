@@ -179,6 +179,32 @@ void AOCVehicle::BuildVisualParts()
 		C->RegisterComponent();
 		VisualPartComponents.Add(C);
 	}
+	ApplyPaint();
+}
+
+void AOCVehicle::ApplyPaint()
+{
+	if (!VehicleData)
+	{
+		return;
+	}
+	if (PaintColor.R < 0.f)
+	{
+		// One pick per car: a spawned car keeps its colour and dirt when parts are rebuilt.
+		const TArray<FLinearColor>& Palette = VehicleData->PaintColors;
+		const FRandomStream Rng(GetTypeHash(GetFName()) ^ static_cast<uint32>(GetUniqueID()));
+		PaintColor = Palette.IsEmpty() ? FLinearColor(0.8f, 0.05f, 0.02f, 1.f) : Palette[Rng.RandRange(0, Palette.Num() - 1)];
+		Dirt = Rng.FRandRange(VehicleData->DirtRange.X, VehicleData->DirtRange.Y);
+	}
+	for (UStaticMeshComponent* C : VisualPartComponents)
+	{
+		if (C)
+		{
+			C->SetCustomPrimitiveDataVector4(0, FVector4(PaintColor.R, PaintColor.G, PaintColor.B, 1.0));
+			C->SetCustomPrimitiveDataFloat(4, Dirt);
+			C->SetCustomPrimitiveDataFloat(5, DamageAmount01);
+		}
+	}
 }
 
 void AOCVehicle::OnConstruction(const FTransform& Transform)
@@ -655,6 +681,8 @@ void AOCVehicle::ResetUpright()
 
 void AOCVehicle::HandleDamaged(float DamageAmount, float HealthFraction)
 {
+	DamageAmount01 = FMath::Clamp(1.f - HealthFraction, 0.f, 1.f);  // dull, scraped paint (M_Master_CarPaint)
+	ApplyPaint();
 	if (UChaosWheeledVehicleMovementComponent* V = GetWheeledMovement())
 	{
 		V->SetMaxEngineTorque(BaseMaxTorque * Damage->GetPerformance());
@@ -664,6 +692,8 @@ void AOCVehicle::HandleDamaged(float DamageAmount, float HealthFraction)
 void AOCVehicle::HandleWrecked()
 {
 	UE_LOG(LogOpenCity, Log, TEXT("%s: wrecked"), *GetName());
+	DamageAmount01 = 1.f;
+	ApplyPaint();
 	if (UChaosWheeledVehicleMovementComponent* V = GetWheeledMovement())
 	{
 		V->SetMaxEngineTorque(0.f);

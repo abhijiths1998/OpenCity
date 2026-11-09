@@ -780,6 +780,92 @@ def build_foliage_master(mpc):
     return mat
 
 
+CAR_PAINT_HLSL = r"""
+// Car paint (M4b): clear coat over the vehicle's own body maps. Paint colour, dirt and damage come
+// from custom primitive data (AOCVehicle::ApplyPaint), so every car differs without a dynamic
+// material instance. Dirt collects low on the body and in crevices, streaked by a scanned leak
+// pattern in the car's side space; damage dulls the coat and scrapes paint to grey primer.
+float3 bt = Texture2DSample(BaseTex, BaseTexSampler, UV).rgb;
+float3 mra = Texture2DSample(MRATex, MRATexSampler, UV).rgb;     // metallic, roughness, AO
+float2 nxy = Texture2DSample(NTex, NTexSampler, UV).rg * 2.0 - 1.0;
+TangentNormal = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
+float3 paint = bt * Paint;
+float low = saturate(1.0 - (LP.z - 25.0) / 70.0);                 // cm above the car's base
+float g = 1.0 - Texture2DSample(Grime, GrimeSampler, frac(float2(LP.x + LP.y, LP.z) / 140.0)).r;
+float dirt = saturate(Dirt * ((0.35 + 1.3 * low) * (0.55 + 0.9 * g) + (1.0 - mra.b) * 0.6));
+float scrape = saturate((g - 0.3) * 4.0) * saturate(Damage * 1.5 - 0.15);
+float3 bc = lerp(paint, float3(0.30, 0.26, 0.20), dirt * 0.85);
+bc = lerp(bc, float3(0.16, 0.16, 0.17), scrape);
+bc *= lerp(1.0, 0.5, Damage * Damage);                             // sooty and faded when wrecked
+Metal = saturate(mra.r * (1.0 - dirt) * (1.0 - scrape));
+Rough = lerp(mra.g, 0.8, max(dirt, scrape));
+AO = mra.b;
+Coat = (1.0 - dirt * 0.75) * (1.0 - scrape) * (1.0 - Damage * 0.4);
+CoatRough = lerp(0.04, 0.4, max(dirt, Damage * 0.7));
+// Rain: a wet coat is glossier, and wet dirt darker.
+Coat = lerp(Coat, 1.0, Wet * 0.5);
+CoatRough = lerp(CoatRough, 0.02, Wet * 0.8);
+bc *= lerp(1.0, 0.85, Wet * dirt);
+return bc;
+"""
+
+CAR_PAINT_INSTANCES = {  # MI name: (base, MRA, normal) from the vehicle template
+    "MI_CarPaint_SportsCar": ("/Game/Vehicles/SportsCar/Materials/Textures/T_SportsCar_Body_D",
+                              "/Game/Vehicles/SportsCar/Materials/Textures/T_SportsCar_Body_MRA",
+                              "/Game/Vehicles/SportsCar/Materials/Textures/T_SportsCar_Body_BotN"),
+}
+
+
+def build_car_paint(mpc):
+    """M_Master_CarPaint (ART_PIPELINE.md target 450) and one instance per car body."""
+    mat = fresh_material("M_Master_CarPaint")
+    L.set_props(mat, shading_model=unreal.MaterialShadingModel.MSM_CLEAR_COAT, used_with_skeletal_mesh=True)
+    S = unreal.MaterialSamplerType
+    paint = vector(mat, "PaintColor", (0.8, 0.05, 0.02), -1400, 300)
+    L.set_props(paint, use_custom_primitive_data=True, primitive_data_index=0)
+    dirt = scalar(mat, "Dirt", 0.15, -1400, 380)
+    L.set_props(dirt, use_custom_primitive_data=True, primitive_data_index=4)
+    damage = scalar(mat, "Damage", 0.0, -1400, 460)
+    L.set_props(damage, use_custom_primitive_data=True, primitive_data_index=5)
+    grime = unreal.load_asset("/Game/Environment/Textures/Decals/Leaking012A/T_Leaking012A_Color")
+    f1, f3 = unreal.CustomMaterialOutputType.CMOT_FLOAT1, unreal.CustomMaterialOutputType.CMOT_FLOAT3
+    node = custom(mat, CAR_PAINT_HLSL,
+                  [("BaseTex", tex_object(mat, "BaseColor", S.SAMPLERTYPE_COLOR, None, -1400, -300)),
+                   ("MRATex", tex_object(mat, "MRA", S.SAMPLERTYPE_MASKS, None, -1400, -150)),
+                   ("NTex", tex_object(mat, "Normal", S.SAMPLERTYPE_NORMAL, None, -1400, 0)),
+                   ("UV", MEL.create_material_expression(mat, unreal.MaterialExpressionTextureCoordinate, -1400, 150)),
+                   ("LP", MEL.create_material_expression(mat, unreal.MaterialExpressionLocalPosition, -1400, 220)),
+                   ("Paint", paint), ("Dirt", dirt), ("Damage", damage),
+                   ("Grime", tex_object(mat, "Grime", S.SAMPLERTYPE_COLOR, grime, -1400, 540)),
+                   ("Wet", mpc_scalar(mat, mpc, "Wetness", -1400, 640))],
+                  [("TangentNormal", f3), ("Metal", f1), ("Rough", f1), ("AO", f1), ("Coat", f1), ("CoatRough", f1)], -300, 0)
+    # The clear-coat pins are hidden from Python (MP_CustomData0/1), so everything goes through a
+    # Make Material Attributes node, whose ClearCoat inputs are ordinary pins.
+    mat.set_editor_property("use_material_attributes", True)
+    make = MEL.create_material_expression(mat, unreal.MaterialExpressionMakeMaterialAttributes, 100, 0)
+    for out, pin in (("", "BaseColor"), ("TangentNormal", "Normal"), ("Metal", "Metallic"), ("Rough", "Roughness"),
+                     ("AO", "AmbientOcclusion"), ("Coat", "ClearCoat"), ("CoatRough", "ClearCoatRoughness")):
+        if not MEL.connect_material_expressions(node, out, make, pin):
+            raise RuntimeError(f"M_Master_CarPaint: could not connect {out or 'result'} to {pin}")
+    MEL.connect_material_property(make, "", unreal.MaterialProperty.MP_MATERIAL_ATTRIBUTES)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    for name, (bc, mra, n) in CAR_PAINT_INSTANCES.items():
+        mi = L.get_or_create(name, "/Game/Vehicles/Materials", unreal.MaterialInstanceConstant,
+                             unreal.MaterialInstanceConstantFactoryNew(), TAG)
+        MEL.set_material_instance_parent(mi, mat)
+        MEL.clear_all_material_instance_parameters(mi)
+        for param, path in (("BaseColor", bc), ("MRA", mra), ("Normal", n)):
+            tex = unreal.load_asset(path)
+            if tex is None:
+                raise RuntimeError(f"{name}: missing template texture {path}")
+            MEL.set_material_instance_texture_parameter_value(mi, param, tex)
+        MEL.update_material_instance(mi)
+        L.save(mi)
+    log(f"built {mat.get_path_name()} and {', '.join(CAR_PAINT_INSTANCES)}")
+    return mat
+
+
 def WET_EXTRA(mpc, ripples, puddles):
     """extra inputs for build_textured_master: the wetness block's parameters, built once per material."""
     cache = {}
@@ -881,6 +967,7 @@ def main():
     build_rain_post_process(mpc)
     build_car_glass(mpc)
     build_foliage_master(mpc)
+    build_car_paint(mpc)
     made = []
     for name, (slug, tile, tint, settings) in INSTANCES.items():
         if slug not in textures:

@@ -123,6 +123,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Art")
 	TArray<FOCVehiclePart> VisualParts;
 
+	/** Paint colours a new car of this model picks from (M_Master_CarPaint reads them through custom
+	 *  primitive data). Empty: the material's default colour. */
+	UPROPERTY(EditDefaultsOnly, Category = "Art")
+	TArray<FLinearColor> PaintColors;
+
+	/** Road dirt on a new car, picked between X and Y (0 clean .. 1 filthy). */
+	UPROPERTY(EditDefaultsOnly, Category = "Art")
+	FVector2D DirtRange = FVector2D(0.05, 0.35);
+
 	UPROPERTY(EditDefaultsOnly, Category = "Chassis", meta = (ClampMin = "1", Units = "kg"))
 	float Mass = 1500.f;
 

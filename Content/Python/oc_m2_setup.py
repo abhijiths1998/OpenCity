@@ -137,7 +137,7 @@ def import_coupe_body():
     nanite.enabled = True
     mesh.set_editor_property("nanite_settings", nanite)
     by_slot = {"M_SportsCarChasis": f"{VEH_DIR}/SportsCar/Materials/M_SportsCarChasis",
-               "MI_SportsCarBody": f"{VEH_DIR}/SportsCar/Materials/MI_SportsCarBody",
+               "MI_SportsCarBody": f"{VEH_DIR}/Materials/MI_CarPaint_SportsCar",  # M_Master_CarPaint (oc_art_materials.py)
                "Glass": "/Game/Materials/M_Master_CarGlass"}
     for i, sm in enumerate(mesh.get_editor_property("static_materials")):
         slot = str(sm.get_editor_property("material_slot_name"))
@@ -271,6 +271,11 @@ def main():
         + wheel_parts(f"{VEH_DIR}/SportsCar/SM_SportsCar_Wheel",
                       ["Phys_Wheel_FL", "Phys_Wheel_FR", "Phys_Wheel_BL", "Phys_Wheel_BR"], yaw=-90.0),
         mass=1400.0, drag_coefficient=0.3, chassis_width=180.0, chassis_height=120.0,
+        # Linear paint colours a sports coupe on the Marevia coast might wear (M_Master_CarPaint).
+        paint_colors=[unreal.LinearColor(*c) for c in (
+            (0.80, 0.05, 0.02, 1.0), (0.85, 0.32, 0.02, 1.0), (0.90, 0.62, 0.02, 1.0), (0.02, 0.02, 0.025, 1.0),
+            (0.75, 0.75, 0.73, 1.0), (0.30, 0.31, 0.33, 1.0), (0.02, 0.09, 0.32, 1.0), (0.03, 0.18, 0.08, 1.0))],
+        dirt_range=unreal.Vector2D(0.05, 0.4),
         wheel_setups=wheel_setups([(coupe_f, "Phys_Wheel_FL"), (coupe_f, "Phys_Wheel_FR"),
                                    (coupe_r, "Phys_Wheel_BL"), (coupe_r, "Phys_Wheel_BR")]),
         torque_curve_points=vec2s([(0, 0.5), (2500, 0.8), (5000, 1.0), (7000, 0.85)]),

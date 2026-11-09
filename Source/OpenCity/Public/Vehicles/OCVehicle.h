@@ -111,6 +111,12 @@ protected:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> VisualPartComponents;
 
+	/** Paint, dirt and damage for M_Master_CarPaint (custom primitive data 0-3, 4, 5 on every visual part). */
+	void ApplyPaint();
+	FLinearColor PaintColor = FLinearColor(-1.f, 0.f, 0.f, 1.f);  // R < 0: not picked yet
+	float Dirt = 0.f;
+	float DamageAmount01 = 0.f;
+
 private:
 	void HandleThrottle(const FInputActionValue& Value);
 	void HandleBrake(const FInputActionValue& Value);

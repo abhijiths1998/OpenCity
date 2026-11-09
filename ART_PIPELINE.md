@@ -164,6 +164,7 @@ Targets raised 2026-11-09 (approved): the first set (120 to 250) was written bef
 | `M_Master_Water` | Water | 352 | 440 |
 | `M_Master_KitGlass` | Glass: building windows (opaque, lit per instance at night) | 267 | 400 |
 | `M_Master_CarGlass` | Glass: car windows with rain drops (opaque, glossy) | 358 | 400 |
+| `M_Master_CarPaint` | Car bodies: clear coat over the template body maps; paint colour, dirt and damage from custom primitive data (`AOCVehicle::ApplyPaint`), wet coat in rain | 414 | 450 |
 | `M_Master_Foliage` | Trees and plants: two-sided foliage, per-instance variation, wetness, wind (WPO, off beyond 60 m) | 266 | 400 |
 | `M_Master_LampGlow` | Lamp glass (near-empty opaque master) | 192 | - |
 | `M_Master_Decal` | DBuffer decals | 383 | 400 |
@@ -179,7 +180,7 @@ Projection mode and wet ground are static switches (`ProjectionBit0/1`, `WetGrou
 
 Implementation notes:
 
-- **Car paint:** color, dirt and damage come through **Custom Primitive Data**, so no dynamic material instances are needed per car.
+- **Car paint:** color, dirt and damage come through **Custom Primitive Data**, so no dynamic material instances are needed per car. *As built:* `PaintColor` (data 0-3), `Dirt` (4) and `Damage` (5) are CPD-backed parameters; each `UOCVehicleData` has a `PaintColors` palette and `DirtRange`; damage follows the vehicle's health. Clear coat goes through Make Material Attributes (its pins are hidden from Python). Fine scratches need a scanned scratches texture (not sourced yet).
 - **Building windows:** per-instance random drives which windows light up, with a world-position hash for non-instanced meshes.
 - **Foliage:** masked materials use regular LODs as you specified. Check Nanite foliage status in 5.8 during M4b.
 - **Shading:** standard models, with Substrate off.
