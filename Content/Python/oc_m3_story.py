@@ -30,6 +30,11 @@ CUBE = "/Engine/BasicShapes/Cube"
 CYLINDER = "/Engine/BasicShapes/Cylinder"
 MAT = "/Game/Dev/Materials/M_Dev_"
 
+# Decks meet the road at the bank nodes with a small overlap, a few cm low: a slab running 5 m onto a
+# sloping bank left a lip the car hit at the footbridge.
+DECK_LAP_M = 0.6
+DECK_DROP_M = 0.04
+
 # Bridge parapets start this far (m) from each bank node, clear of the junction there.
 RAIL_CLEAR_M = 8.0
 
@@ -121,7 +126,7 @@ def build_bridges(layout, layers):
             mid = tuple((p0[i] + p1[i]) / 2.0 for i in range(3))
             pitch = math.degrees(math.atan2(p1[2] - p0[2], d1 - d0))
             yaw = ue_yaw(ux, uy)
-            actors = [shape(f"Bridge_{s['bridge']}_{suffix}", folder, (mid[0], mid[1], mid[2] - 0.5),
+            actors = [shape(f"Bridge_{s['bridge']}_{suffix}", folder, (mid[0], mid[1], mid[2] - 0.5 - DECK_DROP_M),
                             (d1 - d0, width, 1.0), "Bridge", rot=(0, pitch, yaw))]
             # Parapets along both edges, but only clear of the bank nodes: the deck runs 5 m onto the
             # bank, and parapets there stood across the junction roads at each end.
@@ -139,12 +144,12 @@ def build_bridges(layout, layers):
             return actors
 
         if not mode:
-            deck(-5.0, length + 5.0, "Deck")
+            deck(-DECK_LAP_M, length + DECK_LAP_M, "Deck")
         else:
             gate = s["gate"].split(".")[1]
             span0, span1 = 30.0, length - 30.0
-            deck(-5.0, span0, "ApproachA")
-            deck(span1, length + 5.0, "ApproachB")
+            deck(-DECK_LAP_M, span0, "ApproachA")
+            deck(span1, length + DECK_LAP_M, "ApproachB")
             deck(span0, span1, "Span", layers[f"{gate}_Open"])
             locked = layers[f"{gate}_Locked"]
             if mode == "lift":
@@ -193,9 +198,12 @@ def build_landmarks(layout):
             """off = (east, north, base above ground) in m; the base sinks `sink` m into slopes."""
             label = f"LM_{name}" if suffix == "Main" else f"LM_{name}_{suffix}"
             if name in kit_built and suffix in KIT_REPLACED:
-                if suffix == "Main":  # keep the named marker missions and checks look for
-                    marker = L.spawn(unreal.TargetPoint, cm(x + off[0], y + off[1], g + off[2] + 1.0), (0, 0, 0), label, folder)
-                    marker.set_editor_property("is_spatially_loaded", False)
+                if suffix == "Main":  # keep the named marker missions and checks look for (a hidden
+                    # 20 cm box: World Partition descriptors need real bounds to place it)
+                    marker = shape(label, folder, (x + off[0], y + off[1], g + off[2] + 1.0), (0.2, 0.2, 0.2), mat)
+                    c = marker.get_component_by_class(unreal.StaticMeshComponent)
+                    c.set_visibility(False)
+                    c.set_collision_profile_name("NoCollision")
                 return None
             return shape(label, folder, (x + off[0], y + off[1], g + off[2] - sink + (size[2] + sink) / 2.0),
                          (size[0], size[1], size[2] + sink), mat, mesh, rot)

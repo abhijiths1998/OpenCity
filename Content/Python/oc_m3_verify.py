@@ -78,7 +78,7 @@ def main():
 
     # HLOD: the project's two layers are the world's default, and HLOD actors exist once built.
     hlod0 = unreal.load_asset("/Game/World/HLOD/HLOD0_Instanced")
-    check("HLOD layers", hlod0 is not None and hlod0.get_editor_property("parent_layer") is not None)
+    check("HLOD layer", hlod0 is not None)
     hlod_actors = sum(1 for d in descs if "WorldPartitionHLOD" in str(d.native_class))
     if os.environ.get("OC_VERIFY_HLOD") == "1":
         check("HLOD actors built (scripts/build_hlod.sh)", hlod_actors > 0, hlod_actors)

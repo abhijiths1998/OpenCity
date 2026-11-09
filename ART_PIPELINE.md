@@ -6,16 +6,16 @@ The pipeline runs in ten steps. **Step 1 (audit → AUDIT.md), Step 2 (art bible
 
 | Step | Deliverable | Status |
 |---|---|---|
-| 1 — Audit | `AUDIT.md` + `oc_audit.py` | Done (baseline = 100% grey-box) |
+| 1 — Audit | `AUDIT.md` + `oc_audit.py` | Done: real headless scan (C++ mesh helper), playtest review and fix list in `AUDIT_NOTES.md` |
 | 2 — Art bible | `ART_BIBLE.md` | Done |
 | 3 — World metrics | `WORLD_METRICS.md` | Done |
-| 4 — Blockout | grey-box district via road splines + PCG | Documented (STEP4_BLOCKOUT.md); validator `oc_verify_blockout.py`; map regeneration pending (needs GPU) |
-| 5 — Modular kits + trim sheets | per-district `SM_*` kit, trim sheets | Documented (STEP5_KITS.md); pending textures + master materials |
-| 6 — Blender kitbash pipeline | headless Blender scripts + UE import script | Documented (STEP6_BLENDER.md); blocked: Blender broken (openjph 0.33) |
-| 7 — Roads, ground, landscape | splines, ground layers, auto-material | Documented (STEP7_ROADS_GROUND.md); pending textures + master materials |
-| 8 — Set dressing | three layers per street | Documented (STEP8_SET_DRESSING.md); pending hero models |
-| 9 — Lighting + atmosphere | sky, sun, fog, exposure, LUT, night | Documented (STEP9_LIGHTING.md); pending editor access |
-| 10 — Visual QA loop | camera bookmarks + screenshot script | Documented (STEP10_QA.md); pending `DA_CameraBookmarks` + script |
+| 4 — Blockout | grey-box district via road splines + PCG | Done: 3 × 3 km layout generator, road graph, blockout boxes kept as hidden collision |
+| 5 — Modular kits + trim sheets | per-district `SM_*` kit, trim sheets | Done (one Marevia kit, tiling PBR materials instead of a trim sheet): `Tools/blender/KIT_SPEC.md`, `BuildKitBuildings` with per-building colour, shop, balcony and roof variation |
+| 6 — Blender kitbash pipeline | headless Blender scripts + UE import script | Done: `Tools/blender/make_kit.py` (26 pieces, bevels, UCX), `render_previews.py`, `oc_import_kit.py`; portable Blender 4.2 LTS |
+| 7 — Roads, ground, landscape | splines, ground layers, auto-material | Done: `M_Master_Road` (asphalt, setts, pier concrete, worn markings), `M_Master_Landscape` auto-material with distance blend and side-projected rock. Open: decals (cracks, oil, puddles) |
+| 8 — Set dressing | three layers per street | Partly: street lights, trees, bins, hydrants (`BuildStreetProps`), doorstep pots, shop crates, cafe tables, roof clutter. Open: hero focal points per block, laundry, posters, parked cars |
+| 9 — Lighting + atmosphere | sky, sun, fog, exposure, LUT, night | Done except the LUT: `UOCWorldStateSubsystem` day/night, exposure range, haze, clouds on High+, lit windows, pooled sodium street lights |
+| 10 — Visual QA loop | camera bookmarks + screenshot script | Done: `DA_QABookmarks` (24), `oc.dev.qa`, `scripts/qa_shots.sh` (noon, sunset, night; frame/GPU per view; VRAM) |
 
 See `ASSET_SOURCES.md` for the asset download ledger (hard rule 3).
 

@@ -59,6 +59,12 @@ namespace OCQA
 				WS->SetTimeOfDay(Hour());
 			}
 			const FOCCameraBookmark& M = Mark();
+			// World Partition streams around the player, so bring the (frozen) pawn along: otherwise
+			// remote views show only HLODs.
+			if (APawn* Pawn = PC->GetPawn())
+			{
+				Pawn->SetActorLocation(M.Location + FVector(0, 0, 300), false, nullptr, ETeleportType::TeleportPhysics);
+			}
 			Camera->SetActorLocationAndRotation(M.Location, M.Rotation);
 			Camera->GetCameraComponent()->SetFieldOfView(M.FOV);
 			PC->SetViewTarget(Camera.Get());
@@ -123,6 +129,7 @@ namespace OCQA
 		TArray<float> Hours = { 13.f, 19.4f, 22.5f };
 		float Settle = 6.f;
 		bool bQuit = false;
+		TArray<FString> Only;  // district names to shoot (default all)
 		for (const FString& A : Args)
 		{
 			if (A.StartsWith(TEXT("/Game/"))) { Asset = A; }
@@ -135,6 +142,7 @@ namespace OCQA
 			}
 			else if (A.StartsWith(TEXT("settle="))) { Settle = FCString::Atof(*A.Mid(7)); }
 			else if (A == TEXT("quit")) { bQuit = true; }
+			else if (A.StartsWith(TEXT("only="))) { A.Mid(5).ParseIntoArray(Only, TEXT(",")); }
 		}
 		const UOCCameraBookmarks* Marks = LoadObject<UOCCameraBookmarks>(nullptr, *Asset);
 		if (!PC || !Marks || Marks->Bookmarks.IsEmpty() || Hours.IsEmpty())
@@ -152,7 +160,10 @@ namespace OCQA
 		}
 		GRun = FRun();
 		GRun.World = World;
-		GRun.Marks = Marks->Bookmarks;
+		GRun.Marks = Marks->Bookmarks.FilterByPredicate([&Only](const FOCCameraBookmark& B)
+		{
+			return Only.IsEmpty() || Only.Contains(B.District.ToString());
+		});
 		GRun.Hours = Hours;
 		GRun.Settle = Settle;
 		GRun.bQuit = bQuit;
@@ -164,7 +175,7 @@ namespace OCQA
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs Cmd(TEXT("oc.dev.qa"),
-		TEXT("Visual QA: screenshots from every camera bookmark at several hours: [asset] [hours=13,19.4,22.5] [settle=6] [quit]."),
+		TEXT("Visual QA: screenshots from every camera bookmark at several hours: [asset] [hours=13,19.4,22.5] [settle=6] [only=District,...] [quit]."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Run));
 }
 

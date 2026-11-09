@@ -174,9 +174,11 @@ namespace OCAutoDrive
 		{
 			if (UChaosVehicleMovementComponent* M = V->GetVehicleMovementComponent())
 			{
+				// Handbrake, not brake: with auto-reverse, a held brake at a standstill reverses the car.
 				M->SetThrottleInput(0.f);
 				M->SetSteeringInput(0.f);
-				M->SetBrakeInput(1.f);
+				M->SetBrakeInput(0.f);
+				M->SetHandbrakeInput(true);
 			}
 		}
 		const double Pct = Route.Num() > 1 ? 100.0 * Route[FMath::Min(Seg + 1, Route.Num() - 1)].Along / FMath::Max(1.0, Route.Last().Along) : 0.0;

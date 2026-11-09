@@ -29,15 +29,13 @@ CELL_SIZE_CM = 12800
 LOADING_RANGE_CM = 38400
 LANDSCAPE_GRID = 2  # components per streaming proxy edge (252 m)
 
-# HLOD (ARCHITECTURE.md section 7): two layers, built by scripts/build_hlod.sh.
-#   HLOD0 instanced: the real meshes (buildings, roads, bridges) and the landscape's own HLOD,
-#                    256 m cells shown out to 1 km, past the 384 m streaming range.
-#   HLOD1 instanced: the same, in 1 km cells out to 8 km, so
-#                    the whole map and the mountains stay visible from anywhere.
+# HLOD (ARCHITECTURE.md section 7), built by scripts/build_hlod.sh: one instanced layer of the real
+# meshes (buildings, roads, bridges, props) plus the landscape's own baked HLOD, in 256 m cells shown
+# out to 8 km, so the whole map and the mountains stay visible from anywhere.
 HLOD_PATH = "/Game/World/HLOD"
 KIT_PATH = "/Game/Environment/Meshes/Kit"
-HLOD_CELLS_CM = [25600, 102400]
-HLOD_RANGES_CM = [102400, 800000]
+HLOD_CELLS_CM = [25600]
+HLOD_RANGES_CM = [800000]
 
 
 def log(msg):
@@ -56,20 +54,19 @@ def setup_streaming(world):
 
 
 def setup_hlod(world):
+    # One instanced layer shown out to 8 km. A second, far layer can't help: an instancing layer has
+    # no way to represent the landscape (distant terrain vanished and the dam floated in the sky),
+    # approximating needs MeshModelingToolsetExp (Experimental) and merging the kit ran the builder
+    # out of memory. Landscape proxies get the landscape's own baked HLOD mesh in this layer.
     factory = unreal.HLODLayerFactory()
-    # Instanced, not merged or approximated: approximation needs MeshModelingToolsetExp (Experimental)
-    # and merging ~100k kit pieces per 1 km cell ran the builder out of memory (14 GB). Nanite keeps
-    # the instanced kit cheap at distance.
-    top = L.get_or_create("HLOD1_Far", HLOD_PATH, unreal.HLODLayer, factory, TAG)
-    L.set_props(top, layer_type=unreal.HLODLayerType.INSTANCING, parent_layer=None)
-    L.save(top)
     base = L.get_or_create("HLOD0_Instanced", HLOD_PATH, unreal.HLODLayer, factory, TAG)
-    L.set_props(base, layer_type=unreal.HLODLayerType.INSTANCING, parent_layer=top)
+    L.set_props(base, layer_type=unreal.HLODLayerType.INSTANCING, parent_layer=None)
     L.save(base)
     levels = unreal.OCWorldBuilderLibrary.configure_hlod(world, base, HLOD_CELLS_CM, HLOD_RANGES_CM)
-    if levels != 2:
+    if levels != 1:
         raise RuntimeError(f"HLOD setup failed ({levels} levels)")
-    log(f"HLOD: {base.get_name()} -> {top.get_name()}, cells {HLOD_CELLS_CM} cm, ranges {HLOD_RANGES_CM} cm")
+    log(f"HLOD: {base.get_name()}, cell {HLOD_CELLS_CM[0]} cm, range {HLOD_RANGES_CM[0]} cm")
+
 
 
 # Perf camera loop (scripts/perf_run.sh L_Marevia): through the two districts open in a new game,

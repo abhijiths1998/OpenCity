@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # Visual QA (ART_PIPELINE.md step 10): screenshots from every camera bookmark at noon, sunset and
 # night, with frame/GPU time per view and VRAM sampled from nvidia-smi.
-# Usage: scripts/qa_shots.sh [hours=13,19.4,22.5] [quality 0-3, default 1]
+# Usage: scripts/qa_shots.sh [hours=13,19.4,22.5] [quality 0-3, default 1] [only=District,...]
 # Output: Saved/QA/<date>/ (screenshots, qa.log with per-view timings, vram.csv)
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 oc_require_engine
 HOURS="${1:-hours=13,19.4,22.5}"
 QUALITY="${2:-1}"
+ONLY="${3:-}"
 OUT="$PROJECT_ROOT/Saved/QA/$(date +%Y-%m-%d_%H%M)"
 mkdir -p "$OUT"
 MARK="$(mktemp)"
 env "${OC_ENV[@]}" "$UE_EDITOR" "$UPROJECT" /Game/Maps/Marevia/L_Marevia -game -windowed -ResX=1600 -ResY=900 -nosplash \
   -ExecCmds="scalability $QUALITY" -log="OCQA.log" \
-  -ocdevscript="3:t.MaxFPS 60;4:oc.dev.unlock all;6:oc.dev.qa $HOURS quit;3000:quit" > /dev/null 2>&1 &
+  -ocdevscript="3:t.MaxFPS 60;4:oc.dev.unlock all;6:oc.dev.qa $HOURS $ONLY quit;3000:quit" > /dev/null 2>&1 &
 PID=$!
 echo "time_s,total_used_mib" > "$OUT/vram.csv"
 START=$SECONDS

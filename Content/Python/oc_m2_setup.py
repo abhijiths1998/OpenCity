@@ -184,9 +184,11 @@ def part(mesh_path, bone="None", rotation=(0, 0, 0)):
     return p
 
 
-def wheel_parts(mesh_path, bones):
-    """Four wheels; right-hand ones turned 180 degrees so the rim faces out."""
-    return [part(mesh_path, b, (0, 0, 180) if b.endswith(("FR", "BR", "RR")) else (0, 0, 0)) for b in bones]
+def wheel_parts(mesh_path, bones, roll=0.0, yaw=0.0):
+    """Four wheels; right-hand ones turned 180 degrees so the rim faces out. `roll`/`yaw` turn the
+    wheel mesh onto the bone's axle: the coupe's Phys_Wheel_* bones have Z forward, Y up and X across
+    the car, so its wheels need yaw -90, rim out (without it the tyres lay flat, axle up, under the body)."""
+    return [part(mesh_path, b, (roll, 0, yaw + 180) if b.endswith(("FR", "BR", "RR")) else (roll, 0, yaw)) for b in bones]
 
 
 def make_vehicle_data(name, display, **props):
@@ -206,15 +208,17 @@ def main():
 
     r, w = wheel_size(f"{VEH_DIR}/SportsCar/SM_SportsCar_Wheel")
     log(f"coupe wheel radius {r:.1f} cm, width {w:.1f} cm")
-    coupe_f = make_wheel("BP_Wheel_Coupe_Front", FRONT, r, w, 40.0, False, False)
-    coupe_r = make_wheel("BP_Wheel_Coupe_Rear", REAR, r, w, 0.0, True, True)
+    # Springs carry the car about a third into its travel: rate (N/cm) ~ mass * g / 4 / (0.35 * raise).
+    # 250 N/cm couldn't hold the 1400 kg coupe within 10 cm: it bottomed out and sat on its body.
+    coupe_f = make_wheel("BP_Wheel_Coupe_Front", FRONT, r, w, 40.0, False, False, spring_rate=900.0)
+    coupe_r = make_wheel("BP_Wheel_Coupe_Rear", REAR, r, w, 0.0, True, True, spring_rate=900.0)
 
     r, w = wheel_size(f"{VEH_DIR}/OffroadCar/SM_Offroad_Tire")
     log(f"offroad wheel radius {r:.1f} cm, width {w:.1f} cm")
     off_f = make_wheel("BP_Wheel_Offroad_Front", FRONT, r, w, 35.0, True, False, friction=3.5,
-                       spring_rate=200.0, raise_cm=20.0, drop_cm=20.0)
+                       spring_rate=650.0, raise_cm=20.0, drop_cm=20.0)
     off_r = make_wheel("BP_Wheel_Offroad_Rear", REAR, r, w, 0.0, True, True, friction=3.5,
-                       spring_rate=200.0, raise_cm=20.0, drop_cm=20.0)
+                       spring_rate=650.0, raise_cm=20.0, drop_cm=20.0)
 
     bike_f = make_wheel("BP_Wheel_Bike_Front", FRONT, 32.0, 12.0, 30.0, False, False, friction=3.0,
                         spring_rate=120.0, raise_cm=8.0, drop_cm=8.0, brake_torque=600.0)
@@ -227,7 +231,7 @@ def main():
         anim_class=unreal.load_asset(f"{VEH_DIR}/SportsCar/ABP_SportsCar").generated_class(),
         visual_parts=[part(f"{VEH_DIR}/SportsCar/SM_SportsCar"), part(f"{VEH_DIR}/SportsCar/SM_SportsCar_Glass")]
         + wheel_parts(f"{VEH_DIR}/SportsCar/SM_SportsCar_Wheel",
-                      ["Phys_Wheel_FL", "Phys_Wheel_FR", "Phys_Wheel_BL", "Phys_Wheel_BR"]),
+                      ["Phys_Wheel_FL", "Phys_Wheel_FR", "Phys_Wheel_BL", "Phys_Wheel_BR"], yaw=-90.0),
         mass=1400.0, drag_coefficient=0.3, chassis_width=180.0, chassis_height=120.0,
         wheel_setups=wheel_setups([(coupe_f, "Phys_Wheel_FL"), (coupe_f, "Phys_Wheel_FR"),
                                    (coupe_r, "Phys_Wheel_BL"), (coupe_r, "Phys_Wheel_BR")]),
