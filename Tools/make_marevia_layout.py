@@ -931,6 +931,41 @@ def relax_slopes(h, best, passes=((8, 3), (6, 3), (4, 2))):
     return h
 
 
+MAX_SLOPE = 1.6  # m of rise per m (~58 degrees): the steepest the landscape may be anywhere
+
+
+def clamp_slopes(h, best, max_slope=MAX_SLOPE, max_iters=200):
+    """Remove sheer walls that relax_slopes can't reach: cuts and fills beside protected ground
+    (roads, the reservoir basin, the river at the dam) kept 1 m-wide steps up to 67 m tall, which
+    render as torn, sky-coloured slivers (QA 2026-11-09). Every unprotected cell is held within
+    max_slope of its eight neighbours (iterated to a fixed point), so each wall becomes a cut or
+    fill slope that meets the protected level. Roads, pavements and water keep their exact levels."""
+    ys = np.arange(h.shape[0])[:, None] + Y_MIN
+    xs = np.arange(h.shape[1])[None, :]
+    rx = np.array([river_x(float(y)) for y in ys[:, 0]])[:, None]
+    rhw = np.array([river_half_width(float(y)) for y in ys[:, 0]])[:, None]
+    rx0, ry0, rx1, ry1 = RESERVOIR
+    fixed = (best <= 1.0) | (h <= 1.5)
+    fixed |= (np.abs(xs - rx) < rhw) & (ys < DAM_Y + 30)  # the river channel itself
+    fixed |= (xs > rx0) & (xs < rx1) & (ys > ry0) & (ys < ry1) & (h < make_heightmap.reservoir_level)  # under the lake
+    free = ~fixed
+    shifts = [(dy, dx, max_slope * math.hypot(dy, dx)) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx]
+    for it in range(max_iters):
+        p = np.pad(h, 1, mode="edge")
+        lo = np.full(h.shape, np.inf)
+        hi = np.full(h.shape, -np.inf)
+        for dy, dx, d in shifts:
+            n = p[1 + dy:1 + dy + h.shape[0], 1 + dx:1 + dx + h.shape[1]]
+            np.minimum(lo, n + d, out=lo)
+            np.maximum(hi, n - d, out=hi)
+        new = np.where(free, np.maximum(np.minimum(h, lo), np.minimum(hi, lo)), h)
+        change = float(np.abs(new - h).max())
+        h[:] = new
+        if change < 0.01:
+            break
+    return it + 1
+
+
 # --- Buildings -----------------------------------------------------------------------------
 
 BUILDING_STYLES = ["oldtown", "grid90", "grid120", "beach", "village", "terminal", "hills"]
@@ -1082,6 +1117,7 @@ def main():
     drop_orphan_nodes(g)
     best = flatten_roads(terrain, g)
     relax_slopes(terrain, best)
+    clamp_iters = clamp_slopes(terrain, best)
     for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
 
@@ -1150,6 +1186,7 @@ def main():
     for b in buildings:
         per[b["district"]] = per.get(b["district"], 0) + 1
     print(f"buildings {per} total {len(buildings)} in {bt:.1f}s")
+    print(f"slope clamp: {clamp_iters} passes to hold every free cell under {MAX_SLOPE} m/m")
     print(f"terrain {terrain.min():.1f}..{terrain.max():.1f} m; heightmap {HEIGHT_MIN:.0f} m = 0, {HEIGHT_MAX:.0f} m = 65535")
 
 

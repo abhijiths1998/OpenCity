@@ -480,11 +480,17 @@ LAND_HLSL = r"""
 // ground. World top-down UVs in metres; transitions broken up by a large noise-free texture sample;
 // far away each layer is sampled 4x larger so tiling doesn't read from the hills.
 float3 n = normalize(VN);
+// Face normal from screen derivatives: on a one-quad cut between two graded roads the vertex
+// normals sit near 45 degrees (they share the flat road), so the wall smeared a top-down texel
+// into a pale streak (QA 2026-11-09). Rock weight and projection follow the steeper of the two.
+float3 nf = normalize(cross(ddy(WP), ddx(WP)));
+nf *= sign(nf.z + 1e-4);
+float3 ns = nf.z < n.z ? nf : n;
 float h = WP.z / 100.0;
 float2 m = WP.xy / 100.0;
 float vary = dot(Texture2DSample(GBC, GBCSampler, m / 61.0).rgb, float3(0.3, 0.59, 0.11)) * 2.0 - 0.5;
 float wSand = saturate((1.8 - h + vary * 0.8) / 1.2);
-float wRock = max(saturate((0.78 - n.z + vary * 0.05) / 0.10), saturate((h - 230.0 + vary * 40.0) / 70.0));
+float wRock = max(saturate((0.78 - ns.z + vary * 0.05) / 0.10), saturate((h - 230.0 + vary * 40.0) / 70.0));
 float wDirt = saturate((0.94 - n.z + vary * 0.04) / 0.07) * (1.0 - wRock);
 wSand *= (1.0 - wRock);
 float wGrass = saturate(1.0 - wSand - wRock - wDirt);
@@ -495,7 +501,7 @@ float dist = length(WP - Cam);
 float far = saturate((dist - 4000.0) / 12000.0);
 float3 bc = 0; float2 nn = 0; float3 orm = 0;
 // Steep rock: project from the side (X or Y) so cliffs don't smear; everything else top-down.
-float3 an = abs(n);
+float3 an = abs(ns);
 float2 mRock = an.z > 0.7 ? m : (an.x > an.y ? float2(WP.y, -WP.z) / 100.0 : float2(WP.x, -WP.z) / 100.0);
 #define OC_LAYER(i, T, TN, TO, TILE) if (w[i] > 0.01) { float2 uv = (i == 2 ? mRock : m) / TILE; float2 dx = ddx(uv), dy = ddy(uv); \
     float3 c = lerp(Texture2DSampleGrad(T, T##Sampler, uv, dx, dy).rgb, Texture2DSampleGrad(T, T##Sampler, uv * 0.25, dx * 0.25, dy * 0.25).rgb, far); \

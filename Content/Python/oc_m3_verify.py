@@ -71,7 +71,7 @@ def main():
     check("sea surface", "Water_SeaSurface" in by_label)
     check("reservoir surface", "Water_ReservoirSurface" in by_label)
     river_surfaces = sum(1 for lb in labels if lb.startswith("Water_RiverSurface_"))
-    check("river surfaces", river_surfaces >= 90, river_surfaces)
+    check("river surfaces", river_surfaces >= 95, river_surfaces)  # ~100: cascades steeper than 17 deg get none (2026-11-09)
     check("distant peaks", sum(1 for lb in labels if lb.startswith("Scenery_Peak_")) >= 10)
     check("Isola Ventura", any(lb.startswith("Scenery_IsolaVentura_Fortress") for lb in labels))
     check("perf camera loop", "PerfCameraPath_Marevia" in by_label)

@@ -90,7 +90,7 @@ def river_half_width(y):  # Tools/make_marevia_layout.py
     return 25.0 if y < 2100 else 14.0
 
 
-CASCADE_DEG = 12.0  # river sections steeper than this get no water surface (QA 2026-11-09: slabs in the gorge)
+CASCADE_DEG = 17.0  # steeper river sections (20-42 deg: the cascades and the gorge below the dam) get no water surface
 BANK_M = 12.0  # Tools/make_marevia_layout.py: banks rise from the bed over 12 m beside the channel
 
 
@@ -116,7 +116,7 @@ def build_water(layout):
         pitch = math.degrees(math.atan2(z1 - z0, horiz))
         yaw = math.degrees(math.atan2(-(y1 - y0), x1 - x0))
         if abs(pitch) > CASCADE_DEG:
-            continue  # the gorge below the dam climbs at 25-42 degrees: a dry rock cascade, not a water sheet
+            continue  # a dry rock cascade, not a tilted water sheet (QA 2026-11-09: slabs stood out of the gorge)
         # Steep reaches keep to the channel; a sheet as wide as the banks stood out of the relaxed terrain.
         bank = BANK_M if abs(pitch) < 6.0 else 0.0
         width = 2.0 * (river_half_width((y0 + y1) / 2.0) + bank)
