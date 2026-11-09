@@ -117,8 +117,8 @@ These need your login or `sudo`, so they're yours to do:
 - [ ] All four presets produce measurably different visuals and costs *(costs measured: Low 98.6 / Medium 83.3 / High 53 FPS cool, 28 hot / Ultra no lap; visuals not yet compared side by side)*
 - [x] Medium on the showcase block: 60 FPS on the test path, at most 5,000 MiB VRAM *(83.3 FPS avg, 1% low 40.9, GPU 11.3 ms, game VRAM 3,418 MiB; 2026-11-09, editor -game, browser open)*
 - [ ] Shader Complexity and Quad Overdraw reviewed, with hot spots reported
-- [ ] Every master is within its instruction budget *(measured, all over: surface 535, road 417, water 352, car glass 1,869; the fixed base-pass cost alone is ~190, so the targets need resetting; ART_PIPELINE.md)*
-- [ ] Rain drives wet surfaces, puddles, splashes and windshield droplets from one value *(wet surfaces, puddles, ripples and screen rain from `RainAmount`/`Wetness`; splashes not built; car-glass droplet material built but the coupe's windows need their own material slot)*
+- [ ] Every master is within its instruction budget *(measured, all over: surface 577, road 459, water 352, car glass 358; the fixed base-pass cost alone is ~190, so the targets need resetting; ART_PIPELINE.md)*
+- [x] Rain drives wet surfaces, puddles, splashes and windshield droplets from one value *(`RainAmount` and `Wetness` drive wet surfaces, puddles with ripples, splash rings on up-facing ground, screen rain and drops on the coupe's glass; QA shots 2026-11-09)*
 
 ## M5: Life in the city (L)
 

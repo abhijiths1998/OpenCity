@@ -40,3 +40,4 @@ SourceArt/Downloads/Decals/TireTracks001,https://ambientcg.com/view?id=TireTrack
 SourceArt/Downloads/Decals/AsphaltDamage001,https://ambientcg.com/view?id=AsphaltDamage001,ambientCG,CC0,2026-11-09,Potholes and broken asphalt
 SourceArt/Downloads/Decals/ChewingGum001,https://ambientcg.com/view?id=ChewingGum001,ambientCG,CC0,2026-11-09,Pavement clutter
 SourceArt/LUT/T_LUT_Marevia.png,Tools/make_lut.py,OpenCity,Project-owned,2026-11-09,Colour-grade LUT (ART_BIBLE grade)
+SourceArt/Vehicles/SportsCar (SM_SportsCar export + SM_SportsCar_Body),UE 5.8.4 Templates/TemplateResources/Standard/Vehicles,Epic Games,Unreal Engine EULA (use in Unreal Engine projects),2026-11-09,Template mesh exported unchanged; windows split into a Glass slot

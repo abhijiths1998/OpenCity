@@ -373,6 +373,17 @@ if (Wet > 0.001)
     float2 r2 = Texture2DSample(RipN, RipNSampler, ruv * 1.7 - float2(0.023, 0.041) * Time).rg * 2.0 - 1.0;
     float2 rip = (r1 + r2) * (0.12 + 0.4 * Rain);
     WorldNormal = normalize(lerp(WorldNormal, normalize(float3(rip, 1.0)), pool));
+    // Rain splashes: one impact per 22 cm cell at a random time, a ring that grows to ~10 cm over
+    // 0.3 s on up-facing ground: a bent, glossy, slightly bright crown that glints like a splash.
+    float2 sp = WP.xy / 22.0;
+    float sh = frac(sin(dot(floor(sp), float2(41.3, 289.1))) * 15731.743);
+    float per = 0.5 + sh;
+    float age = frac(Time / per + sh * 7.0) * per;
+    float2 sd = (frac(sp) - 0.5 - (float2(frac(sh * 21.7), frac(sh * 57.3)) - 0.5) * 0.5) * 22.0;
+    float ring = saturate(1.0 - abs(length(sd) - age * 33.0) / 1.6) * saturate(1.0 - age / 0.3) * Rain * upv;
+    WorldNormal = normalize(WorldNormal + float3(normalize(sd + 1e-4) * ring * 1.6, 0.0));
+    Rough = lerp(Rough, 0.02, ring);
+    bc += ring * 0.22;  // normal and gloss alone are invisible on overcast asphalt (QA 2026-11-09)
 }
 """
 
@@ -621,40 +632,40 @@ def make_instance(name, parent, textures, tile, tint, settings):
 
 
 CAR_GLASS_HLSL = r"""
-// Car glass (M4b): dark tinted glass; in rain, droplets bead on it in the car's own space (they
-// ride along with the car), from MPC_World.RainAmount. LP is in cm: 3.5 cm cells give drops of
-// roughly 0.4 to 1.1 cm, big enough to read at chase-camera distance.
+// Car glass (M4b): opaque, near-black and glossy (the vehicle bodies are shells with no interior,
+// so see-through glass would show an empty car). In rain, drops bead on it in the car's own space
+// (they ride along with the car), from MPC_World.RainAmount. LP is in cm: 3.5 cm cells give drops
+// of roughly 0.4 to 1.1 cm, which read at chase-camera distance as bright domed highlights.
 float2 q = (LP.xy + LP.yz * 0.7) / 3.5;
 float2 c = floor(q);
 float h = frac(sin(dot(c, float2(127.1, 311.7))) * 43758.5453);
 float2 f = frac(q) - 0.5 - (float2(frac(h * 13.7), frac(h * 7.3)) - 0.5) * 0.4;
 float r = 0.12 + 0.2 * frac(h * 3.1);
 float d = saturate(1.0 - length(f) / r);
-float drop = step(0.45, h) * d * Rain;
-Opac = lerp(0.4, 0.8, saturate(drop * 3.0));
-Rough = lerp(0.03, 0.08, saturate(drop * 3.0));
-// Bend the glass normal around each drop (a dome), in a frame built on the surface normal.
+float on = step(0.45, h) * step(0.001, d) * Rain;
+// A film of water roughens the glass slightly; each drop is a smooth dome.
+Rough = lerp(0.04, 0.12, Rain) * (1.0 - on) + 0.02 * on;
 float3 n = normalize(N);
 float3 t = normalize(abs(n.z) < 0.95 ? cross(float3(0, 0, 1), n) : cross(float3(1, 0, 0), n));
 float3 b = cross(n, t);
-float2 g = (f / max(r, 1e-3)) * step(0.45, h) * step(0.001, d) * Rain;
+float2 g = (f / max(r, 1e-3)) * on;
 WorldNormal = normalize(n + (t * g.x + b * g.y) * 1.2);
-return lerp(float3(0.02, 0.025, 0.03), float3(0.18, 0.2, 0.22), saturate(drop * 2.0));
+return lerp(float3(0.012, 0.014, 0.017), float3(0.05, 0.055, 0.06), on * d);
 """
 
 
 def build_car_glass(mpc):
     mat = L.get_or_create("M_Master_CarGlass", MAT_ROOT, unreal.Material, unreal.MaterialFactoryNew(), TAG)
     MEL.delete_all_material_expressions(mat)
-    L.set_props(mat, blend_mode=unreal.BlendMode.BLEND_TRANSLUCENT, two_sided=True,
-                translucency_lighting_mode=unreal.TranslucencyLightingMode.TLM_SURFACE)  # per-pixel forward shading cost 3,093 ps instructions
+    # Opaque: translucent versions measured 3,093 (forward shading), 1,869 (surface) and 486
+    # (volumetric, no reflections) instructions, and showed the empty body shell through the glass.
+    L.set_props(mat, blend_mode=unreal.BlendMode.BLEND_OPAQUE, two_sided=False)
     inputs = [("LP", MEL.create_material_expression(mat, unreal.MaterialExpressionLocalPosition, -1100, 0)),
               ("Rain", mpc_scalar(mat, mpc, "RainAmount", -1100, 100)),
               ("N", MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -1100, 200))]
     f1 = unreal.CustomMaterialOutputType.CMOT_FLOAT1
-    node = custom(mat, CAR_GLASS_HLSL, inputs, [("WorldNormal", unreal.CustomMaterialOutputType.CMOT_FLOAT3), ("Opac", f1), ("Rough", f1)], -300, 0)
+    node = custom(mat, CAR_GLASS_HLSL, inputs, [("WorldNormal", unreal.CustomMaterialOutputType.CMOT_FLOAT3), ("Rough", f1)], -300, 0)
     MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    MEL.connect_material_property(node, "Opac", unreal.MaterialProperty.MP_OPACITY)
     MEL.connect_material_property(node, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
     MEL.connect_material_property(node, "WorldNormal", unreal.MaterialProperty.MP_NORMAL)
     mat.set_editor_property("tangent_space_normal", False)

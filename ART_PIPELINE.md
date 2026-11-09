@@ -152,17 +152,17 @@ Limits per master: at most 3 static switches, at most 8 texture samples. Prefer 
 
 | Material | Role | Measured | Target |
 |---|---|---:|---:|
-| `M_Master_Surface` (+ `TwoSided`) | Opaque and Building roles: kit, props, boxes | 535 | 180 / 220 |
-| `M_Master_Road` | Road | 417 | 200 |
-| `M_Master_Landscape` | Landscape (no target set; scored against 200) | 527 | - |
+| `M_Master_Surface` (+ `TwoSided`) | Opaque and Building roles: kit, props, boxes | 577 | 180 / 220 |
+| `M_Master_Road` | Road | 459 | 200 |
+| `M_Master_Landscape` | Landscape (no target set; scored against 200) | 569 | - |
 | `M_Master_Water` | Water | 352 | 250 |
 | `M_Master_KitGlass` | Building windows (opaque, lit per instance at night) | 267 | 150 |
-| `M_Master_CarGlass` | Car glass with rain drops (translucent, surface lighting) | 1,869 | 150 |
+| `M_Master_CarGlass` | Car windows with rain drops (opaque, glossy) | 358 | 150 |
 | `M_Master_LampGlow` | Lamp glass (near-empty opaque master) | 192 | - |
 | `M_Master_Decal` | DBuffer decals | 383 | - |
 | `M_PP_Rain` | Screen rain post-process | 69 | - |
 
-Every master is over its target. The near-empty `M_Master_LampGlow` already counts 192, so on 5.8 SM6 the fixed base-pass cost is about 190 instructions and the 150 to 220 targets above cannot be met as written; they were set before measurement. The real cost to watch is per-pixel GPU time in the profiler: Medium holds 83 FPS on the perf path with these masters. Car glass is translucent: per-pixel forward shading cost 3,093, the volumetric mode 486 but loses reflections, so it uses surface lighting at 1,869 and is meant only for car windows. It is not on a car yet: the coupe's windows are part of its body mesh and chassis material, so they need their own material slot first (split in Blender). The wetness block is a uniform branch and costs nothing when dry.
+Every master is over its target. The near-empty `M_Master_LampGlow` already counts 192, so on 5.8 SM6 the fixed base-pass cost is about 190 instructions and the 150 to 220 targets above cannot be met as written; they were set before measurement. The real cost to watch is per-pixel GPU time in the profiler: Medium holds 83 FPS on the perf path with these masters. Car glass is opaque: the vehicle bodies are shells with no interior, so see-through glass would show an empty car, and the translucent versions measured 3,093 (forward shading), 1,869 (surface lighting) and 486 (volumetric, no reflections). The coupe's windows were UV islands of its paint slot; `Tools/blender/split_car_glass.py` moves them into a `Glass` slot (`SM_SportsCar_Body`). The wetness block (darkening, gloss, puddles, ripples and splash rings, +42 for the splashes) is a uniform branch and costs nothing when dry.
 
 Implementation notes:
 

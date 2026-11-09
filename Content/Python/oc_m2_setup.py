@@ -25,6 +25,7 @@ VEH_DIR = "/Game/Vehicles"
 MAP_PATH = "/Game/Maps/Dev/L_DevDriving"
 PROJECT_DIR = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 BIKE_GLTF = os.path.join(PROJECT_DIR, "SourceArt/Vehicles/Bike/SKM_BikeChassis.gltf")
+COUPE_BODY_FBX = os.path.join(PROJECT_DIR, "SourceArt/Vehicles/SportsCar/SM_SportsCar_Body.fbx")
 
 
 def log(msg):
@@ -111,6 +112,43 @@ def import_bike_chassis():
     log(f"bike chassis mesh {mesh.get_path_name()}, physics asset {pa.get_path_name() if pa else 'NONE'}")
     if pa is None:
         raise RuntimeError("bike chassis has no physics asset; Chaos needs one")
+    return mesh
+
+
+def import_coupe_body():
+    """SM_SportsCar with its windows in their own slot (Tools/blender/split_car_glass.py), so the
+    windows get the rain-aware M_Master_CarGlass. The template's SM_SportsCar stays untouched."""
+    if not os.path.exists(COUPE_BODY_FBX):
+        raise RuntimeError(f"missing {COUPE_BODY_FBX}: run ~/Applications/blender-4.2/blender -b -P Tools/blender/split_car_glass.py")
+    ui = unreal.FbxImportUI()
+    L.set_props(ui, import_mesh=True, import_as_skeletal=False, import_materials=False, import_textures=False,
+                import_animations=False, create_physics_asset=False,
+                mesh_type_to_import=unreal.FBXImportType.FBXIT_STATIC_MESH, automated_import_should_detect_type=False)
+    L.set_props(ui.get_editor_property("static_mesh_import_data"), combine_meshes=True, auto_generate_collision=False,
+                generate_lightmap_u_vs=False, normal_import_method=unreal.FBXNormalImportMethod.FBXNIM_IMPORT_NORMALS)
+    task = unreal.AssetImportTask()
+    L.set_props(task, filename=COUPE_BODY_FBX, destination_path=f"{VEH_DIR}/SportsCar", destination_name="SM_SportsCar_Body",
+                replace_existing=True, automated=True, save=False, options=ui)
+    L.tools.import_asset_tasks([task])
+    mesh = unreal.load_asset(f"{VEH_DIR}/SportsCar/SM_SportsCar_Body")
+    if mesh is None:
+        raise RuntimeError("coupe body import failed")
+    nanite = mesh.get_editor_property("nanite_settings")
+    nanite.enabled = True
+    mesh.set_editor_property("nanite_settings", nanite)
+    by_slot = {"M_SportsCarChasis": f"{VEH_DIR}/SportsCar/Materials/M_SportsCarChasis",
+               "MI_SportsCarBody": f"{VEH_DIR}/SportsCar/Materials/MI_SportsCarBody",
+               "Glass": "/Game/Materials/M_Master_CarGlass"}
+    for i, sm in enumerate(mesh.get_editor_property("static_materials")):
+        slot = str(sm.get_editor_property("material_slot_name"))
+        path = next((v for k, v in by_slot.items() if slot.startswith(k)), None)
+        mat = unreal.load_asset(path) if path else None
+        if mat is None:
+            raise RuntimeError(f"coupe body: no material for slot {slot} (run oc_art_materials.py for the glass)")
+        mesh.set_material(i, mat)
+    L.save(mesh)
+    ext = mesh.get_bounds().box_extent
+    log(f"coupe body {mesh.get_path_name()}: extent {ext.x:.1f} x {ext.y:.1f} x {ext.z:.1f} cm (template 235.4 x 114.1 x 61.7)")
     return mesh
 
 
@@ -229,7 +267,7 @@ def main():
         "DA_Vehicle_Coupe", "Strada Coupe",
         mesh=unreal.load_asset(f"{VEH_DIR}/SportsCar/SKM_SportsCar"),
         anim_class=unreal.load_asset(f"{VEH_DIR}/SportsCar/ABP_SportsCar").generated_class(),
-        visual_parts=[part(f"{VEH_DIR}/SportsCar/SM_SportsCar"), part(f"{VEH_DIR}/SportsCar/SM_SportsCar_Glass")]
+        visual_parts=[part(import_coupe_body().get_path_name()), part(f"{VEH_DIR}/SportsCar/SM_SportsCar_Glass")]
         + wheel_parts(f"{VEH_DIR}/SportsCar/SM_SportsCar_Wheel",
                       ["Phys_Wheel_FL", "Phys_Wheel_FR", "Phys_Wheel_BL", "Phys_Wheel_BR"], yaw=-90.0),
         mass=1400.0, drag_coefficient=0.3, chassis_width=180.0, chassis_height=120.0,
