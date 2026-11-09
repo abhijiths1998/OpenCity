@@ -110,7 +110,8 @@ def build_perf_path(layout):
         loop.extend(leg if not loop else leg[1:])
     loop = loop[:-1]  # closed spline: the last node is the first
     cls = unreal.load_class(None, "/Script/OpenCity.OCPerfCameraPath")
-    perf = L.spawn(cls, to_world(*nodes[loop[0]][:2], nodes[loop[0]][2] + 4.0), (0, 0, 0), "PerfCameraPath_Marevia", "Dev")
+    x0, y0, z0 = nodes[loop[0]]
+    perf = L.spawn(cls, (x0 * 100.0, -y0 * 100.0, (z0 + 4.0) * 100.0), (0, 0, 0), "PerfCameraPath_Marevia", "Dev")
     perf.set_editor_property("is_spatially_loaded", False)
     L.set_props(perf, generate_circle=False, speed_cm_per_sec=2500.0, camera_pitch=-6.0, warmup_seconds=8.0)
     spline = perf.get_component_by_class(unreal.SplineComponent)

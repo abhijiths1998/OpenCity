@@ -61,7 +61,7 @@ def main():
     check("river volumes", rivers >= 100, rivers)
     roads = sum(1 for lb in labels if lb.startswith("Roads_"))
     check("road chunks", roads >= 70, roads)
-    buildings = sum(1 for lb in labels if lb.startswith("Buildings_"))
+    buildings = sum(1 for lb in labels if lb.startswith(("Buildings_", "BLOCKOUT_Buildings_")))  # renamed in M4a step 4
     check("building chunks", buildings >= 30, buildings)
     for s in layout["roads"]["segments"]:
         if s["bridge"]:
