@@ -304,6 +304,104 @@ class RoadGraph:
         return ids
 
 
+# --- Mountain roads: routed over the terrain ----------------------------------------------------
+
+ROUTE_CELL = 6.0          # m: routing grid
+ROUTE_GRADE_OK = 0.07     # grades up to this cost nothing extra
+ROUTE_GRADE_MAX = 0.18    # never steeper (the old straight legs needed cuts tens of metres deep)
+ROUTE_STEP = 25.0         # m between nodes of a routed road: the corridor grading between nodes is
+                          # linear, so short steps keep the road on the land instead of cutting it
+
+
+def route_road(terrain, start, goal, avoid=None, turn_cost=40.0):
+    """Terrain-following road from start to goal (layout metres): A* on a ROUTE_CELL grid over the
+    smoothed land, 16 move directions, cost = length x (1 + grade penalty) + a turn penalty, never
+    steeper than ROUTE_GRADE_MAX. Switchbacks appear by themselves where the slope demands them.
+    `avoid(x, y)` marks cells the road may not use (water). Returns a smoothed polyline [(x, y)]."""
+    import heapq
+    soft = terrain.copy()
+    for _ in range(2):  # 10 m smoothing: route on the land's shape, not its noise
+        k = 5
+        c = np.cumsum(np.pad(soft, ((0, 0), (k, k)), mode="edge"), axis=1)
+        soft = ((c[:, 2 * k:] - c[:, :-2 * k]) / (2 * k))[:, :terrain.shape[1]]
+        soft = np.pad(soft, ((0, 0), (0, terrain.shape[1] - soft.shape[1])), mode="edge")
+        c = np.cumsum(np.pad(soft, ((k, k), (0, 0)), mode="edge"), axis=0)
+        soft = ((c[2 * k:, :] - c[:-2 * k, :]) / (2 * k))[:terrain.shape[0], :]
+        soft = np.pad(soft, ((0, terrain.shape[0] - soft.shape[0]), (0, 0)), mode="edge")
+    nx, ny = int(W / ROUTE_CELL), int(H / ROUTE_CELL)
+
+    def hgt(i, j):
+        return float(soft[min(int(j * ROUTE_CELL), H), min(int(i * ROUTE_CELL), W)])
+
+    def cell(p):
+        return (int(round(p[0] / ROUTE_CELL)), int(round((p[1] - Y_MIN) / ROUTE_CELL)))
+
+    # 48 directions (moves up to 4 cells): on 35-degree mountainside the road has to run within
+    # ~10 degrees of the contour, which 16 directions (22.5 degrees apart) often can't.
+    moves = [(dx, dy) for dx in range(-4, 5) for dy in range(-4, 5)
+             if (dx, dy) != (0, 0) and math.gcd(abs(dx), abs(dy)) == 1]
+    s0, s1 = cell(start), cell(goal)
+    pad = int(600 / ROUTE_CELL)  # search a box around the two ends (speed)
+    bx0, bx1 = max(1, min(s0[0], s1[0]) - pad), min(nx - 1, max(s0[0], s1[0]) + pad)
+    by0, by1 = max(1, min(s0[1], s1[1]) - pad), min(ny - 1, max(s0[1], s1[1]) + pad)
+    best = {s0: 0.0}
+    came = {s0: None}
+    todo = [(0.0, s0)]
+    while todo:
+        f, c = heapq.heappop(todo)
+        if c == s1:
+            break
+        g0 = best[c]
+        par = came[c]
+        h0 = hgt(*c)
+        for dx, dy in moves:
+            n = (c[0] + dx, c[1] + dy)
+            if not (bx0 <= n[0] <= bx1 and by0 <= n[1] <= by1):
+                continue
+            x, y = n[0] * ROUTE_CELL, n[1] * ROUTE_CELL + Y_MIN
+            if avoid is not None and avoid(x, y) and n != s1:
+                continue
+            length = math.hypot(dx, dy) * ROUTE_CELL
+            grade = abs(hgt(*n) - h0) / length
+            if grade > ROUTE_GRADE_MAX:
+                continue
+            cost = length * (1.0 + 60.0 * max(0.0, grade - ROUTE_GRADE_OK))
+            if par is not None:
+                ax, ay = c[0] - par[0], c[1] - par[1]
+                cosang = (ax * dx + ay * dy) / (math.hypot(ax, ay) * math.hypot(dx, dy))
+                cost += turn_cost * (1.0 - cosang)
+            g1 = g0 + cost
+            if g1 < best.get(n, 1e18):
+                best[n] = g1
+                came[n] = c
+                heapq.heappush(todo, (g1 + math.hypot(n[0] - s1[0], n[1] - s1[1]) * ROUTE_CELL, n))
+    if s1 not in came:
+        raise RuntimeError(f"no road route from {start} to {goal} within {ROUTE_GRADE_MAX:.0%}")
+    cells = [s1]
+    while came[cells[-1]] is not None:
+        cells.append(came[cells[-1]])
+    pts = [(c[0] * ROUTE_CELL, c[1] * ROUTE_CELL + Y_MIN) for c in reversed(cells)]
+    pts[0], pts[-1] = start, goal
+    # Smooth the grid staircase into curves (Chaikin, 3 rounds), then resample every ROUTE_STEP m.
+    for _ in range(3):
+        sm = [pts[0]]
+        for a, b in zip(pts, pts[1:]):
+            sm += [(0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]), (0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1])]
+        pts = sm + [pts[-1]]
+    out, acc = [pts[0]], 0.0
+    for a, b in zip(pts, pts[1:]):
+        acc += math.dist(a, b)
+        if acc >= ROUTE_STEP:
+            out.append(b)
+            acc = 0.0
+    if math.dist(out[-1], goal) > 1.0:
+        if math.dist(out[-1], goal) < ROUTE_STEP * 0.4:
+            out[-1] = goal
+        else:
+            out.append(goal)
+    return [(round(x, 1), round(y, 1)) for x, y in out]
+
+
 def grade_chain(g, ids, z0, z1):
     """Set the heights along a chain of nodes to a steady grade from z0 to z1 (by distance)."""
     d = [0.0]
@@ -390,20 +488,38 @@ def build_roads(terrain, rng):
     # Hills roads and gates (checkpoints where roads leave the open districts).
     g.path(P([(520, 1660), (540, 1760), (480, 1900), (450, 1960)]), "street", gate="Gate.Colline")  # to Villa Salvi
     g.path(P([(1400, 1660), (1380, 1800), (1300, 1900), (1180, 1905)]), "street", gate="Gate.Colline")
-    # Monte Ferrale pass road: long hairpins up the hillside to the dam, then along the dam crest.
-    # Heights follow a steady grade (grade_chain), not the steep mountain terrain; the corridor
-    # grading cuts and fills the ground to match, which also raises the dam's embankment.
+    # Monte Ferrale roads, routed over the terrain (route_road): the pass from the hills checkpoint up
+    # to the dam's east end, then straight along the dam crest; the quarry spur, the radio-mast road
+    # and the hermitage road. Straight 450 m legs at a steady grade cut tens of metres into the
+    # mountain and left terraces of rock walls; routed roads follow the land and switch back by
+    # themselves where it gets steep.
     crest = make_heightmap.reservoir_level + 2.0
-    pass_ids = g.path(P([(1300, 1905), (1750, 1990), (1300, 2110), (1800, 2230), (1430, 2340), (1395, DAM_Y),
-                       (1130, DAM_Y), (870, DAM_Y)]), "pass", gate="Gate.Ferrale")
-    grade_chain(g, pass_ids[:6], g.nodes[pass_ids[0]][2], crest)
-    for i in pass_ids[5:]:
+    rx0, ry0, rx1, ry1 = RESERVOIR
+    rcx, rcy, rax, ray = (rx0 + rx1) / 2, (ry0 + ry1) / 2, (rx1 - rx0) / 2 * 1.2, (ry1 - ry0) / 2 * 1.2
+
+    def wet(x, y):
+        if ((x - rcx) / rax) ** 2 + ((y - rcy) / ray) ** 2 < 1.0:
+            return True  # the reservoir
+        return y < DAM_Y + 20 and abs(x - river_x(y)) < river_half_width(y) + 14
+    dam_e, dam_w = (X(1395), DAM_Y), (X(870), DAM_Y)
+    # The climb ends just east of the dam where the land is already at crest height, so the crest
+    # road continues level (ending below the crest made a 70% ramp onto the dam).
+    abutment = (dam_e[0] + 60.0, DAM_Y)
+    climb = route_road(terrain, (X(1300), 1905), abutment, avoid=wet)
+    pass_ids = g.path(climb + [dam_e, (X(1130), DAM_Y), dam_w], "pass", gate="Gate.Ferrale")
+    n_climb = len(climb)
+    grade_chain(g, pass_ids[n_climb - 1:n_climb + 1], g.nodes[pass_ids[n_climb - 1]][2], crest)
+    for i in pass_ids[n_climb:]:
         g.nodes[i][2] = round(crest, 2)                               # along the dam crest
-    quarry = g.path(P([(1800, 2230), (1700, 2380)]), "pass")              # quarry spur
-    mast = g.path(P([(1700, 2380), (1960, 2440), (1600, 2520), (1960, 2600), (1820, 2680)]), "pass")  # radio mast
-    grade_chain(g, mast, g.nodes[quarry[-1]][2], g.nodes[mast[-1]][2])
-    hermitage = g.path(P([(870, DAM_Y), (600, 2480), (820, 2560), (560, 2600), (500, 2640)]), "pass")
-    grade_chain(g, hermitage, crest, g.nodes[hermitage[-1]][2])
+    # Branches start from the pass node nearest their destination.
+    def branch_from(target):
+        return min(pass_ids[:n_climb], key=lambda i: math.dist(g.nodes[i][:2], target))
+    quarry_end = (X(1700), 2380)
+    q0 = branch_from(quarry_end)
+    quarry = g.path([tuple(g.nodes[q0][:2])] + route_road(terrain, tuple(g.nodes[q0][:2]), quarry_end, avoid=wet)[1:], "pass")
+    mast = g.path(route_road(terrain, quarry_end, (X(1820), 2680), avoid=wet), "pass")
+    hermitage = g.path(route_road(terrain, dam_w, (X(500), 2640), avoid=wet), "pass")
+    print(f"mountain roads: pass {len(climb)} nodes, quarry {len(quarry)}, mast {len(mast)}, hermitage {len(hermitage)}")
 
     # Stitch: join every road end that is still loose (bridge ends, arterial ends) and the
     # edge nodes of each district to the nearest node of a neighbouring district or grid.
