@@ -1,400 +1,302 @@
-"""M4a Step 1 — World-building audit.
+"""World-building audit (M4a step 1): scan /Game and write AUDIT.md.
 
-Scans /Game and writes AUDIT.md listing every problem found with meshes,
-textures, materials, tiling risk and lighting/post-process, plus a
-prioritized fix list and an asset download list with exact search terms.
+Every finding comes from the assets themselves; nothing in the scan section is hand-written.
+Hand-written parts (playtest observations, the prioritized fix list, the download list) live in
+AUDIT_NOTES.md and are appended unchanged, so re-running the scan never loses them.
 
-Run headless:
-    scripts/run_python.sh Content/Python/oc_audit.py
+Checks
+  Meshes     code-generated / blockout, no UVs, no collision, no Nanite and no LODs, odd scale
+             (lightmap UVs are not checked: the project is fully dynamic, r.AllowStaticLighting=False)
+  Textures   compression and sRGB by suffix (_BC _N _ORM _E _M), size above the 2K cap, no mips,
+             names without a T_ prefix or a known suffix
+  Materials  not from an approved master (/Game/Materials/M_Master_*), no textures (flat or
+             procedural), no normal input, constant roughness
+  Tiling     large-surface materials (terrain, road, building, sidewalk, water) without a macro
+             variation parameter or texture
+  Maps       Sky Atmosphere, sun, Sky Light, Height Fog, Post Process Volume (exposure), per map,
+             read from World Partition actor descriptors so unloaded actors count too
+
+Run headless:  scripts/run_python.sh Content/Python/oc_audit.py
 """
 
+import datetime
 import os
 
 import unreal
 
-import oc_lib as L
-
 PROJECT_DIR = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 AUDIT_PATH = os.path.join(PROJECT_DIR, "AUDIT.md")
-
+NOTES_PATH = os.path.join(PROJECT_DIR, "AUDIT_NOTES.md")
 TAG = "oc_audit"
-MESH_OK_PREFIXES = ("SM_", "SK_")
-TEXTURE_SUFFIXES = ("_BC", "_N", "_ORM", "_E", "_M")
-DEV_MATERIAL_PREFIX = "/Game/Dev/Materials/M_Dev_"
-MASTER_PREFIXES = ("/Game/Materials/M_Master_", "/Game/Materials/")
 
-findings = []   # (severity, category, detail)
-assets_scanned = 0
+MASTER_PREFIX = "/Game/Materials/M_Master_"
+CODE_GENERATED = {  # path prefix -> what made it (hard rule 1: blockout only)
+    "/Game/World/Roads/": "road chunks built in C++ from the road graph (OCWorldBuilderLibrary)",
+    "/Game/Vehicles/Bike/": "motorbike chassis generated as glTF by Tools/make_bike_chassis.py",
+    "/Game/Dev/": "dev/test content",
+}
+LARGE_SURFACE_WORDS = ("Terrain", "Landscape", "Road", "Building", "Sidewalk", "Water", "Ground")
+MACRO_WORDS = ("macro", "variation", "detail", "distance")
+TEXTURE_SUFFIXES = {
+    "_BC": ("default", True), "_N": ("normal", False), "_ORM": ("masks", False),
+    "_M": ("masks", False), "_E": ("default", True),
+}
 
+MEL = unreal.MaterialEditingLibrary
 
-def log(tag, msg):
-    unreal.log(f"[{tag}] {msg}")
-
-
-def note(severity, category, detail):
-    findings.append((severity, category, detail))
-
-
-def scan_assets():
-    """Walk /Game and classify every asset."""
-    global assets_scanned
-    lib = unreal.EditorAssetLibrary
-    all_assets = lib.list_assets("/Game", recursive=True)
-    meshes, textures, materials, maps, blueprints, data_assets, other = [], [], [], [], [], [], []
-    for path in all_assets:
-        assets_scanned += 1
-        asset = lib.load_asset(path)
-        if asset is None:
-            other.append((path, "failed to load"))
-            continue
-        cls = asset.get_class().get_name()
-        if cls in ("StaticMesh", "SkeletalMesh"):
-            meshes.append((path, asset, cls))
-        elif cls == "Texture2D":
-            textures.append((path, asset))
-        elif cls == "Material":
-            materials.append((path, asset))
-        elif cls == "MaterialInstanceConstant":
-            materials.append((path, asset))
-        elif cls == "World":
-            maps.append((path, asset))
-        elif cls == "Blueprint":
-            blueprints.append((path, asset))
-        elif cls == "DataAsset":
-            data_assets.append((path, asset))
-        else:
-            other.append((path, cls))
-    return meshes, textures, materials, maps, blueprints, data_assets, other
+findings = {}  # section -> list of (asset, [problems])
+counts = {}
 
 
-def check_mesh(path, mesh, cls):
-    problems = []
-    # Collision
+def log(msg):
+    unreal.log(f"[{TAG}] {msg}")
+
+
+def add(section, asset, problems):
+    if problems:
+        findings.setdefault(section, []).append((asset, problems))
+
+
+def short(path):
+    return path.split(".")[0]
+
+
+# --- Meshes ---------------------------------------------------------------------------------
+
+def check_static_mesh(path, mesh):
+    p = []
+    for prefix, what in CODE_GENERATED.items():
+        if path.startswith(prefix):
+            p.append(f"code-generated: {what}; blockout only, needs a BLOCKOUT_ name or final-art replacement")
+    # C++ helper: the engine's mesh scripting libraries refuse to run in a commandlet.
+    info = unreal.OCAuditLibrary.get_static_mesh_audit_info(mesh)
+    if info.num_uv_channels < 1:
+        p.append("no UV channel 0")
+    if info.simple_collision_count == 0 and not info.complex_as_simple:
+        p.append("no simple collision (no UCX_/primitives) and not complex-as-simple")
+    if not info.nanite and info.num_lo_ds < 2:
+        p.append("no Nanite and only one LOD")
+    ext = mesh.get_bounds().box_extent
+    size = 2 * max(ext.x, ext.y, ext.z)
+    if size > 5000 and not path.startswith("/Game/World/Roads/"):
+        p.append(f"very large single mesh ({size / 100:.0f} m): not modular")
+    if size < 1:
+        p.append("degenerate bounds (empty mesh?)")
+    return p
+
+
+def check_skeletal_mesh(path, mesh):
+    p = []
+    for prefix, what in CODE_GENERATED.items():
+        if path.startswith(prefix):
+            p.append(f"code-generated: {what}; blockout only")
     try:
-        bodies = mesh.get_editor_property("bodies")
-        has_collision = bool(bodies) and len(bodies) > 0
-    except Exception:
-        has_collision = False
-    if not has_collision:
-        # UCX naming convention check
-        if not os.path.basename(path).startswith("UCX_"):
-            problems.append("no custom collision (UCX_*) and no physics bodies")
-
-    # Nanite / LOD
-    try:
-        nanite = mesh.get_editor_property("nanite_settings").enabled
-    except Exception:
-        nanite = False
-    lod_count = mesh.get_num_lods() if hasattr(mesh, "get_num_lods") else 0
-    if cls == "SkeletalMesh":
-        pass  # skeletal meshes use regular LODs
-    elif not nanite and lod_count < 1:
-        problems.append("no Nanite and no LODs")
-
-    # UVs / lightmap UVs
-    try:
-        uv_channels = mesh.get_editor_property("num_tex_coords") if hasattr(mesh, "get_num_tex_coords") else 0
-    except Exception:
-        uv_channels = 0
-    if uv_channels < 1:
-        problems.append("no UV channel 0")
-    if uv_channels < 2:
-        problems.append("no lightmap UV channel (channel 1)")
-
-    # Blockout naming
-    name = os.path.basename(path)
-    if name.startswith("BLOCKOUT_") or "/Engine/BasicShapes/" in path:
-        problems.append("blockout geometry (BasicShapes / BLOCKOUT_*) — not final art")
-
-    # Scale sanity (rough: bounding box extents)
-    try:
-        bounds = mesh.get_editor_property("bounds")
-        ext = bounds.box_extent
-        size = max(ext.x, ext.y, ext.z) * 2
-        if size > 2000:  # > 20 m single mesh — likely not modular
-            problems.append(f"oversized single mesh ({size:.0f} cm) — not modular")
+        if mesh.get_editor_property("physics_asset") is None:
+            p.append("no physics asset (no collision)")
     except Exception:
         pass
+    return p
 
-    return problems
 
+# --- Textures -------------------------------------------------------------------------------
 
 def check_texture(path, tex):
-    problems = []
-    name = os.path.basename(path)
-    # Compression settings
+    p = []
+    name = path.split("/")[-1].split(".")[0]
+    if not name.startswith("T_"):
+        p.append("name lacks the T_ prefix")
+    suffix = next((s for s in sorted(TEXTURE_SUFFIXES, key=len, reverse=True) if name.endswith(s)), None)
+    comp = tex.get_editor_property("compression_settings")
+    srgb = tex.get_editor_property("srgb")
+    if suffix is None:
+        p.append("no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable")
+    else:
+        kind, want_srgb = TEXTURE_SUFFIXES[suffix]
+        if kind == "normal" and comp != unreal.TextureCompressionSettings.TC_NORMALMAP:
+            p.append(f"normal map not using Normalmap compression ({comp.name})")
+        if kind == "masks" and comp != unreal.TextureCompressionSettings.TC_MASKS:
+            p.append(f"mask/ORM not using Masks compression ({comp.name})")
+        if srgb != want_srgb:
+            p.append(f"sRGB is {srgb}, should be {want_srgb}")
     try:
-        comp = tex.get_editor_property("compression_settings")
-        srgb = tex.get_editor_property("srgb")
-        group = tex.get_editor_property("lod_group")
-        max_size = tex.get_editor_property("max_texture_size")
-    except Exception:
-        return ["could not read import settings"]
-
-    suffix = None
-    for s in TEXTURE_SUFFIXES:
-        if name.endswith("_" + s[1:]):
-            suffix = s
-            break
-
-    if suffix == "_N":
-        if str(comp) != "TC_Normalmap":
-            problems.append(f"normal map not using Normalmap compression ({comp})")
-        if srgb:
-            problems.append("normal map marked sRGB")
-    elif suffix == "_ORM":
-        if str(comp) != "TC_Masks":
-            problems.append(f"ORM/mask map not using Masks compression ({comp})")
-        if srgb:
-            problems.append("ORM map marked sRGB")
-    elif suffix == "_BC":
-        if not srgb:
-            problems.append("base color not marked sRGB")
-    elif suffix == "_E":
-        if not srgb:
-            problems.append("emissive not marked sRGB")
-
-    try:
-        size_x = tex.get_editor_property("size_x")
-        size_y = tex.get_editor_property("size_y")
-    except Exception:
-        size_x = size_y = 0
-    if max(size_x, size_y) > 2048:
-        problems.append(f"oversized texture ({size_x}x{size_y}) — above 2K hero cap")
-    try:
-        if not tex.get_editor_property("never_mip_map") and size_x > 0:
-            pass  # mips assumed on unless explicitly off
+        sx, sy = tex.blueprint_get_size_x(), tex.blueprint_get_size_y()
+        if max(sx, sy) > 2048:
+            p.append(f"{sx}x{sy}: above the 2K in-game cap")
     except Exception:
         pass
+    if tex.get_editor_property("mip_gen_settings") == unreal.TextureMipGenSettings.TMGS_NO_MIPMAPS:
+        p.append("no mipmaps")
+    return p
 
-    return problems
+
+# --- Materials ------------------------------------------------------------------------------
+
+def base_material(mat):
+    m = mat
+    for _ in range(16):
+        if isinstance(m, unreal.MaterialInstance):
+            parent = m.get_editor_property("parent")
+            if parent is None:
+                return None
+            m = parent
+        else:
+            return m
+    return None
 
 
 def check_material(path, mat):
-    problems = []
-    name = os.path.basename(path)
-    # Is it a dev material?
-    if path.startswith(DEV_MATERIAL_PREFIX):
-        problems.append("dev grey-box material (M_Dev_*) — replace with master-material instance in M4a")
-    # Is it an instance of a master?
+    p = []
+    base = base_material(mat)
+    is_master = path.startswith(MASTER_PREFIX)
+    if base is None:
+        p.append("material instance with no parent")
+        return p
+    base_path = base.get_path_name()
+    if not is_master and not base_path.startswith(MASTER_PREFIX):
+        p.append(f"not built from an approved master (base: {short(base_path)})")
+    if isinstance(mat, unreal.Material) and not is_master:
+        if not MEL.get_used_textures(mat):
+            p.append("no textures: flat or procedural colour")
+        if MEL.get_material_property_input_node(mat, unreal.MaterialProperty.MP_NORMAL) is None:
+            p.append("no normal input")
+        rough = MEL.get_material_property_input_node(mat, unreal.MaterialProperty.MP_ROUGHNESS)
+        if rough is None or isinstance(rough, unreal.MaterialExpressionConstant):
+            p.append("constant roughness (looks plastic)")
+    name = path.split("/")[-1]
+    if any(w.lower() in name.lower() for w in LARGE_SURFACE_WORDS) and not is_master and not path.startswith(("/Game/Vehicles/", "/Game/Characters/")):
+        params = [str(n).lower() for n in MEL.get_scalar_parameter_names(base) + MEL.get_texture_parameter_names(base)]
+        if not any(any(w in n for w in MACRO_WORDS) for n in params):
+            add("tiling", short(path), ["large-surface material with no macro/variation/distance-blend parameter"])
+    return p
+
+
+# --- Maps -----------------------------------------------------------------------------------
+
+def check_map(path):
+    p = []
+    unreal.EditorLoadingAndSavingUtils.load_map(path.split(".")[0])
+    world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
     try:
-        parent = mat.get_editor_property("parent")
-        if parent is None:
-            problems.append("no parent material — not built from a master")
-        elif not any(path.startswith(p) for p in MASTER_PREFIXES) and "M_Master" not in str(parent.get_path_name()):
-            problems.append(f"parent {parent.get_path_name()} is not an approved master material")
+        descs = unreal.WorldPartitionBlueprintLibrary.get_actor_descs() or []  # None for non-partitioned maps
     except Exception:
-        pass
-    # Texture samples
-    try:
-        expressions = unreal.MaterialEditingLibrary.get_all_material_expressions(mat)
-        tex_samplers = [e for e in expressions if isinstance(e, unreal.MaterialExpressionTextureSample)]
-        if not tex_samplers:
-            problems.append("no texture samples — flat/procedural material")
-    except Exception:
-        pass
-    return problems
+        descs = []
+    classes = [str(d.native_class) for d in descs]
+    actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem).get_all_level_actors()
+    classes += [a.get_class().get_path_name() for a in actors]
+    need = {"SkyAtmosphere": "no Sky Atmosphere", "DirectionalLight": "no Directional Light (sun)",
+            "SkyLight": "no Sky Light", "ExponentialHeightFog": "no Exponential Height Fog",
+            "PostProcessVolume": "no Post Process Volume: default exposure, no grading LUT"}
+    for key, msg in need.items():
+        if not any(key in c for c in classes):
+            p.append(msg)
+    if not any("VolumetricCloud" in c for c in classes):
+        p.append("no Volumetric Cloud (ART_PIPELINE asks for cheap clouds on High+)")
+    for a in actors:
+        if isinstance(a, unreal.PostProcessVolume):
+            s = a.get_editor_property("settings")
+            if not s.get_editor_property("override_auto_exposure_min_brightness") and \
+                    not s.get_editor_property("override_auto_exposure_bias"):
+                p.append(f"{a.get_actor_label()}: exposure not set (engine defaults)")
+            if not s.get_editor_property("override_color_grading_lut"):
+                p.append(f"{a.get_actor_label()}: no colour-grading LUT")
+    counts.setdefault("map_actors", {})[short(path)] = len(descs) or len(actors)
+    return p
 
 
-def check_map(path, world):
-    problems = []
-    try:
-        subsys = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-        actors = subsys.get_all_level_actors()
-        classes = [type(a).__name__ for a in actors]
-        has_sky = any("SkyAtmosphere" in c for c in classes)
-        has_fog = any("ExponentialHeightFog" in c for c in classes)
-        has_dl = any("DirectionalLight" in c for c in classes)
-        has_skylight = any("SkyLight" in c for c in classes)
-        has_pp = any("PostProcess" in c for c in classes)
-        if not has_sky:
-            problems.append("no Sky Atmosphere")
-        if not has_fog:
-            problems.append("no Exponential Height Fog")
-        if not has_dl:
-            problems.append("no Directional Light (sun)")
-        if not has_skylight:
-            problems.append("no Sky Light")
-        if not has_pp:
-            problems.append("no Post Process Volume (no exposure/LUT control)")
-    except Exception:
-        problems.append("could not inspect level actors")
-    return problems
+# --- Report ---------------------------------------------------------------------------------
+
+SECTIONS = [
+    ("meshes", "Meshes"),
+    ("textures", "Textures"),
+    ("materials", "Materials"),
+    ("tiling", "Visible-tiling risk"),
+    ("maps", "Lighting and post-process (per map)"),
+]
 
 
-def write_audit(meshes, textures, materials, maps, blueprints, data_assets, other):
-    lines = []
-    lines.append("# OpenCity — M4a Step 1: World-Building Audit")
-    lines.append("")
-    lines.append(f"Assets scanned under `/Game`: {assets_scanned}")
-    lines.append(f"- Meshes: {len(meshes)}  Textures: {len(textures)}  Materials/Instances: {len(materials)}")
-    lines.append(f"- Maps: {len(maps)}  Blueprints: {len(blueprints)}  Data assets: {len(data_assets)}  Other: {len(other)}")
-    lines.append("")
-    lines.append("## 1. Final-art status")
-    lines.append("")
-    lines.append("**No final art exists yet.** The project is at the grey-box / blockout stage:")
-    lines.append("- Buildings are instanced `/Engine/BasicShapes/Cube` blocks (oc_m3_world.py / OCWorldBuilderLibrary).")
-    lines.append("- Roads are procedural Nanite mesh chunks from the road graph (UV-driven markings, HLSL colour).")
-    lines.append("- Materials are `M_Dev_*` grey-box HLSL materials in `/Game/Dev/Materials/`, regenerated by `oc_dev_materials.py`.")
-    lines.append("- The master materials (`M_Master_Opaque`, `M_Master_Building`, …) planned in `ART_PIPELINE.md` section 5 do not exist yet.")
-    lines.append("- No PBR textures (base color / normal / ORM / emissive) have been imported.")
-    lines.append("")
-    lines.append("Because nothing is final art, every category below currently fails by default — this is the baseline the fix list works from.")
-    lines.append("")
-
-    # Meshes
-    lines.append("## 2. Meshes — problems")
-    lines.append("")
-    mesh_issues = 0
-    for path, mesh, cls in meshes:
-        probs = check_mesh(path, mesh, cls)
-        if probs:
-            mesh_issues += 1
-            lines.append(f"- `{path}` ({cls}):")
-            for p in probs:
-                lines.append(f"  - {p}")
-    if mesh_issues == 0:
-        lines.append("(none found)")
-    lines.append("")
-
-    # Textures
-    lines.append("## 3. Textures — problems")
-    lines.append("")
-    if not textures:
-        lines.append("**(none imported yet — all textures must be downloaded and imported in M4a)**")
-    else:
-        tex_issues = 0
-        for path, tex in textures:
-            probs = check_texture(path, tex)
-            if probs:
-                tex_issues += 1
-                lines.append(f"- `{path}`:")
-                for p in probs:
-                    lines.append(f"  - {p}")
-        if tex_issues == 0:
-            lines.append("(none found)")
-    lines.append("")
-
-    # Materials
-    lines.append("## 4. Materials — problems")
-    lines.append("")
-    mat_issues = 0
-    for path, mat in materials:
-        probs = check_material(path, mat)
-        if probs:
-            mat_issues += 1
-            lines.append(f"- `{path}`:")
-            for p in probs:
-                lines.append(f"  - {p}")
-    if mat_issues == 0:
-        lines.append("(none found)")
-    lines.append("")
-
-    # Maps / lighting
-    lines.append("## 5. Lighting and post-process — problems")
-    lines.append("")
-    map_issues = 0
-    for path, world in maps:
-        probs = check_map(path, world)
-        if probs:
-            map_issues += 1
-            lines.append(f"- `{path}`:")
-            for p in probs:
-                lines.append(f"  - {p}")
-    if map_issues == 0:
-        lines.append("(none found)")
-    lines.append("")
-
-    # Tiling risk
-    lines.append("## 6. Visible-tiling risk")
-    lines.append("")
-    lines.append("No tiling textures exist yet, so there is nothing to flag. When importing in M4a:")
-    lines.append("- Large surfaces (roads, walls, plazas) must use tiling textures plus macro variation, never a unique texture.")
-    lines.append("- Hero surfaces: 512 px/m; environment: 256 px/m; distant: 128 px/m (see WORLD_METRICS.md).")
-    lines.append("")
-
-    # Prioritized fix list
-    lines.append("## 7. Prioritized fix list")
-    lines.append("")
-    fixes = [
-        ("P0", "Create master materials", "Build `M_Master_Opaque`, `M_Master_Building`, `M_Master_Road`, `M_Master_Glass`, `M_Master_Foliage` in `/Game/Materials/` via Python (`MaterialEditingLibrary`), then `oc_dev_materials.py` dev materials get replaced by instances."),
-        ("P0", "Import base PBR textures", "Download hero/plaster/road/tiling textures (see download list below), import via `oc_import_textures.py` with correct suffix/compression/sRGB, build `MI_*` instances from masters."),
-        ("P0", "Replace blockout buildings", "Swap instanced engine cubes for modular building-kit pieces (SM_*), named without BLOCKOUT_*, with lightmap UVs and collision."),
-        ("P0", "Add Sky Light / Post Process", "Ensure every map has Sky Atmosphere, Directional Light, Sky Light, Exponential Height Fog and a Post Process Volume with exposure + LUT."),
-        ("P1", "Add collision + LODs / Nanite", "UCX_ collision or physics bodies on every mesh; Nanite for static environment, 3+ LODs for everything else."),
-        ("P1", "Set texel density", "512 px/m hero, 256 px/m environment, 128 px/m distant; cap hero at 2K, props at 1K."),
-        ("P2", "Macro variation on large surfaces", "Vertex-painted wear / trim sheets so tiling doesn't read as repeating."),
-        ("P2", "Decal set", "Grim, lane markings, puddles, tire skids — pooled DBuffer decals."),
-    ]
-    for prio, title, desc in fixes:
-        lines.append(f"### {prio} — {title}")
-        lines.append("")
-        lines.append(desc)
-        lines.append("")
-
-    # Asset download list
-    lines.append("## 8. Assets to download (exact search terms)")
-    lines.append("")
-    lines.append("Track every download in `SourceArt/LICENSES.csv` (name, source URL, license, where used). CC0 originals are not committed; `SourceArt/manifest.json` lists them and `Tools/fetch_assets.py` re-downloads them.")
-    lines.append("")
-    lines.append("### Tiling materials (hero + environment, 2K max, DirectX normals)")
-    lines.append("- Poly Haven / ambientCG — `weathered plaster stucco` — building walls (old town, hillside)")
-    lines.append("- Poly Haven / ambientCG — `painted concrete` — building walls, colour variants per district")
-    lines.append("- Poly Haven / ambientCG — `terracotta roof tiles` — pitched roofs")
-    lines.append("- Poly Haven / ambientCG — `asphalt road` — road surfaces, cracks, tire marks")
-    lines.append("- Poly Haven / ambientCG — `concrete pavement slabs` — sidewalks, 60 cm slabs")
-    lines.append("- Poly Haven / ambientCG — `rusted metal` — port cranes, containers, shutters")
-    lines.append("- Poly Haven / ambientCG — `laterite stone` / `red stone` — hillside foundations, quay walls")
-    lines.append("- Poly Haven / ambientCG — `glass tower panels` / `dark glass` — downtown glazing")
-    lines.append("- Poly Haven / ambientCG — `tin sheet corrugated` — port sheds, shacks")
-    lines.append("")
-    lines.append("# Trim sheet (one texture set covering strips: frames, panels, cornices, signage boards)")
-    lines.append("- Poly Haven / ambientCG — `painted wood trim` + `metal trim` + `stone sill` — packed into one 2K trim sheet")
-    lines.append("")
-    lines.append("### Hero models (2K max, Nanite, lightmap UVs, UCX collision)")
-    lines.append("- Poly Haven — `street lamp post` (sodium vapour) — one per 25–30 m")
-    lines.append("- Poly Haven — `bench` — street seating")
-    lines.append("- Poly Haven — `trash bin` — street clutter")
-    lines.append("- Poly Haven — `fishing boat` (small) — port, Darsena")
-    lines.append("- Poly Haven — `scooter` / `motorbike` — parked vehicles, player's motorbike reference")
-    lines.append("- Poly Haven — `palm tree` + `tropical tree` — boulevard and coast foliage")
-    lines.append("- Poly Haven — `market stall` — hero focal point per block")
-    lines.append("")
-    lines.append("### HDRIs (Poly Haven)")
-    lines.append("- `sunny mediterranean` / `clear sky` — daylight sky light capture")
-    lines.append("- `night city` — night sky light capture")
-    lines.append("")
-    lines.append("### Notes on sources")
-    lines.append("- Prefer CC0 (Poly Haven, ambientCG). Fab free / monthly-free and owned Megascans accepted per-asset with a LICENSES.csv row.")
-    lines.append("- Download DirectX (Y-down) normal maps where offered; otherwise flip the green channel on import.")
-    lines.append("- Do not download 4K/8K; cap at 2K hero / 1K props / tiling reused heavily.")
-    lines.append("")
-
-    # What to do by hand
-    lines.append("## 9. What you need to do by hand (exact menu paths)")
-    lines.append("")
-    lines.append("1. Download each texture/model above from Poly Haven / ambientCG into `SourceArt/Downloads/` (not committed).")
-    lines.append("2. Add a row to `SourceArt/LICENSES.csv` for every download (name, source URL, author, license, date).")
-    lines.append("3. Run `scripts/run_python.sh Content/Python/oc_import_textures.py` to import with correct settings.")
-    lines.append("4. Build master materials (M4a), then replace every `M_Dev_*` reference with an `MI_*` instance.")
-    lines.append("5. Replace engine-cube buildings with modular kit pieces in `oc_m3_world.py` / `OCWorldBuilderLibrary`.")
-    lines.append("6. Add a Post Process Volume to each map: `Place Actors → Post Process Volume`, set exposure and LUT `T_LUT_Marevia`.")
-    lines.append("7. Commit to git (with LFS) after each working step.")
-    lines.append("")
-
-    lines.append("## 10. Next step on approval")
-    lines.append("")
-    lines.append("Create `ART_BIBLE.md` (setting, mood, palette, 5 districts, 5 landmarks, believability rules), then `WORLD_METRICS.md` (player/door/road/block/texel-density numbers). Wait for approval before building final art.")
-    lines.append("")
-
+def write(totals):
+    out = ["# OpenCity: world-building audit", "",
+           f"Scanned {datetime.date.today().isoformat()} by `Content/Python/oc_audit.py` (headless). "
+           "Sections 1-6 are generated; everything after them comes from `AUDIT_NOTES.md`.", "",
+           "## 1. Summary", "",
+           "| Assets | Count | With problems |", "|---|---|---|"]
+    for key, label in (("meshes", "Static and skeletal meshes"), ("textures", "Textures"),
+                       ("materials", "Materials and instances"), ("maps", "Maps")):
+        out.append(f"| {label} | {totals.get(key, 0)} | {len(findings.get(key, []))} |")
+    masters = totals.get("masters", 0)
+    out += ["", f"- Master materials in `/Game/Materials`: {masters} of 8.",
+            f"- Materials built from a master: {totals.get('from_master', 0)} (instances `MI_*`: {totals.get('instances', 0)}).",
+            f"- Textures following the T_ naming with a role suffix: {totals.get('named_textures', 0)} of {totals.get('textures', 0)}.",
+            ""]
+    for n, (key, label) in enumerate(SECTIONS, start=2):
+        out += [f"## {n}. {label}", ""]
+        items = findings.get(key, [])
+        if not items:
+            out += ["No problems found.", ""]
+            continue
+        # Five or more assets in one folder with the same problems collapse into one entry.
+        groups = {}
+        for asset, problems in sorted(items):
+            groups.setdefault((asset.rsplit("/", 1)[0], tuple(problems)), []).append(asset)
+        for (folder, problems), assets in sorted(groups.items()):
+            heads = [f"`{folder}/` ({len(assets)} assets)"] if len(assets) >= 5 else [f"`{a}`" for a in assets]
+            for head in heads:
+                out.append(f"- {head}")
+                out += [f"  - {pr}" for pr in problems]
+        out.append("")
+    if os.path.exists(NOTES_PATH):
+        with open(NOTES_PATH, encoding="utf-8") as f:
+            out += ["---", "", f.read()]
     with open(AUDIT_PATH, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    L.log(TAG, f"wrote {AUDIT_PATH} ({len(findings)} findings, {assets_scanned} assets scanned)")
+        f.write("\n".join(out) + "\n")
 
 
 def main():
-    meshes, textures, materials, maps, blueprints, data_assets, other = scan_assets()
-    write_audit(meshes, textures, materials, maps, blueprints, data_assets, other)
+    lib = unreal.EditorAssetLibrary
+    totals = {}
+    maps = []
+    for path in lib.list_assets("/Game", recursive=True):
+        data = lib.find_asset_data(path)
+        cls = str(data.asset_class_path.asset_name) if data and data.is_valid() else ""
+        if cls == "World":
+            maps.append(path)
+            continue
+        if cls not in ("StaticMesh", "SkeletalMesh", "Texture2D", "Material", "MaterialInstanceConstant"):
+            continue
+        asset = lib.load_asset(path)
+        if asset is None:
+            continue
+        if cls == "StaticMesh":
+            totals["meshes"] = totals.get("meshes", 0) + 1
+            add("meshes", short(path), check_static_mesh(path, asset))
+        elif cls == "SkeletalMesh":
+            totals["meshes"] = totals.get("meshes", 0) + 1
+            add("meshes", short(path), check_skeletal_mesh(path, asset))
+        elif cls == "Texture2D":
+            totals["textures"] = totals.get("textures", 0) + 1
+            pr = check_texture(path, asset)
+            if not any("prefix" in x or "suffix" in x for x in pr):
+                totals["named_textures"] = totals.get("named_textures", 0) + 1
+            add("textures", short(path), pr)
+        else:
+            totals["materials"] = totals.get("materials", 0) + 1
+            if path.startswith(MASTER_PREFIX):
+                totals["masters"] = totals.get("masters", 0) + 1
+            if cls == "MaterialInstanceConstant":
+                totals["instances"] = totals.get("instances", 0) + 1
+            pr = check_material(path, asset)
+            if not any("approved master" in x for x in pr) and not path.startswith(MASTER_PREFIX):
+                totals["from_master"] = totals.get("from_master", 0) + 1
+            add("materials", short(path), pr)
+    totals["maps"] = len(maps)
+    for path in maps:
+        try:
+            add("maps", short(path), check_map(path))
+        except Exception as e:
+            add("maps", short(path), [f"could not inspect ({e})"])
+    write(totals)
+    n = sum(len(v) for v in findings.values())
+    log(f"wrote {AUDIT_PATH}: {n} assets with problems; totals {totals}")
 
 
 main()

@@ -1,169 +1,296 @@
-# OpenCity — M4a Step 1: World-Building Audit (AUDIT.md)
+# OpenCity: world-building audit
 
-**Generated from:** codebase review of `/Game`, `Content/`, `SourceArt/`, `ART_PIPELINE.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `STORY.md`, `ROADMAP.md`, `oc_m3_world.py`, `oc_m3_story.py`, `oc_dev_materials.py`, `oc_lib.py`, `OCWorldBuilderLibrary`, `LICENSES.csv`, `manifest.json`.
+Scanned 2026-11-09 by `Content/Python/oc_audit.py` (headless). Sections 1-6 are generated; everything after them comes from `AUDIT_NOTES.md`.
 
-**Status:** baseline. The project is at the grey-box / blockout stage (end of M3). No final art exists yet — every category below fails by default. Run `scripts/run_python.sh Content/Python/oc_audit.py` (headless, `-nullrhi`) to regenerate the per-asset scan once editor access is approved.
+## 1. Summary
+
+| Assets | Count | With problems |
+|---|---|---|
+| Static and skeletal meshes | 90 | 86 |
+| Textures | 39 | 27 |
+| Materials and instances | 43 | 35 |
+| Maps | 5 | 5 |
+
+- Master materials in `/Game/Materials`: 8 of 8.
+- Materials built from a master: 0 (instances `MI_*`: 14).
+- Textures following the T_ naming with a role suffix: 15 of 39.
+
+## 2. Meshes
+
+- `/Game/Dev/Meshes/SM_Dev_NaniteSphere`
+  - code-generated: dev/test content; blockout only, needs a BLOCKOUT_ name or final-art replacement
+- `/Game/Vehicles/Bike/SKM_BikeChassis/SkeletalMeshes/SKM_BikeChassis`
+  - code-generated: motorbike chassis generated as glTF by Tools/make_bike_chassis.py; blockout only
+- `/Game/Vehicles/OffroadCar/SM_Offroad_Body`
+  - no Nanite and only one LOD
+- `/Game/Vehicles/OffroadCar/SM_Offroad_Tire`
+  - no Nanite and only one LOD
+- `/Game/Vehicles/SportsCar/SM_SportsCar`
+  - no simple collision (no UCX_/primitives) and not complex-as-simple
+- `/Game/Vehicles/SportsCar/SM_SportsCar_Wheel`
+  - no simple collision (no UCX_/primitives) and not complex-as-simple
+- `/Game/Vehicles/SportsCar/SM_SportsCar_Glass`
+  - no simple collision (no UCX_/primitives) and not complex-as-simple
+  - no Nanite and only one LOD
+- `/Game/World/Roads/` (79 assets)
+  - code-generated: road chunks built in C++ from the road graph (OCWorldBuilderLibrary); blockout only, needs a BLOCKOUT_ name or final-art replacement
+  - no simple collision (no UCX_/primitives) and not complex-as-simple
+
+## 3. Textures
+
+- `/Game/Characters/Mannequins/Textures/Manny/` (5 assets)
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Characters/Mannequins/Textures/Manny/T_Manny_02_BN`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+  - 4096x4096: above the 2K in-game cap
+- `/Game/Characters/Mannequins/Textures/Manny/T_Manny_02_N`
+  - normal map not using Normalmap compression (TC_DEFAULT)
+- `/Game/Characters/Mannequins/Textures/Quinn/T_Quinn_01_D`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Characters/Mannequins/Textures/Quinn/T_Quinn_01_MRA`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Characters/Mannequins/Textures/Quinn/T_Quinn_02_D`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Characters/Mannequins/Textures/Quinn/T_Quinn_02_MRA`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Characters/Mannequins/Textures/Shared/T_UE_Logo_M`
+  - mask/ORM not using Masks compression (TC_GRAYSCALE)
+- `/Game/Vehicles/OffroadCar/Materials/Textures/T_Vehicle_Light_M`
+  - mask/ORM not using Masks compression (TC_DEFAULT)
+  - sRGB is True, should be False
+- `/Game/Vehicles/OffroadCar/Materials/Textures/` (8 assets)
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Vehicles/SportsCar/Materials/Textures/` (6 assets)
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+
+## 4. Materials
+
+- `/Game/Characters/Mannequins/Materials/M_Mannequin`
+  - not built from an approved master (base: /Game/Characters/Mannequins/Materials/M_Mannequin)
+  - no textures: flat or procedural colour
+- `/Game/Characters/Mannequins/Materials/Manny/MI_Manny_01_New`
+  - not built from an approved master (base: /Game/Characters/Mannequins/Materials/M_Mannequin)
+- `/Game/Characters/Mannequins/Materials/Manny/MI_Manny_02_New`
+  - not built from an approved master (base: /Game/Characters/Mannequins/Materials/M_Mannequin)
+- `/Game/Characters/Mannequins/Materials/Quinn/MI_Quinn_01`
+  - not built from an approved master (base: /Game/Characters/Mannequins/Materials/M_Mannequin)
+- `/Game/Characters/Mannequins/Materials/Quinn/MI_Quinn_02`
+  - not built from an approved master (base: /Game/Characters/Mannequins/Materials/M_Mannequin)
+- `/Game/Dev/Materials/M_Dev_Barrier`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Barrier)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Bridge`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Bridge)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Building`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Building)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Burnt`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Burnt)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Concrete`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Concrete)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Glass`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Glass)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Landmark`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Landmark)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_LandmarkAccent`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_LandmarkAccent)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Metal`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Metal)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Police`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Police)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Road`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Road)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Rock`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Rock)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Sidewalk`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Sidewalk)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Terrain`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Terrain)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Train`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Train)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Dev/Materials/M_Dev_Water`
+  - not built from an approved master (base: /Game/Dev/Materials/M_Dev_Water)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
+- `/Game/Vehicles/Bike/SKM_BikeChassis/Materials/M_BikeChassis_Hidden`
+  - not built from an approved master (base: /InterchangeAssets/gltf/M_Default)
+- `/Game/Vehicles/OffroadCar/Materials/MI_OffroadCar_Wheel`
+  - not built from an approved master (base: /Game/Vehicles/OffroadCar/Materials/M_OffroadCar_Wheel)
+- `/Game/Vehicles/OffroadCar/Materials/M_OffroadCar_Wheel`
+  - not built from an approved master (base: /Game/Vehicles/OffroadCar/Materials/M_OffroadCar_Wheel)
+  - no textures: flat or procedural colour
+- `/Game/Vehicles/OffroadCar/Materials/MI_OffroadCar_Main`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCarBase)
+- `/Game/Vehicles/OffroadCar/Materials/MI_OffroadCar_Seats`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCarBase)
+- `/Game/Vehicles/OffroadCar/Materials/MI_OffroadCar_Suspension`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCarBase)
+- `/Game/Vehicles/OffroadCar/Materials/MI_OffroadCar_Lights`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCar_Lights)
+- `/Game/Vehicles/SportsCar/Materials/MI_SportsCarBody`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCarBase)
+- `/Game/Vehicles/SportsCar/Materials/M_SportsCarChasis`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCarBase)
+- `/Game/Vehicles/SportsCar/Materials/M_SportsCarBase`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCarBase)
+  - no textures: flat or procedural colour
+- `/Game/Vehicles/SportsCar/Materials/M_SportsCar_Lights`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCar_Lights)
+  - no textures: flat or procedural colour
+  - no normal input
+- `/Game/Vehicles/SportsCar/Materials/MI_SportsCar_Tire`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCar_Wheel)
+- `/Game/Vehicles/SportsCar/Materials/MI_SportsCar_Wheel`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCar_Wheel)
+- `/Game/Vehicles/SportsCar/Materials/M_SportsCar_Wheel`
+  - not built from an approved master (base: /Game/Vehicles/SportsCar/Materials/M_SportsCar_Wheel)
+  - no textures: flat or procedural colour
+
+## 5. Visible-tiling risk
+
+- `/Game/Dev/Materials/` (5 assets)
+  - large-surface material with no macro/variation/distance-blend parameter
+
+## 6. Lighting and post-process (per map)
+
+- `/Game/Maps/Dev/L_DevDriving`
+  - no Post Process Volume: default exposure, no grading LUT
+  - no Volumetric Cloud (ART_PIPELINE asks for cheap clouds on High+)
+- `/Game/Maps/Dev/L_DevPlayground`
+  - no Post Process Volume: default exposure, no grading LUT
+  - no Volumetric Cloud (ART_PIPELINE asks for cheap clouds on High+)
+- `/Game/Maps/Marevia/L_Marevia`
+  - no Post Process Volume: default exposure, no grading LUT
+  - no Volumetric Cloud (ART_PIPELINE asks for cheap clouds on High+)
+- `/Game/Maps/Test/L_PerfBaseline`
+  - no Post Process Volume: default exposure, no grading LUT
+- `/Game/Maps/Test/L_Stress`
+  - no Post Process Volume: default exposure, no grading LUT
 
 ---
 
-## Assets scanned under /Game
+## 7. Playtest review (2026-11-09)
 
-| Class | Count |
+Source: your recording `~/Videos/Screencasts/Screencast_20261109_103339.webm` (76 s of the autodrive test in `L_Marevia`, Medium), plus the scripted drive tests (`oc.dev.route`) run the same day.
+
+| # | What the recording shows | Cause | Fix |
+|---|---|---|---|
+| 1 | Everything reads as cheap: plain boxes with painted-on windows, flat green ground right up to the walls, no sidewalks in alleys, no props, trees, parked cars or people | Nothing is final art yet. Buildings, roads, terrain and water are M3 grey-box (`M_Dev_*`, engine cubes) | The M4a/M4b pipeline below. No downloads have happened yet (`SourceArt/Downloads/` is empty) |
+| 2 | Windows smear into streaks at speed | Engine-default motion blur, no Post Process Volume in `L_Marevia` | P0-1 |
+| 3 | Pink "…HLOD…" text floating over the mountains | Not in the log. Probably an on-screen engine warning about HLODs. To check in the editor | P0-2 |
+| 4 | Distant buildings with flat dark-blue roofs | HLOD1 (merged mesh) drops the per-building colour (per-instance custom data) | P0-2 |
+| 5 | Sidewalk skirts stick up like ramps at some junction corners | Road-mesh skirts at junction polygons | P0-3 |
+| 6 | One black frame with the camera under the ground | The autopilot's recovery teleport (test tool, not gameplay): the camera lagged through terrain | P0-5 |
+| 7 | Buildings stand on bare slopes with no plinth or terrace | The blockout sinks each box 1 m; nothing grades or terraces the plot | Modular kit plinths (step 5); grade plots in the generator |
+
+Found and fixed by the drive tests the same day (committed):
+
+- Buildings 1.6 km wide burying the map: a unit bug in M4a step 4 (8f5f4da)
+- 15 landmarks standing on roads; the hospital and station now take a whole block
+- Bridge parapets standing across the quay junctions
+- Dev materials missing the instanced and Nanite usage flags (default grey material on HLODs and roads)
+
+Still open from the drive tests: the autopilot stops at the west end of the Passerella footbridge, and once in Le Fornaci near (1493, 1050). Streaming kept up everywhere: no NOGROUND at up to 149 km/h.
+
+## 8. Prioritized fix list
+
+**P0: gameplay feel and obvious faults (no downloads needed)**
+
+1. `L_Marevia` Post Process Volume (unbound): manual exposure range for daylight, motion blur 0.2 (off on Low), LUT slot ready for `T_LUT_Marevia`. Cheap Volumetric Cloud on High and above.
+2. HLOD look: find the pink HLOD message, and keep the building colours at distance (bake materials in HLOD1, or stretch HLOD0's instanced range).
+3. Junction skirts: clip skirt ramps at junction polygons. Plinths under buildings on slopes.
+4. A scale-reference mannequin and car in every test map (WORLD_METRICS.md rule; missing in `L_Marevia`).
+5. Autopilot: the footbridge and Le Fornaci stops, and camera snap on teleport.
+6. M3 leftovers: a perf lap on Medium (`scripts/perf_run.sh L_Marevia 1 1`), and a top-speed streaming run.
+
+**P1: art pipeline, M4a (needs your downloads, section 9)**
+
+7. Import the first tiling sets with `oc_import_textures.py` and build `MI_*` instances from the 8 masters (plaster, painted concrete, asphalt, sidewalk slabs, clay roof tiles, cobble setts, sand, rock, grass).
+8. Replace `M_Dev_*` on roads, sidewalks, terrain and water with those instances. Keep `M_Dev_Building` on the blockout cubes until the kit exists.
+9. Landscape auto-material (slope and height: grass, dirt, rock, beach sand) with macro variation and distance blending.
+10. `MPC_World`, the day/night loop and the first colour-grade LUT (the remaining M4a acceptance items).
+
+**P2: kits and dressing, M4b and later (ART_PIPELINE steps 5-8)**
+
+11. Per-district modular kit and trim sheet. The Blender pipeline is blocked until Blender is repaired (`sudo pacman -Syu`, see OPENCITY_PROJECT.md).
+12. Streetlights every 25-30 m, trees every 8-12 m on boulevards, then hero/secondary/tertiary dressing by PCG.
+
+Low priority: engine template content (mannequin and vehicle textures) doesn't follow the `T_*_BC/_N/_ORM` naming. Leave it until those assets are replaced.
+
+## 9. Downloads
+
+Every slug below was checked against the Poly Haven API on 2026-11-09. Download at **2K** for tiling sets and **1K** for props. Put them in `SourceArt/Downloads/<slug>/` and add a row to `ASSET_SOURCES.md` and `SourceArt/LICENSES.csv`. `Tools/fetch_assets.py` can fetch the textures itself from `SourceArt/manifest.json`.
+
+**Tiling textures (Poly Haven, CC0): `https://polyhaven.com/a/<slug>`**
+
+| Use | Slugs (pick one or two per row) |
 |---|---|
-| StaticMesh / SkeletalMesh | blockout cubes only (`/Engine/BasicShapes/Cube` instances) |
-| Texture2D | **0** — no PBR textures imported |
-| Material / MaterialInstanceConstant | `M_Dev_*` grey-box HLSL materials only (regenerated by `oc_dev_materials.py`) |
-| World (maps) | `L_Marevia` (M3 world), `L_PerfBaseline`, `L_DevDriving`, `L_Stress` |
-| Blueprints | gameplay actors, no final-art kit pieces |
-| Data assets | `DA_MareviaRoads`, `DA_AreaUnlocks`, progression settings |
+| Building plaster, Città Alta and Le Colline | `plastered_wall`, `white_stucco`, `white_stucco_02`, `clay_plaster`, `blue_plaster_weathered` |
+| Painted concrete, Le Fornaci, Lungomare | `beige_wall_001`, `beige_wall_002`, `chipped_concrete`, `concrete_block_wall` |
+| Roof tiles | `clay_roof_tiles`, `clay_roof_tiles_02`, `clay_roof_tiles_03` |
+| Asphalt | `asphalt_02`, `asphalt_04`, `asphalt_07` (plus `clean_asphalt` already in the manifest) |
+| Sidewalk slabs and plazas | `concrete_pavers_02`, `hexagonal_concrete_paving`, `worn_concrete_floor` |
+| Old-town setts | `cobblestone_01`, `cobblestone_floor_01`, `cobblestone_embedded_asphalt` |
+| Port metal | `corrugated_iron`, `rusty_corrugated_iron`, `rusty_metal_shutter`, `container_side`, `painted_metal_shutter` |
+| Terrain | `coast_sand_01` (beach), `grass_path_2`, `brown_mud_rocks_01`, `cliff_side`, `red_laterite_soil_stones` (hill foundations) |
 
-**Bottom line:** no final-art meshes, no imported textures, no master materials, no material instances. Everything listed below is the baseline the fix list works from.
+**Models (Poly Haven, CC0, 1K): `https://polyhaven.com/a/<slug>`**
 
----
+`street_lamp_01`, `street_lamp_02`, `modular_street_seating`, `metal_trash_can`, `trashbag`, `fire_hydrant`, `water_manhole_cover`, `modular_electricity_poles`, `outdoor_table_chair_set_01`, `plastic_crate_01`, `wooden_crate_01`, `Barrel_01`, `ceramic_pot`, `modular_chainlink_fence`, `island_tree_01`, `island_tree_02`, `fern_02`, `grass_medium_01`, `dutch_ship_medium` (Darsena).
 
-## 1. Final-art status (summary)
+**HDRIs (Poly Haven, CC0, 2K):** `sunny_country_road` (day), `cobblestone_street_night` (night). Use them for reference and look-dev only, because the game sky is Sky Atmosphere.
 
-- Buildings are instanced `/Engine/BasicShapes/Cube` blocks (placed by `oc_m3_world.py` / `OCWorldBuilderLibrary::BuildBuildings`). Not named `BLOCKOUT_*` consistently; not final art.
-- Roads are procedural Nanite mesh chunks from the road graph (UV-driven markings, HLSL colour).
-- Materials are `M_Dev_*` grey-box HLSL materials in `/Game/Dev/Materials/`, regenerated by `oc_dev_materials.py` (flat colours, no texture samples).
-- The master materials planned in `ART_PIPELINE.md` section 5 (`M_Master_Opaque`, `M_Master_Building`, `M_Master_Road`, `M_Master_Glass`, `M_Master_Foliage`, `M_Master_CarPaint`, `M_Master_Character`, `M_Master_Water`) **do not exist yet**.
-- No PBR textures (base color / normal / ORM / emissive / mask) have been imported.
-- No `MI_*` material instances exist.
+**Not on Poly Haven, so needs Fab free/monthly-free or Blender** (license check on each one): palm trees, parked scooters, a market stall, traffic cones and bollards, shop signage boards. ambientCG has more tiling sets if a row above doesn't look right: `https://ambientcg.com/list?q=<term>&type=Material`.
 
----
+## 10. Decisions needed before building art
 
-## 2. Meshes — problems
+1. **Setting.** The new brief offers a South Asian coastal city "or your choice". `STORY.md` and `ART_BIBLE.md` already define Marevia as Mediterranean, with the brief's five district types mapped onto it (Città Alta = old town and market, Porto Vecchio = port, Lungomare = beach road, Le Fornaci = industrial and station, Le Colline = hillside). Recommendation: keep Marevia.
+2. **Fab free and Megascans.** The new brief allows them with a license check each time, but `CLAUDE.md` says "No Fab, Bridge or Megascans dependency". If you approve, I'll change CLAUDE.md to allow them per asset with a ledger row.
+3. **VRAM.** The brief says 4 GB. The log reports an RTX 3050 **6 GB** Laptop GPU, and ARCHITECTURE.md budgets 5,000 MiB. Keep the 5,000 MiB budget, or plan to 4 GB for headroom?
+4. **Map size.** The brief says 2 × 2 km. Marevia is 2 × 2.8 km including the mountain band. Recommendation: keep it.
+5. **Lightmap UVs.** The brief asks for a second UV channel. The project is fully dynamic (Lumen, `r.AllowStaticLighting=False`), so lightmap UVs are never used. Recommendation: skip them in the Blender export.
 
-| Asset | Problem |
-|---|---|
-| `/Engine/BasicShapes/Cube` (instanced everywhere) | Blockout geometry — not final art; no lightmap UVs beyond the engine default; no per-building variation |
-| `SM_*` building kit pieces | **None exist** — modular kit (wall straight/corner/inner corner, window, door, shopfront, balcony, cornice, roof edge, drainpipe, signage) must be sourced or authored |
-| `SK_*` / hero models | **None exist** — street lamps, benches, bins, scooters, fishing boat, palm trees, market stall |
-| `UCX_*` collision meshes | **None exist** — no custom collision on any blockout piece |
-
-All meshes fail: no final-art geometry, no LODs/Nanite strategy beyond the road chunks, no collision beyond cube primitives, no modular kit.
-
----
-
-## 3. Textures — problems
-
-**(none imported yet — all textures must be downloaded and imported in M4a)**
-
-No `T_*_BC / _N / _ORM / _E / _M` textures exist under `/Game`. Therefore every texture check fails by default:
-- Normal maps not set to Normalmap compression (none to check)
-- ORM/masks not set to Masks compression / not sRGB-checked
-- Base color not verified sRGB
-- Oversized-resolution check not applicable (nothing imported)
-- Mipmaps not verified
-
----
-
-## 4. Materials — problems
-
-| Asset | Problem |
-|---|---|
-| `/Game/Dev/Materials/M_Dev_*` | Dev grey-box HLSL materials; flat constant colours, no texture samples, not built from master materials |
-| `M_Master_*` | **Do not exist** — no approved master materials for any shading model |
-| `MI_*` instances | **Do not exist** — nothing to instance from masters |
-| Material parents | All materials are standalone dev materials; none parented to a master |
-
-All materials fail: not using master materials, no normal/roughness map inputs, flat constant roughness, plastic look.
-
----
-
-## 5. Lighting and post-process — problems
-
-| Map | Problem |
-|---|---|
-| `L_Marevia` | Built by `oc_m3_world.py`; needs Sky Atmosphere, Directional Light, Sky Light (real-time capture), Exponential Height Fog, Post Process Volume with exposure + LUT — verify which are present |
-| `L_PerfBaseline` | Has sky atmosphere / height fog / movable sun and sky light (M0 baseline) — reference setup |
-| `L_DevDriving` / `L_Stress` | Test maps; lighting not final-art representative |
-
-**Confirmed gap:** no `T_LUT_Marevia` color-grading LUT exists; no manual exposure ranges per time of day; no night setup (sodium streetlights, emissive shop signs, light pools).
-
----
-
-## 6. Visible-tiling risk
-
-No tiling textures exist yet, so nothing is tiling. When importing in M4a:
-- Large surfaces (roads, walls, plazas) must use tiling textures plus macro variation (vertex-painted wear), never a unique texture.
-- Hero surfaces: 512 px/m; environment: 256 px/m; distant: 128 px/m (see `WORLD_METRICS.md`).
-
----
-
-## 7. Prioritized fix list
-
-### P0 — Create master materials
-Build `M_Master_Opaque`, `M_Master_Building`, `M_Master_Road`, `M_Master_Glass`, `M_Master_Foliage`, `M_Master_CarPaint`, `M_Master_Character`, `M_Master_Water` in `/Game/Materials/` via Python (`MaterialEditingLibrary`). Then replace every `M_Dev_*` reference with an `MI_*` instance.
-
-### P0 — Import base PBR textures
-Download hero/plaster/road/tiling textures (see download list below), import via `oc_import_textures.py` (to be written) with correct suffix/compression/sRGB, build `MI_*` instances from masters.
-
-### P0 — Replace blockout buildings
-Swap instanced engine cubes for modular building-kit pieces (`SM_*`), named without `BLOCKOUT_*`, with lightmap UVs and `UCX_*` collision. No code-generated final geometry (hard rule 1).
-
-### P0 — Add Sky Light + Post Process
-Ensure every map has Sky Atmosphere, Directional Light (sun), Sky Light (real-time capture), Exponential Height Fog, and a Post Process Volume with exposure + LUT (`T_LUT_Marevia`).
-
-### P1 — Add collision + LODs / Nanite
-`UCX_*` collision or physics bodies on every mesh; Nanite for static environment; 3+ LODs for everything else.
-
-### P1 — Set texel density
-512 px/m hero, 256 px/m environment, 128 px/m distant; cap hero at 2K, props at 1K.
-
-### P2 — Macro variation on large surfaces
-Vertex-painted wear + trim sheets so tiling does not read as repetition.
-
-### P2 — Decal set
-Grim, lane markings, puddles, tire skids — pooled DBuffer decals.
-
----
-
-## 8. Assets to download (exact search terms)
-
-Track every download in `SourceArt/LICENSES.csv` (name, source URL, author, license, where used). CC0 originals are **not committed**; `SourceArt/manifest.json` lists them and `Tools/fetch_assets.py` re-downloads them. Prefer CC0 (Poly Haven, ambientCG). Fab free / monthly-free and owned Megascans accepted per-asset with a LICENSES.csv row. Cap at 2K hero / 1K props / tiling reused heavily. DirectX (Y-down) normal maps where offered; otherwise flip green channel on import.
-
-### Tiling materials (hero + environment, 2K max)
-- Poly Haven / ambientCG — `weathered plaster stucco` — building walls (Città Alta, Le Colline)
-- Poly Haven / ambientCG — `painted concrete` — building walls, colour variants per district
-- Poly Haven / ambientCG — `terracotta roof tiles` — pitched roofs
-- Poly Haven / ambientCG — `asphalt road` — road surfaces, cracks, tire marks
-- Poly Haven / ambientCG — `concrete pavement slabs` — sidewalks, 60 cm slabs
-- Poly Haven / ambientCG — `rusted metal` — port cranes, containers, shutters (Porto Vecchio)
-- Poly Haven / ambientCG — `laterite stone` / `red stone` — hillside foundations, quay walls
-- Poly Haven / ambientCG — `glass tower panels` / `dark glass` — downtown glazing (Lungomare)
-- Poly Haven / ambientCG — `tin sheet corrugated` — port sheds, shacks
-
-### Trim sheet (one texture set: frames, panels, cornices, signage boards)
-- Poly Haven / ambientCG — `painted wood trim` + `metal trim` + `stone sill` — packed into one 2K trim sheet
-
-### Hero models (2K max, Nanite, lightmap UVs, `UCX_*` collision)
-- Poly Haven — `street lamp post` (sodium vapour) — one per 25–30 m
-- Poly Haven — `bench` — street seating
-- Poly Haven — `trash bin` — street clutter
-- Poly Haven — `fishing boat` (small) — port, Darsena
-- Poly Haven — `scooter` / `motorbike` — parked vehicles, player's motorbike reference
-- Poly Haven — `palm tree` + `tropical tree` — boulevard and coast foliage
-- Poly Haven — `market stall` — hero focal point per block
-
-### HDRIs (Poly Haven)
-- `sunny mediterranean` / `clear sky` — daylight sky light capture
-- `night city` — night sky light capture
-
----
-
-## 9. What you need to do by hand (exact menu paths)
-
-1. Download each texture/model above into `SourceArt/Downloads/` (not committed).
-2. Add a row to `SourceArt/LICENSES.csv` for every download (name, source URL, author, license, date).
-3. Write/run `scripts/run_python.sh Content/Python/oc_import_textures.py` to import with correct settings (script to be written in M4a).
-4. Build master materials (M4a), then replace every `M_Dev_*` reference with an `MI_*` instance.
-5. Replace engine-cube buildings with modular kit pieces in `oc_m3_world.py` / `OCWorldBuilderLibrary`.
-6. Add a Post Process Volume to each map: `Place Actors → Post Process Volume`, set exposure and LUT `T_LUT_Marevia`.
-7. Commit to git (with LFS) after each working step.
-
----
-
-## 10. Next step on approval
-
-Create `ART_BIBLE.md` (setting, mood, palette, 5 districts, 5 landmarks, believability rules) and `WORLD_METRICS.md` (player/door/road/block/texel-density numbers), then wait for approval before building final art. Both documents are complete (`ART_BIBLE.md`, `WORLD_METRICS.md`).
