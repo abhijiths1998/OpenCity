@@ -195,6 +195,45 @@
    "author": "Poly Haven",
    "license": "CC0",
    "notes": "Kit: rolling shutters, railings, pipes, roof props (MI_Kit_Metal)"
+  },
+  {
+   "slug": "cobblestone_square",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/cobblestone_square",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Road paving: sampietrini, centro storico streets (MI_Road_Sampietrini)"
+  },
+  {
+   "slug": "granite_tile",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/granite_tile",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Road paving: lastricato stone slabs, centro storico alleys and the Passerella (MI_Road_Lastricato)"
+  },
+  {
+   "slug": "gravel_floor",
+   "size": 1024,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/gravel_floor",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Road paving: strade bianche, tinted pale (MI_Road_Gravel)"
   }
  ],
  "models": [

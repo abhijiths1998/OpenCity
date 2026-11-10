@@ -130,13 +130,24 @@ def art(path, fallback):
     return unreal.load_asset(path) or unreal.load_asset(fallback)
 
 
+def paving_materials():
+    """Road surface per paving (oc_art_materials.PAVING -> MI_Paving_*), for the road builder."""
+    out = {}
+    for paving in ("asphalt", "sampietrini", "porfido", "lastricato", "stone_slab", "gravel_white", "concrete"):
+        mi = unreal.load_asset(f"/Game/Environment/Materials/Paving/MI_Paving_{paving}")
+        if mi:
+            out[unreal.Name(paving)] = mi
+    return out
+
+
 def build_roads(world, layout):
     roads = layout["roads"]
     n = unreal.OCWorldBuilderLibrary.build_road_meshes(
         world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"), "/Game/World/Roads",
         art("/Game/Materials/M_Master_Road", "/Game/Dev/Materials/M_Dev_Road"),
         art("/Game/Environment/Materials/MI_Sidewalk", "/Game/Dev/Materials/M_Dev_Sidewalk"),
-        [unreal.Name(k) for k in roads["sidewalk_kinds"]], roads["sidewalk_width"] * 100.0, 25200.0)
+        [unreal.Name(k) for k in roads["sidewalk_kinds"]], roads["sidewalk_width"] * 100.0, 25200.0,
+        paving_materials())
     if n == 0:
         raise RuntimeError("no road chunks built")
     log(f"roads: {n} chunks")

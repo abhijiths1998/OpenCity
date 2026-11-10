@@ -411,53 +411,45 @@ if (Wet > 0.001)
 
 ROAD_HLSL = r"""
 // Road meshes (OCWorldBuilderLibrary::BuildRoadMeshes): UV0 = (lateral m, along m); UV1 = (half width m,
-// marked lanes per direction). Alleys get stone setts, piers concrete slabs, everything else asphalt.
+// marking code). One texture set per instance: the paving (MI_Paving_*: asphalt, sampietrini,
+// lastricato, gravel, concrete), chosen per segment by the road builder.
+// Marking code = lanes per direction + 10 x style (Codice della Strada, DPR 495/1992 artt. 138, 141):
+// style 0 urban F (10 cm lines, 3 m dash / 3 m gap), 1 urban D/E (12 cm, 3/3), 2 extra-urban C/F
+// (12 cm, 3/4.5), 3 A/B (15 cm, 4.5/7.5). Edge lines 12 / 15 / 15 / 25 cm. Code 0: no markings.
 float hw = R1.x;
-float lanes = R1.y;
+float code = R1.y + 0.01;
+float style = floor(code / 10.0);
+float lanes = floor(code - style * 10.0);
 float2 uv0 = R0;
-float kind = (lanes < 0.5 && hw > 0.01 && hw < 3.5) ? 1.0 : ((lanes < 0.5 && hw > 4.9) ? 2.0 : 0.0);
-float tile = kind > 1.5 ? TileP : (kind > 0.5 ? TileS : TileA);
-float2 uv = uv0 / tile;
+float2 uv = uv0 / TileA;
 float2 dx = ddx(uv), dy = ddy(uv);
-float3 bc; float2 nxy; float3 orm;
-if (kind > 1.5)
-{
-    bc = Texture2DSampleGrad(PBC, PBCSampler, uv, dx, dy).rgb;
-    nxy = Texture2DSampleGrad(PN, PNSampler, uv, dx, dy).rg;
-    orm = Texture2DSampleGrad(PORM, PORMSampler, uv, dx, dy).rgb;
-}
-else if (kind > 0.5)
-{
-    bc = Texture2DSampleGrad(SBC, SBCSampler, uv, dx, dy).rgb;
-    nxy = Texture2DSampleGrad(SN, SNSampler, uv, dx, dy).rg;
-    orm = Texture2DSampleGrad(SORM, SORMSampler, uv, dx, dy).rgb;
-}
-else
-{
-    bc = Texture2DSampleGrad(ABC, ABCSampler, uv, dx, dy).rgb;
-    nxy = Texture2DSampleGrad(AN, ANSampler, uv, dx, dy).rg;
-    orm = Texture2DSampleGrad(AORM, AORMSampler, uv, dx, dy).rgb;
-}
-// Macro variation across the city: a large, slow sample of the asphalt colour.
+float3 bc = Texture2DSampleGrad(ABC, ABCSampler, uv, dx, dy).rgb * Tint;
+float2 nxy = Texture2DSampleGrad(AN, ANSampler, uv, dx, dy).rg;
+float3 orm = Texture2DSampleGrad(AORM, AORMSampler, uv, dx, dy).rgb;
+// Macro variation across the city: a large, slow sample of the same paving.
 float big = dot(Texture2DSample(ABC, ABCSampler, WP.xy / 4100.0).rgb, float3(0.3, 0.59, 0.11));
 bc *= lerp(0.82, 1.18, saturate(big * 2.2 - 0.3));
 
-// Lane markings (paint), worn by the asphalt's own texture.
+// Lane markings (white paint), worn by the paving's own texture.
 float au = abs(uv0.x);
 float mk = 0.0;
 if (lanes > 0.5)
 {
-    float dash = step(frac(uv0.y / 12.0), 0.375);
-    mk += step(hw - 0.55, au) * step(au, hw - 0.40);
+    float lw = style < 0.5 ? 0.10 : (style < 2.5 ? 0.12 : 0.15);
+    float ew = style < 0.5 ? 0.12 : (style < 2.5 ? 0.15 : 0.25);
+    float dashL = style > 2.5 ? 4.5 : 3.0;
+    float gapL = style > 2.5 ? 7.5 : (style > 1.5 ? 4.5 : 3.0);
+    float dash = step(frac(uv0.y / (dashL + gapL)), dashL / (dashL + gapL));
+    mk += step(hw - 0.40 - ew, au) * step(au, hw - 0.40);                 // edge lines
     if (lanes > 1.5)
     {
-        mk += step(0.06, au) * step(au, 0.18);
+        mk += step(0.06, au) * step(au, 0.06 + lw);                        // double centre line
         float laneW = (hw - 0.5) / lanes;
-        mk += step(abs(au - laneW), 0.07) * dash;
+        mk += step(abs(au - laneW), lw * 0.5) * dash;                       // lane lines
     }
     else
     {
-        mk += step(au, 0.07) * dash;
+        mk += step(au, lw * 0.5) * dash;                                    // dashed centre line
     }
 }
 float wear = saturate(dot(bc, float3(0.3, 0.59, 0.11)) * 3.0);
@@ -780,6 +772,40 @@ def build_foliage_master(mpc):
     return mat
 
 
+# Road paving (INFRA_DESIGN.md Phase 4): one instance of M_Master_Road per "paving" value in the road
+# data; OCWorldBuilderLibrary::BuildRoadMeshes gives each chunk one slot per paving it uses.
+PAVING = {  # paving: (texture slug, tile m, tint)
+    "asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0)),
+    "sampietrini": ("cobblestone_square", 1.6, (0.52, 0.52, 0.56)),        # dark basalt setts
+    "porfido": ("cobblestone_square", 1.4, (0.95, 0.72, 0.66)),            # reddish porphyry cubes
+    "lastricato": ("granite_tile", 3.0, (1.0, 0.98, 0.95)),                # large stone slabs
+    "stone_slab": ("granite_tile", 3.0, (1.05, 1.02, 0.97)),               # the Passerella's deck
+    "gravel_white": ("gravel_floor", 2.5, (1.45, 1.38, 1.22)),             # strade bianche
+    "concrete": ("concrete_pavers_02", 3.0, (1.0, 1.0, 1.0)),              # quays and piers
+}
+
+
+def build_paving_instances(road, textures):
+    made = []
+    for paving, (slug, tile, tint) in PAVING.items():
+        t = textures.get(slug)
+        if not t:
+            log(f"skip paving {paving}: textures for {slug} not downloaded (python3 -I Tools/fetch_assets.py)")
+            continue
+        mi = L.get_or_create(f"MI_Paving_{paving}", f"{MI_ROOT}/Paving", unreal.MaterialInstanceConstant,
+                             unreal.MaterialInstanceConstantFactoryNew(), TAG)
+        MEL.set_material_instance_parent(mi, road)
+        MEL.clear_all_material_instance_parameters(mi)
+        for role in ("BC", "N", "ORM"):
+            MEL.set_material_instance_texture_parameter_value(mi, f"A_{role}", t[role])
+        MEL.set_material_instance_scalar_parameter_value(mi, "TileA", tile)
+        MEL.set_material_instance_vector_parameter_value(mi, "Tint", unreal.LinearColor(tint[0], tint[1], tint[2], 1.0))
+        MEL.update_material_instance(mi)
+        L.save(mi)
+        made.append(mi.get_name())
+    return made
+
+
 CAR_PAINT_HLSL = r"""
 // Car paint (M4b): clear coat over the vehicle's own body maps. Paint colour, dirt and damage come
 // from custom primitive data (AOCVehicle::ApplyPaint), so every car differs without a dynamic
@@ -979,10 +1005,9 @@ def main():
     MEL.set_material_instance_parent(gmi, glass)
     L.save(gmi)
     made.append("MI_Kit_Glass")
-    build_textured_master("M_Master_Road", ROAD_HLSL,
-                          [("A", textures_for(textures, "asphalt_02")), ("S", textures_for(textures, "cobblestone_floor_01")),
-                           ("P", textures_for(textures, "concrete_pavers_02"))],
-                          {"TileA": 4.0, "TileS": 2.0, "TileP": 3.0}, extra=WET_EXTRA(mpc, ripples, 0.6))
+    road = build_textured_master("M_Master_Road", ROAD_HLSL, [("A", textures_for(textures, "asphalt_02"))], {"TileA": 4.0},
+                                 extra=WET_EXTRA(mpc, ripples, 0.6) + [("Tint", lambda m: vector(m, "Tint", (1, 1, 1), -1100, 700))])
+    made += build_paving_instances(road, textures)
     build_textured_master("M_Master_Landscape", LAND_HLSL,
                           [("G", textures_for(textures, "aerial_grass_rock")), ("D", textures_for(textures, "brown_mud_rocks_01")),
                            ("R", textures_for(textures, "cliff_side")), ("S", textures_for(textures, "coast_sand_01"))],

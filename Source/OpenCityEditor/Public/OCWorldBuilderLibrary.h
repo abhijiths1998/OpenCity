@@ -57,13 +57,15 @@ public:
 	 * draped on HeightmapPng (the same heights the landscape imported), every 4 m along a road.
 	 * Road UV0 = (lateral m, along m) and UV1 = (half width m, marked lanes per direction) drive
 	 * the road material's markings. Each chunk becomes a Nanite static mesh asset in AssetFolder
-	 * and an actor in the world (folder "Roads"). Bridges are skipped (built separately).
+	 * and an actor in the world (folder "Roads"). Bridges are skipped (built separately). Road surfaces
+	 * get one material slot per paving (segment "paving" in the layout: PavingMaterials, falling back to
+	 * RoadMaterial); markings follow the Codice della Strada style of each road's D.M. type.
 	 * Returns the number of chunks.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
 	static int32 BuildRoadMeshes(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng, const FString& AssetFolder,
 		UMaterialInterface* RoadMaterial, UMaterialInterface* SidewalkMaterial, const TArray<FName>& SidewalkKinds,
-		float SidewalkWidthCm, float ChunkSizeCm);
+		float SidewalkWidthCm, float ChunkSizeCm, const TMap<FName, UMaterialInterface*>& PavingMaterials);
 
 	/**
 	 * Grey-box buildings from the layout's "buildings" list: one AOCBlockoutActor per square

@@ -282,7 +282,7 @@ Rules:
 | 1 | History and network design (this document and the plan) | **Approved 2026-11-10** (defaults in section 0 accepted) |
 | 2 | Data model and tools | **Done** (not visible in game) |
 | 3 | Terrain integration: re-grade the steep roads (**done**), hairpin loops (**done**), retaining walls by era (**done**: 608 m, stone on old roads and the pass, concrete elsewhere), mitred road joins (**done**), terraces, RVT edge blending | In progress |
-| 4 | Surfaces, markings, wear, physical materials | Waiting |
+| 4 | Surfaces, markings, wear, physical materials | In progress: paving per segment (asphalt, sampietrini, porfido, lastricato, gravel, concrete; `MI_Paving_*`), Codice della Strada marking styles, 9 physical materials (`PM_*`), road meshes collide (cars sit on the visible surface). Open: patches and wear decals, raised crossings, parking bay paint, wet gaps between stones. |
 | 5 | Street infrastructure (PCG) | Waiting |
 | 6 | Bridges, tunnels, walls and gates | Waiting |
 | 7 | Rail and tram | Waiting (needs this design approved) |

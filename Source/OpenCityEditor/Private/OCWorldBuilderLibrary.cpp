@@ -5,6 +5,8 @@
 #include "DynamicRHI.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
+#include "Engine/CollisionProfile.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "Components/StaticMeshComponent.h"
 #include "Misc/FileHelper.h"
 #include "StaticMeshAttributes.h"
@@ -262,7 +264,8 @@ namespace OCRoadMesh
 		TArray<FVector3f> N;
 		TArray<FVector2f> UV0;
 		FVector2f UV1 = FVector2f::ZeroVector;
-		int32 Group = 0;
+		int32 Group = 0;       // 0 road surface, 1 sidewalk
+		FName Paving;          // road surface: the segment's paving (asphalt, sampietrini, ...)
 	};
 
 	/** Geometry for one chunk, in world space until it is built. */
@@ -296,10 +299,27 @@ namespace OCRoadMesh
 		return 4.f; // alley
 	}
 
-	/** Lanes per direction for the road material's markings (0 = none: alleys, piers, junctions). */
-	float MarkedLanes(const FOCRoadSegment& S)
+	/**
+	 * Marking code for the road material in UV1.y: lanes per direction + 10 x style. Markings only on
+	 * asphalt (stone, gravel and quays carry none). Style by D.M. 5/11/2001 type (Codice della Strada,
+	 * DPR 495/1992 artt. 138 and 141): 0 urban F (10 cm lines, 3 m dash / 3 m gap), 1 urban D and E
+	 * (12 cm, 3/3), 2 extra-urban C and F (12 cm, 3/4.5), 3 A and B (15 cm, 4.5/7.5).
+	 */
+	float MarkingCode(const FOCRoadSegment& S, const FOCRoadGraph& Graph)
 	{
-		return (S.Kind == TEXT("alley") || S.Kind == TEXT("pier")) ? 0.f : static_cast<float>(FMath::Max(S.LanesPerDirection, 1));
+		const bool bAsphalt = S.Paving.IsNone() || S.Paving == TEXT("asphalt");
+		if (!bAsphalt || S.bPedestrian || S.Kind == TEXT("alley") || S.Kind == TEXT("pier"))
+		{
+			return 0.f;
+		}
+		int32 Style = 1;
+		if (const FOCRoadProfile* P = Graph.FindProfile(S.Profile))
+		{
+			const FString T = P->DMType.ToString();
+			Style = (T == TEXT("A") || T == TEXT("B")) ? 3 : (T.StartsWith(TEXT("C")) || T == TEXT("F1") || T == TEXT("F2")) ? 2
+				: (T == TEXT("F")) ? 0 : 1;
+		}
+		return static_cast<float>(FMath::Max(S.LanesPerDirection, 1) + 10 * Style);
 	}
 
 	constexpr double StepCm = 200.0;     // drape resolution along roads
@@ -311,7 +331,7 @@ namespace OCRoadMesh
 	constexpr float SkirtDepth = 40.f;              // road edges without sidewalks drop this far below the surface
 
 	UStaticMesh* BuildMesh(const FChunk& Chunk, const FVector& Origin, const FString& PackagePath, const FString& Name,
-		UMaterialInterface* RoadMat, UMaterialInterface* SidewalkMat)
+		UMaterialInterface* RoadMat, UMaterialInterface* SidewalkMat, const TMap<FName, UMaterialInterface*>& Pavings)
 	{
 		FMeshDescription Desc;
 		FStaticMeshAttributes Attr(Desc);
@@ -325,9 +345,23 @@ namespace OCRoadMesh
 		UVs.SetNumChannels(2);
 		TPolygonGroupAttributesRef<FName> SlotNames = Attr.GetPolygonGroupMaterialSlotNames();
 
-		const FPolygonGroupID Groups[2] = { Desc.CreatePolygonGroup(), Desc.CreatePolygonGroup() };
-		SlotNames[Groups[0]] = TEXT("Road");
-		SlotNames[Groups[1]] = TEXT("Sidewalk");
+		// One material slot per paving in the chunk, plus the sidewalks.
+		TArray<TPair<FName, UMaterialInterface*>> Slots;
+		TMap<FName, FPolygonGroupID> GroupOf;
+		auto GroupFor = [&](const FRoadPoly& Poly)
+		{
+			const FName Key = Poly.Group == 1 ? FName(TEXT("Sidewalk")) : FName(*(TEXT("Road_") + (Poly.Paving.IsNone() ? FString(TEXT("asphalt")) : Poly.Paving.ToString())));
+			if (const FPolygonGroupID* Found = GroupOf.Find(Key))
+			{
+				return *Found;
+			}
+			const FPolygonGroupID G = Desc.CreatePolygonGroup();
+			SlotNames[G] = Key;
+			GroupOf.Add(Key, G);
+			UMaterialInterface* const* Paved = Pavings.Find(Poly.Paving.IsNone() ? FName(TEXT("asphalt")) : Poly.Paving);
+			Slots.Add({ Key, Poly.Group == 1 ? SidewalkMat : (Paved && *Paved ? *Paved : RoadMat) });
+			return G;
+		};
 
 		for (const FRoadPoly& Poly : Chunk.Polys)
 		{
@@ -345,13 +379,15 @@ namespace OCRoadMesh
 				UVs.Set(I, 1, Poly.UV1);
 				Instances.Add(I);
 			}
-			Desc.CreatePolygon(Groups[Poly.Group], Instances);
+			Desc.CreatePolygon(GroupFor(Poly), Instances);
 		}
 
 		UPackage* Package = CreatePackage(*(PackagePath / Name));
 		UStaticMesh* Mesh = NewObject<UStaticMesh>(Package, *Name, RF_Public | RF_Standalone);
-		Mesh->GetStaticMaterials().Add(FStaticMaterial(RoadMat, TEXT("Road"), TEXT("Road")));
-		Mesh->GetStaticMaterials().Add(FStaticMaterial(SidewalkMat, TEXT("Sidewalk"), TEXT("Sidewalk")));
+		for (const TPair<FName, UMaterialInterface*>& Slot : Slots)  // same order as the polygon groups
+		{
+			Mesh->GetStaticMaterials().Add(FStaticMaterial(Slot.Value, Slot.Key, Slot.Key));
+		}
 		Mesh->SetNumSourceModels(1);
 		FMeshBuildSettings& Build = Mesh->GetSourceModel(0).BuildSettings;
 		Build.bRecomputeNormals = false;
@@ -362,6 +398,10 @@ namespace OCRoadMesh
 		FMeshNaniteSettings Nanite = Mesh->GetNaniteSettings();
 		Nanite.bEnabled = true;
 		Mesh->SetNaniteSettings(Nanite);
+		// Cars drive on the road surface they see (it sits 15-21 cm above the graded landscape), so
+		// the mesh collides with its own triangles, and each paving's physical material reaches the tyres.
+		Mesh->CreateBodySetup();
+		Mesh->GetBodySetup()->CollisionTraceFlag = CTF_UseComplexAsSimple;
 		Mesh->Build(/*bInSilent*/ true);
 		Mesh->MarkPackageDirty();
 		FAssetRegistryModule::AssetCreated(Mesh);
@@ -371,7 +411,7 @@ namespace OCRoadMesh
 
 int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
 	const FString& AssetFolder, UMaterialInterface* RoadMaterial, UMaterialInterface* SidewalkMaterial,
-	const TArray<FName>& SidewalkKinds, float SidewalkWidthCm, float ChunkSizeCm)
+	const TArray<FName>& SidewalkKinds, float SidewalkWidthCm, float ChunkSizeCm, const TMap<FName, UMaterialInterface*>& PavingMaterials)
 {
 	using namespace OCRoadMesh;
 	FString Text, Error;
@@ -389,6 +429,8 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 
 	// Per junction: widest road half-width meeting there (disc size, sidewalk trim).
 	TArray<float> RoadHalf, OuterHalf;
+	TArray<FName> NodePaving;  // junction surfaces take the paving of their widest road
+	NodePaving.Init(NAME_None, Nodes.Num());
 	RoadHalf.Init(0.f, Nodes.Num());
 	OuterHalf.Init(0.f, Nodes.Num());
 	TArray<int32> Degree;
@@ -405,6 +447,10 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 		const bool bWalk = SidewalkKinds.Contains(S.Kind);
 		for (const int32 N : { S.A, S.B })
 		{
+			if (S.WidthCm * 0.5f > RoadHalf[N] && S.Bridge.IsNone())
+			{
+				NodePaving[N] = S.Paving;
+			}
 			RoadHalf[N] = FMath::Max(RoadHalf[N], S.WidthCm * 0.5f);
 			OuterHalf[N] = FMath::Max(OuterHalf[N], S.WidthCm * 0.5f + (bWalk ? SidewalkWidthCm : 0.f));
 			++Degree[N];
@@ -426,6 +472,7 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	 * StepCm and draped on the ground. Road strips get UV0 = (lateral m, along m) for markings;
 	 * sidewalks get world-planar metres.
 	 */
+	FName CurrentPaving;  // set per segment before its strips are added
 	auto AddStrip = [&](FChunk& C, const FVector& P0, const FVector& P1, const FVector& Side, float In, float Out,
 		float Lift, int32 Group, double AlongStartM, const FVector2f& UV1, const FVector& SideStart = FVector::ZeroVector,
 		const FVector& SideEnd = FVector::ZeroVector)
@@ -449,6 +496,7 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 				FRoadPoly Poly;
 				Poly.Group = Group;
 				Poly.UV1 = UV1;
+				Poly.Paving = CurrentPaving;
 				const FVector SA = FMath::Lerp(S0, S1, T0), SB = FMath::Lerp(S0, S1, T1);
 				for (const FVector& Corner : { A + SA * L0, A + SA * L1, B + SB * L1, B + SB * L0 })
 				{
@@ -538,8 +586,9 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 		};
 		const float ExtA = EndOffset(S.A), ExtB = EndOffset(S.B);
 		const FVector SideA = MiterSide(S.A, Dir), SideB = MiterSide(S.B, -Dir);
+		CurrentPaving = S.Paving;
 		AddStrip(C, A - Dir * ExtA, B + Dir * ExtB, Side, -Half, Half, Lift, 0, -ExtA / 100.0,
-			FVector2f(Half / 100.f, MarkedLanes(S)), SideA, SideB);
+			FVector2f(Half / 100.f, MarkingCode(S, Graph)), SideA, SideB);
 
 		if (!SidewalkKinds.Contains(S.Kind))
 		{
@@ -638,6 +687,7 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 			{
 				FRoadPoly T;
 				T.UV1 = JunctionUV1;
+				T.Paving = NodePaving[N];
 				for (const FVector& Q : { X, Y, Z })
 				{
 					const FVector V = Drape(Q, JunctionLift);
@@ -667,10 +717,11 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 		const FChunk& C = Pair.Value;
 		const FVector Origin(C.Bounds.GetCenter().X, C.Bounds.GetCenter().Y, C.Bounds.Min.Z);
 		const FString Name = FString::Printf(TEXT("SM_Roads_%d_%d"), Pair.Key.X, Pair.Key.Y < 0 ? 1000 - Pair.Key.Y : Pair.Key.Y);
-		UStaticMesh* Mesh = BuildMesh(C, Origin, AssetFolder, Name, RoadMaterial, SidewalkMaterial);
+		UStaticMesh* Mesh = BuildMesh(C, Origin, AssetFolder, Name, RoadMaterial, SidewalkMaterial, PavingMaterials);
 		AStaticMeshActor* Actor = World->SpawnActor<AStaticMeshActor>(Origin, FRotator::ZeroRotator);
 		Actor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
-		Actor->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision); // drive on the flattened landscape
+		Actor->GetStaticMeshComponent()->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+		Actor->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		Actor->GetStaticMeshComponent()->SetCanEverAffectNavigation(false);
 		Actor->SetActorLabel(Name.RightChop(3));
 		Actor->SetFolderPath(TEXT("Roads"));

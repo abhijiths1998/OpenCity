@@ -31,6 +31,9 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `T
 | `coast_sand_01` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/coast_sand_01 | Poly Haven | CC0 | Landscape: beach | 2026-11-09 |
 | `aerial_grass_rock` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/aerial_grass_rock | Poly Haven | CC0 | Landscape: grass and scrub | 2026-11-09 |
 | `brown_mud_rocks_01` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/brown_mud_rocks_01 | Poly Haven | CC0 | Landscape: dirt and slopes | 2026-11-09 |
+| `cobblestone_square` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/cobblestone_square | Poly Haven | CC0 | Road paving: sampietrini (centro storico streets) | 2026-11-10 |
+| `granite_tile` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/granite_tile | Poly Haven | CC0 | Road paving: lastricato stone slabs (centro storico alleys, Passerella) | 2026-11-10 |
+| `gravel_floor` (BC, N, ORM, 1K) | Poly Haven | https://polyhaven.com/a/gravel_floor | Poly Haven | CC0 | Road paving: strade bianche (tinted pale) | 2026-11-10 |
 | `cliff_side` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/cliff_side | Poly Haven | CC0 | Landscape: rock, cliffs, mountains | 2026-11-09 |
 | `street_lamp_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/street_lamp_01 | Poly Haven | CC0 | Street lights along streets and avenues | 2026-11-09 |
 | `street_lamp_02` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/street_lamp_02 | Poly Haven | CC0 | Street lights, old town variant | 2026-11-09 |

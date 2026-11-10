@@ -44,3 +44,6 @@ SourceArt/Vehicles/SportsCar (SM_SportsCar export + SM_SportsCar_Body),UE 5.8.4 
 SourceArt/Downloads/painted_metal_shutter,https://polyhaven.com/a/painted_metal_shutter,Poly Haven,CC0,2026-11-09,"Kit: rolling shutters, railings, pipes, roof props (MI_Kit_Metal)"
 SourceArt/Downloads/Models/boulder_01,https://polyhaven.com/a/boulder_01,Poly Haven,CC0,2026-11-09,"Distant scenery: east-coast hills, scaled up (oc_m3_water.py)"
 SourceArt/Downloads/Models/namaqualand_boulder_03,https://polyhaven.com/a/namaqualand_boulder_03,Poly Haven,CC0,2026-11-09,"Distant scenery: peaks north of Monte Ferrale, scaled up (oc_m3_water.py)"
+SourceArt/Downloads/cobblestone_square,https://polyhaven.com/a/cobblestone_square,Poly Haven,CC0,2026-11-10,"Road paving: sampietrini, centro storico streets (MI_Road_Sampietrini)"
+SourceArt/Downloads/granite_tile,https://polyhaven.com/a/granite_tile,Poly Haven,CC0,2026-11-10,"Road paving: lastricato stone slabs, centro storico alleys and the Passerella (MI_Road_Lastricato)"
+SourceArt/Downloads/gravel_floor,https://polyhaven.com/a/gravel_floor,Poly Haven,CC0,2026-11-10,"Road paving: strade bianche, tinted pale (MI_Road_Gravel)"
