@@ -229,18 +229,18 @@ Proposed infrastructure waits in `SourceArt/Infra/proposed_networks.json` until 
 - **Rail:** geometry, gradient, electrification for the line kind, stations.
 - **Water:** body type, depth, still water with flow, edge treatments.
 
-**Current result (2026-11-10, after the junction clean-up): 68 issues, 3 errors** (was 72 and 7 in the morning, 106 and 27 before Phase 3).
+**Current result (2026-11-10 night, after the junction clean-up and the hairpin pass): 77 issues, 3 errors** (was 72 and 7 in the morning, 106 and 27 before Phase 3).
 
 | Check | Result | Notes |
 |---|---|---|
 | Gradient | 0 errors, 1 warning | One pass segment at 13% against 12% |
-| Radius | 3 errors, 6 warnings | Four pass hairpins of 4 to 6 m that `bulb_hairpins` could not loop (another leg or the map edge in the way): the tour drive gets stuck on exactly these. Four grid corners at 30 to 50 m against the 51 m urban minimum. |
-| Clearance | 0 errors, 11 warnings | Stacked hairpin legs with retaining walls between them |
+| Radius | 0 errors, 5 warnings | Hairpins of 120 degrees and more become loops (was 150), a Z of two opposite hairpins is looped one at a time, routed roads keep 45 m from the map edge so every loop fits, and the quarry spur branches where the link is not steep. Four grid corners at 30 to 50 m against the 51 m urban minimum, one 12 m bend near the mast. |
+| Clearance | 3 errors, 20 warnings | Stacked hairpin legs and loops with retaining walls between them (the three errors are loops 2 to 3 m from the leg below, 5 to 7 m lower) |
 | Crossing | 0 | The layout had 65 plan crossings with no junction (grid streets through the viale, the coast road and the lungomare) and 19 streets lying along those roads. `split_crossings`, `drop_coincident`, `merge_short_segments` and `fix_shallow_forks` in the generator now leave none; the validator keeps the check. |
 | Width | 47 warnings | 5.5 m local streets outside the centre (F minimum 6.5 m); widening needs the road mesh rebuild (Phase 4) |
 | Speed, connectivity, ZTL gates, junctions | 0 | |
 
-**Tour drive** (`oc.dev.route` over 20 km through every district, 70 km/h cap, 2026-11-10 evening): reaches 59% (11.9 km) before its ninth recovery, from 7% in the morning. The remaining stops are the four unlooped pass hairpins above, two spots on the Le Colline roads near the pass gate, and one bend of the Villa Salvi drive (car ends on the sidewalk).
+**Tour drive** (`oc.dev.route` over 20 km through every district, 70 km/h cap, 2026-11-10 night): reaches 67% (13.4 km) before its ninth recovery, from 7% in the morning. The remaining stops: one bend of the Villa Salvi drive (car ends on the sidewalk), one bend of the pass just above the gate, two 100-degree pass bends where the car runs off the outer edge, and the upper radio-mast road, where the quarry spur still leaves the pass at 17 degrees and two hairpins near the mast have legs under 9 m apart (no loop fits). Two attempts to fix the branch angle with square stubs and closer loops made other bends worse and were reverted; the branch junction needs its own geometry rather than routing tweaks.
 
 Not checkable from data yet, so they come with the geometry phases:
 - Gaps or overlaps between meshes, and kerb height mismatches

@@ -309,6 +309,7 @@ class RoadGraph:
 ROUTE_CELL = 6.0          # m: routing grid
 ROUTE_GRADE_OK = 0.07     # grades up to this cost nothing extra
 ROUTE_GRADE_MAX = 0.18    # never steeper (the old straight legs needed cuts tens of metres deep)
+ROUTE_EDGE = 45.0         # m: routed roads keep this far from the map edge (a hairpin loop needs ~30 m beyond its apex)
 ROUTE_STEP = 25.0         # m between nodes of a routed road: the corridor grading between nodes is
                           # linear, so short steps keep the road on the land instead of cutting it
 
@@ -335,12 +336,16 @@ def bulb_hairpins(pts, r=HAIRPIN_R, avoid=None):
 
     out, bulbs, i = [], [], 0
     while i < len(pts) - 2:
-        # Total signed turn over the next 50 m.
+        # Total signed turn over the next 50 m, up to where the road turns back the other way (a
+        # Z of two opposite hairpins 23 m apart summed to nothing and kept both 5 m bends).
         j, turn = i, 0.0
         while j < len(pts) - 2 and acc[j + 1] - acc[i] < 50.0:
-            turn += wrap(heading(pts[j + 1], pts[j + 2]) - heading(pts[j], pts[j + 1]))
+            d = wrap(heading(pts[j + 1], pts[j + 2]) - heading(pts[j], pts[j + 1]))
+            if abs(turn) > math.radians(30) and d * turn < 0:
+                break
+            turn += d
             j += 1
-        if abs(turn) < math.radians(150):
+        if abs(turn) < math.radians(120):  # a 140-degree bend at 6 m radius is no better than a hairpin
             out.append(pts[i])
             i += 1
             continue
@@ -505,6 +510,9 @@ def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None
             if not (bx0 <= n[0] <= bx1 and by0 <= n[1] <= by1):
                 continue
             x, y = n[0] * ROUTE_CELL, n[1] * ROUTE_CELL + Y_MIN
+            if (n != s1 and not (ROUTE_EDGE <= x <= W - ROUTE_EDGE and Y_MIN + ROUTE_EDGE <= y <= Y_MIN + H - ROUTE_EDGE)
+                    and math.dist((x, y), goal) > 60.0):  # the radio mast stands 44 m from the edge
+                continue
             if avoid is not None and avoid(x, y) and n != s1:
                 continue
             off_road = keep_off is not None and n != s1 and keep_off(x, y)
@@ -611,6 +619,9 @@ def limit_grades(g, max_iters=400):
     return sum(1 for a, b, rise in edges if abs(g.nodes[b][2] - g.nodes[a][2]) - rise > 0.05)
 
 
+LOOP_NODES = set()  # node ids on hairpin loops: no other road may join there
+
+
 def grade_bulbs(g, bulbs):
     """An even grade round each hairpin loop, from the height where it leaves one leg to where it
     joins the other (the loop crosses the slope; terrain heights would make it a ramp), and the
@@ -619,6 +630,7 @@ def grade_bulbs(g, bulbs):
     for loop in bulbs:
         ids = [g.node(x, y, 2.0) for x, y in loop]
         ids = [k for n, k in enumerate(ids) if n == 0 or k != ids[n - 1]]
+        LOOP_NODES.update(ids)
         if len(ids) > 2:
             grade_chain(g, ids, g.nodes[ids[0]][2], g.nodes[ids[-1]][2])
         # Widen only round the loop itself: at the neck the entry and exit are 9 m apart, and widened
@@ -746,7 +758,7 @@ def build_roads(terrain, rng):
     # The climb ends just east of the dam where the land is already at crest height, so the crest
     # road continues level (ending below the crest made a 70% ramp onto the dam).
     abutment = (dam_e[0] + 60.0, DAM_Y)
-    climb = route_road(terrain, (X(1300), 1905), abutment, avoid=wet_or_quarry)
+    climb = route_road(terrain, (X(1300), 1900), abutment, avoid=wet_or_quarry)  # from the hills road's end node
     climb_bulbs = route_road.bulbs
     # Routed roads merge nodes only within 2 m: hairpin loops pass 9 m from the other leg.
     pass_ids = g.path(climb + [dam_e, (X(1130), DAM_Y), dam_w], "pass", merge=2.0, gate="Gate.Ferrale")
@@ -755,9 +767,17 @@ def build_roads(terrain, rng):
     grade_chain(g, pass_ids[n_climb - 1:n_climb + 1], g.nodes[pass_ids[n_climb - 1]][2], crest)
     for i in pass_ids[n_climb:]:
         g.nodes[i][2] = round(crest, 2)                               # along the dam crest
-    # Branches start from the pass node nearest their destination.
+    # Branches start from the pass node from which the link is short but not steep: the node
+    # nearest the quarry gate was 38 m above it 70 m away, and the spur became a Z of two 5 m
+    # hairpins 23 m apart that no loop could replace.
     def branch_from(target):
-        return min(pass_ids[:n_climb], key=lambda i: math.dist(g.nodes[i][:2], target))
+        tz = g.height(*target)
+
+        def cost(i):
+            d = math.dist(g.nodes[i][:2], target)
+            grade = abs(g.nodes[i][2] - tz) / max(d, 1.0)
+            return (d if d >= 150.0 else 1e9) * (1.0 + 10.0 * max(0.0, grade - ROUTE_GRADE_OK))
+        return min(pass_ids[:n_climb], key=cost)
     # The yard has one entrance, in the middle of its north side: the spur from the pass arrives
     # there and the radio-mast road leaves from it (the spur used to end in the yard's centre and
     # crossed the mast road's exit stub 5 m above it). Routed roads keep off roads already built
@@ -775,7 +795,9 @@ def build_roads(terrain, rng):
                              keep_off=road_mask(g, (gate_n, mast_end))), "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
     hermitage_end = (X(500), 2640)
-    hermitage = g.path(route_road(terrain, dam_w, hermitage_end, avoid=wet, loop_avoid=near_road,
+    def wet_or_crest_side(x, y):  # the first leg may not double back east along the dam (a 158-degree bend at the junction)
+        return wet(x, y) or (math.dist((x, y), dam_w) < 70.0 and x > dam_w[0] + 8.0)
+    hermitage = g.path(route_road(terrain, dam_w, hermitage_end, avoid=wet_or_crest_side, loop_avoid=near_road,
                                   keep_off=road_mask(g, (dam_w, hermitage_end))), "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
     print(f"hairpin loops: {len(climb_bulbs)} on the pass (radius {HAIRPIN_R:.0f} m)")
@@ -795,7 +817,7 @@ def build_roads(terrain, rng):
         di = district_at(x, y)
         best, bd = None, max_d * max_d
         for j, (nx, ny, _) in enumerate(g.nodes):
-            if j == i or j in exclude:
+            if j == i or j in exclude or j in LOOP_NODES:
                 continue
             if other_district and district_at(nx, ny) == di:
                 continue
@@ -809,7 +831,7 @@ def build_roads(terrain, rng):
         x, y = g.nodes[i][0], g.nodes[i][1]
         best, bd = None, max_d
         for sg in g.segments:
-            if sg["bridge"] or sg["kind"] == "pier" or i in (sg["a"], sg["b"]):
+            if sg["bridge"] or sg["kind"] == "pier" or i in (sg["a"], sg["b"]) or sg["a"] in LOOP_NODES or sg["b"] in LOOP_NODES:
                 continue
             a, b = g.nodes[sg["a"]], g.nodes[sg["b"]]
             vx, vy = b[0] - a[0], b[1] - a[1]
@@ -826,8 +848,9 @@ def build_roads(terrain, rng):
         return best, bd
 
     deg = degree()
+    pass_end = {s[k] for s in g.segments if s["kind"] == "pass" for k in ("a", "b")}
     for i in range(len(g.nodes)):
-        if deg[i] <= 1:  # loose end
+        if deg[i] <= 1 and i not in pass_end:  # loose end (mountain road ends stay dead ends)
             linked = {s["b"] if s["a"] == i else s["a"] for s in g.segments if i in (s["a"], s["b"])}
             j = nearest(i, 120.0, exclude=linked)
             # Joining the nearest *node* can run the link alongside a road at a few degrees (the
