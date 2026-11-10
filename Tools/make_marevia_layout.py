@@ -849,6 +849,7 @@ def build_roads(terrain, rng):
     split_crossings(g)
     merge_short_segments(g)
     split_crossings(g)  # a junction node a metre off a road's line can leave one crossing; none after this
+    fix_shallow_forks(g)
 
     # Gates: every road that crosses between districts is closed by the gate of whichever side
     # unlocks later in the story. Explicit tags (bridges) are kept. This catches every
@@ -910,6 +911,69 @@ def merge_short_segments(g, min_len=4.0):
         g.segments = out
         merged += 1
     print(f"short segments: {merged} under {min_len:.0f} m merged away")
+
+
+def fix_shallow_forks(g, max_angle=30.0):
+    """At a junction where two roads leave within `max_angle` degrees of each other, drop the lesser
+    one (lower rank, then shorter) when the network stays connected without it: the two road meshes
+    overlap in a long wedge and one road's kerbs stand across the other (the D.M. 19/4/2006 wants
+    junction arms at 70 to 110 degrees). Hairpin bends (two-road nodes) are not junctions."""
+    def connected_without(drop):
+        segs = [sg for sg in g.segments if sg is not drop]
+        adj = {}
+        for sg in segs:
+            adj.setdefault(sg["a"], set()).add(sg["b"])
+            adj.setdefault(sg["b"], set()).add(sg["a"])
+        if drop["a"] not in adj or drop["b"] not in adj:
+            return False  # one end would be stranded
+        seen, stack = {drop["a"]}, [drop["a"]]
+        while stack:
+            for n in adj[stack.pop()]:
+                if n not in seen:
+                    seen.add(n)
+                    stack.append(n)
+        return drop["b"] in seen
+
+    dropped, tried = 0, set()
+    while True:
+        arms = {}
+        for sg in g.segments:
+            arms.setdefault(sg["a"], []).append(sg)
+            arms.setdefault(sg["b"], []).append(sg)
+        victim = None
+        for n, segs in arms.items():
+            if len(segs) < 3:
+                continue
+            dirs = []
+            for sg in segs:
+                o = g.nodes[sg["b"] if sg["a"] == n else sg["a"]]
+                dx, dy = o[0] - g.nodes[n][0], o[1] - g.nodes[n][1]
+                l = math.hypot(dx, dy) or 1.0
+                dirs.append((dx / l, dy / l, l, sg))
+            for i in range(len(dirs)):
+                for k in range(i + 1, len(dirs)):
+                    if dirs[i][0] * dirs[k][0] + dirs[i][1] * dirs[k][1] < math.cos(math.radians(max_angle)):
+                        continue
+                    pair = sorted((dirs[i], dirs[k]), key=lambda d: (ROAD_RANK[d[3]["kind"]], d[2]))
+                    for d in pair:
+                        sg = d[3]
+                        if sg["bridge"] or sg["kind"] == "pier" or id(sg) in tried:
+                            continue
+                        tried.add(id(sg))
+                        if connected_without(sg):
+                            victim = sg
+                            break
+                    if victim is not None:
+                        break
+                if victim is not None:
+                    break
+            if victim is not None:
+                break
+        if victim is None:
+            break
+        g.segments.remove(victim)
+        dropped += 1
+    print(f"shallow forks: {dropped} road(s) dropped that left a junction within {max_angle:.0f} degrees of another")
 
 
 def drop_coincident(g, max_angle=30.0):
