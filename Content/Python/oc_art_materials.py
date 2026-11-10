@@ -500,7 +500,10 @@ WorldNormal = normalize(mul(tn, (float3x3)Parameters.TangentToWorld));
 Rough = lerp(saturate(orm.g), 0.55, mk);
 AO = orm.r;
 float3 nGeo = normalize(VN);
-float pn = saturate(big * 2.2 - 0.3) * (1.0 - mk);
+// Stone paving (GapWater > 0): water stands in the joints between setts and slabs first (they are the
+// dark, occluded part of the ORM's AO); asphalt keeps only the macro puddle pattern.
+float gapw = saturate((0.72 - orm.r) * 6.0) * GapWater;
+float pn = max(saturate(big * 2.2 - 0.3), gapw) * (1.0 - mk);
 """ + WET_HLSL + """
 return bc;
 """
@@ -812,20 +815,20 @@ def build_foliage_master(mpc):
 
 # Road paving (INFRA_DESIGN.md Phase 4): one instance of M_Master_Road per "paving" value in the road
 # data; OCWorldBuilderLibrary::BuildRoadMeshes gives each chunk one slot per paving it uses.
-PAVING = {  # paving: (texture slug, tile m, tint)
-    "asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0)),
-    "sampietrini": ("cobblestone_square", 1.6, (0.52, 0.52, 0.56)),        # dark basalt setts
-    "porfido": ("cobblestone_square", 1.4, (0.95, 0.72, 0.66)),            # reddish porphyry cubes
-    "lastricato": ("granite_tile", 3.0, (1.0, 0.98, 0.95)),                # large stone slabs
-    "stone_slab": ("granite_tile", 3.0, (1.05, 1.02, 0.97)),               # the Passerella's deck
-    "gravel_white": ("gravel_floor", 2.5, (1.45, 1.38, 1.22)),             # strade bianche
-    "concrete": ("concrete_pavers_02", 3.0, (1.0, 1.0, 1.0)),              # quays and piers
+PAVING = {  # paving: (texture slug, tile m, tint, water in the joints when wet 0..1)
+    "asphalt": ("asphalt_02", 4.0, (1.0, 1.0, 1.0), 0.0),
+    "sampietrini": ("cobblestone_square", 1.6, (0.52, 0.52, 0.56), 1.0),   # dark basalt setts
+    "porfido": ("cobblestone_square", 1.4, (0.95, 0.72, 0.66), 1.0),       # reddish porphyry cubes
+    "lastricato": ("granite_tile", 3.0, (1.0, 0.98, 0.95), 0.8),           # large stone slabs
+    "stone_slab": ("granite_tile", 3.0, (1.05, 1.02, 0.97), 0.8),          # the Passerella's deck
+    "gravel_white": ("gravel_floor", 2.5, (1.45, 1.38, 1.22), 0.0),        # strade bianche
+    "concrete": ("concrete_pavers_02", 3.0, (1.0, 1.0, 1.0), 0.5),         # quays and piers
 }
 
 
 def build_paving_instances(road, textures):
     made = []
-    for paving, (slug, tile, tint) in PAVING.items():
+    for paving, (slug, tile, tint, gaps) in PAVING.items():
         t = textures.get(slug)
         if not t:
             log(f"skip paving {paving}: textures for {slug} not downloaded (python3 -I Tools/fetch_assets.py)")
@@ -837,6 +840,7 @@ def build_paving_instances(road, textures):
         for role in ("BC", "N", "ORM"):
             MEL.set_material_instance_texture_parameter_value(mi, f"A_{role}", t[role])
         MEL.set_material_instance_scalar_parameter_value(mi, "TileA", tile)
+        MEL.set_material_instance_scalar_parameter_value(mi, "GapWater", gaps)
         MEL.set_material_instance_vector_parameter_value(mi, "Tint", unreal.LinearColor(tint[0], tint[1], tint[2], 1.0))
         MEL.update_material_instance(mi)
         L.save(mi)
@@ -1100,7 +1104,7 @@ def main():
     MEL.set_material_instance_parent(gmi, glass)
     L.save(gmi)
     made.append("MI_Kit_Glass")
-    road = build_textured_master("M_Master_Road", ROAD_HLSL, [("A", textures_for(textures, "asphalt_02"))], {"TileA": 4.0},
+    road = build_textured_master("M_Master_Road", ROAD_HLSL, [("A", textures_for(textures, "asphalt_02"))], {"TileA": 4.0, "GapWater": 0.0},
                                  extra=WET_EXTRA(mpc, ripples, 0.6) + [("Tint", lambda m: vector(m, "Tint", (1, 1, 1), -1100, 700))])
     made += build_paving_instances(road, textures)
     build_textured_master("M_Master_Landscape", LAND_HLSL,

@@ -38,6 +38,18 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `T
 | `street_lamp_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/street_lamp_01 | Poly Haven | CC0 | Street lights along streets and avenues | 2026-11-09 |
 | `street_lamp_02` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/street_lamp_02 | Poly Haven | CC0 | Street lights, old town variant | 2026-11-09 |
 | `modular_street_seating` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/modular_street_seating | Poly Haven | CC0 | Benches at junctions and plazas | 2026-11-09 |
+| `Leaking012A` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=Leaking012A | ambientCG | CC0 | Wall drip stains under windows and AC units | 2026-11-09 |
+| `Leaking013A` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=Leaking013A | ambientCG | CC0 | Wall drip stains | 2026-11-09 |
+| `Leaking016A` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=Leaking016A | ambientCG | CC0 | Wall drip stains | 2026-11-09 |
+| `Leaking019A` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=Leaking019A | ambientCG | CC0 | Wall drip stains | 2026-11-09 |
+| `ManholeCover001` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ManholeCover001 | ambientCG | CC0 | Road manholes | 2026-11-09 |
+| `ManholeCover004` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ManholeCover004 | ambientCG | CC0 | Road manholes | 2026-11-09 |
+| `TireTracks001` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=TireTracks001 | ambientCG | CC0 | Tyre marks at junctions | 2026-11-09 |
+| `AsphaltDamage001` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=AsphaltDamage001 | ambientCG | CC0 | Potholes and broken asphalt | 2026-11-09 |
+| `ChewingGum001` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ChewingGum001 | ambientCG | CC0 | Pavement clutter | 2026-11-09 |
+| `ManholeCover009` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ManholeCover009 | ambientCG | CC0 | Gutter gullies along kerbs (BuildRoadDecals, INFRA_DESIGN Phase 4) | 2026-11-10 |
+| `ManholeCover010` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ManholeCover010 | ambientCG | CC0 | Manhole set in cobbles on sampietrini and porfido paving (BuildRoadDecals, Phase 4) | 2026-11-10 |
+| Phase 5 street kit (`Prop_TrafficLight`, `Prop_CableLamp`, `Prop_Cable`) | Own work: `Tools/blender/make_kit.py` (Blender 4.2) | n/a | OpenCity | Project-owned | Signal heads at signalized junctions, cable-hung lamps in the centro storico (`BuildStreetFixtures`) | 2026-11-10 |
 | `metal_trash_can` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/metal_trash_can | Poly Haven | CC0 | Bins at junctions | 2026-11-09 |
 | `fire_hydrant` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/fire_hydrant | Poly Haven | CC0 | Street clutter | 2026-11-09 |
 | `island_tree_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/island_tree_01 | Poly Haven | CC0 | Boulevard and seafront trees | 2026-11-09 |

@@ -33,6 +33,8 @@ SETS = {
     "ManholeCover004": (0.0, 1.0, -1.0),
     "AsphaltDamage001": (0.0, 1.0, -1.0),
     "ChewingGum001": (0.0, 1.0, -1.0),
+    "ManholeCover009": (0.0, 1.0, -1.0),   # gutter gullies (Phase 4)
+    "ManholeCover010": (0.0, 1.0, -1.0),   # covers set in cobbles (Phase 4)
     "TireTracks001": (1.0, 0.55, 0.6),
     "Leaking012A": (1.0, 0.8, -1.0),
     "Leaking013A": (1.0, 0.8, -1.0),

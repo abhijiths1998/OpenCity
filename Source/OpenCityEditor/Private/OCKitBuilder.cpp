@@ -680,6 +680,9 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 	UStaticMesh* Bin = Kit(TEXT("Prop_RecyclingBin"));
 	UStaticMesh* Fountain = Kit(TEXT("Prop_Fountain"));
 	UStaticMesh* BollardIron = Kit(TEXT("Prop_BollardIron"));
+	UStaticMesh* Signal = Kit(TEXT("Prop_TrafficLight"));   // optional: older kits lack the Phase 5 pieces
+	UStaticMesh* CableLamp = Kit(TEXT("Prop_CableLamp"));
+	UStaticMesh* Cable = Kit(TEXT("Prop_Cable"));
 	if (!Lantern || !LedPole || !SignZTL || !Bin)
 	{
 		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetFixtures: fixtures not imported (Tools/blender/make_kit.py, oc_import_kit.py)"));
@@ -756,9 +759,53 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		I.Data[1] = Colour.G;
 		I.Data[2] = Colour.B;
 		for (int32 k = 3; k < 6; ++k) { I.Data[k] = 1.f; }
-		I.Data[7] = 1.f;  // lamp glass lit at night (M_Master_KitGlass)
+		I.Data[7] = Mesh == Signal ? 0.f : 1.f;  // lamp glass lit at night (M_Master_KitGlass); signal lenses never
+		if (Mesh == Signal)
+		{
+			I.Data[0] = 0.85f; I.Data[1] = 0.62f; I.Data[2] = 0.03f;  // yellow push-button box (Paint)
+		}
 		Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(At.X / ChunkSizeCm), FMath::FloorToInt32(At.Y / ChunkSizeCm))).Add(I);
 		++Count;
+	};
+
+	// A placed transform as is (cables hang over the road, so no ground or carriageway check).
+	auto PutXf = [&](UStaticMesh* Mesh, const FTransform& Xf, float Lit = 0.f)
+	{
+		if (!Mesh)
+		{
+			return;
+		}
+		FInstance I;
+		I.Mesh = Mesh;
+		I.Transform = Xf;
+		for (int32 k = 0; k < 6; ++k) { I.Data[k] = 1.f; }
+		I.Data[7] = Lit;
+		const FVector L = Xf.GetLocation();
+		Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(L.X / ChunkSizeCm), FMath::FloorToInt32(L.Y / ChunkSizeCm))).Add(I);
+		++Count;
+	};
+	// A lamp hung on a cable across the street between facade points L and R (cm, on the facades):
+	// the cable is anchored 6.5 m above the road and sags 0.3 m to the lamp in the middle.
+	int32 CableLamps = 0;
+	auto HangLamp = [&](const FVector& L, const FVector& R)
+	{
+		if (!CableLamp || !Cable)
+		{
+			return false;
+		}
+		const FVector Mid2 = (L + R) * 0.5;
+		const double Road = Height.HeightCm(Mid2.X, Mid2.Y) + 27.0;
+		const FVector A(L.X, L.Y, Road + 650.0), B(R.X, R.Y, Road + 650.0);
+		const FVector M(Mid2.X, Mid2.Y, Road + 620.0);
+		for (const FVector& From : { A, B })
+		{
+			const FVector D = M - From;
+			const FRotator Rot = D.Rotation();  // pitch and yaw along the half span
+			PutXf(Cable, FTransform(Rot, From, FVector(D.Size() / 100.0, 1.0, 1.0)));
+		}
+		PutXf(CableLamp, FTransform(FRotator::ZeroRotator, M - FVector(0, 0, 62.0)), 1.f);  // bowl lit at night
+		++CableLamps;
+		return true;
 	};
 
 	// Signs where traffic approaches node N along segment S: on the approaching driver's right,
@@ -796,12 +843,17 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		const double Walk = HasWalk(S) ? SidewalkWidthCm : 0.0;
 		auto At = [&](double D, double Sign, double Off) { return A + Dir * D + Side * (Sign * Off); };
 
-		// Centro storico: lanterns on the facades, alternating sides every 18 m, 4.2 m up.
+		// Centro storico: lanterns on the facades, alternating sides every 18 m, 4.2 m up; every
+		// third one is a lamp hung on a cable across the street instead.
 		if (S.Profile == TEXT("centro_storico"))
 		{
 			int32 k = 0;
 			for (double D = From; D <= To; D += 1800.0, ++k)
 			{
+				if (k % 3 == 1 && HangLamp(At(D, -1.0, Half + Walk + 30.0), At(D, 1.0, Half + Walk + 30.0)))
+				{
+					continue;
+				}
 				const double SideSign = (k % 2) ? 1.0 : -1.0;
 				const FVector Wall = At(D, SideSign, Half + Walk + 30.0);
 				Put(Lantern, Wall, YawForLocalY(Side * SideSign), 420.0);
@@ -841,7 +893,51 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 	{
 		JunctionType.Add(J.Node, J.Type);
 	}
-	int32 CentroCorners = 0;
+	int32 CentroCorners = 0, Signals = 0;
+	// The through road at a junction: the most nearly straight pair of arms of the highest rank, then
+	// the widest (as junction_arms in Tools/make_marevia_layout.py); every other arm is minor.
+	auto Rank = [](const FOCRoadSegment& S)
+	{
+		return S.Kind == TEXT("pier") ? 0 : S.Kind == TEXT("alley") ? 1 : S.Kind == TEXT("street") ? 2 : 3;
+	};
+	auto AwayDir = [&](int32 N, const FOCRoadSegment& S) { return ((S.A == N ? Nodes[S.B].Location : Nodes[S.A].Location) - Nodes[N].Location).GetSafeNormal2D(); };
+	auto MinorArms = [&](int32 N, const TArray<int32>& Arms)
+	{
+		int32 BestI = INDEX_NONE, BestK = INDEX_NONE;
+		double BestKey[3] = { -1.0, -1.0, -1.0 };
+		for (int32 i = 0; i < Arms.Num(); ++i)
+		{
+			for (int32 k = i + 1; k < Arms.Num(); ++k)
+			{
+				const FOCRoadSegment& Si = Segs[Arms[i]];
+				const FOCRoadSegment& Sk = Segs[Arms[k]];
+				const double Straight = -FVector::DotProduct(AwayDir(N, Si), AwayDir(N, Sk));
+				const double Key[3] = { double(FMath::Min(Rank(Si), Rank(Sk))), FMath::Min(Si.WidthCm, Sk.WidthCm), Straight };
+				const bool bBetter = Key[0] != BestKey[0] ? Key[0] > BestKey[0] : Key[1] != BestKey[1] ? Key[1] > BestKey[1] : Key[2] > BestKey[2];
+				if (Straight > 0.5 && bBetter)
+				{
+					BestI = i; BestK = k;
+					FMemory::Memcpy(BestKey, Key, sizeof(Key));
+				}
+			}
+		}
+		if (BestI == INDEX_NONE)  // a Y: the two widest arms are the through road
+		{
+			TArray<int32> Order = Arms;
+			Order.Sort([&](int32 a, int32 b) { return Rank(Segs[a]) != Rank(Segs[b]) ? Rank(Segs[a]) > Rank(Segs[b]) : Segs[a].WidthCm > Segs[b].WidthCm; });
+			BestI = Arms.IndexOfByKey(Order[0]);
+			BestK = Arms.IndexOfByKey(Order[1]);
+		}
+		TArray<int32> Minor;
+		for (int32 i = 0; i < Arms.Num(); ++i)
+		{
+			if (i != BestI && i != BestK && !Segs[Arms[i]].bPedestrian && Segs[Arms[i]].Bridge.IsNone())
+			{
+				Minor.Add(Arms[i]);
+			}
+		}
+		return Minor;
+	};
 	for (int32 N = 0; N < Nodes.Num(); ++N)
 	{
 		const TArray<int32>& At = Roads.SegmentsAt(N);
@@ -862,34 +958,32 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 				}
 			}
 		}
-		else if (*Type == TEXT("blind_t") && At.Num() == 3)
+		else if (*Type == TEXT("signalized") && Signal)
 		{
-			// The narrowest road is the minor one: STOP on it, a convex mirror across the main road.
-			int32 Minor = At[0];
+			// A signal head on the right of every approach, just before the junction, facing the traffic
+			// (unlit: signal states come with traffic, INFRA_DESIGN Phase 11).
 			for (const int32 si : At)
 			{
-				if (Segs[si].WidthCm < Segs[Minor].WidthCm) { Minor = si; }
-			}
-			const FOCRoadSegment& M = Segs[Minor];
-			if (!M.bPedestrian && M.Bridge.IsNone())
-			{
-				SignAt(SignStop, M, N, 150.0);
-				const FVector Away = ((M.A == N ? Nodes[M.B].Location : Nodes[M.A].Location) - Nodes[N].Location).GetSafeNormal2D();
-				Put(Mirror, Nodes[N].Location - Away * (Clear[N] + 60.0), YawForLocalY(-Away), 15.0);
+				if (!Segs[si].bPedestrian && Segs[si].Bridge.IsNone())
+				{
+					SignAt(Signal, Segs[si], N, 100.0);
+					++Signals;
+				}
 			}
 		}
-		else if (*Type == TEXT("priority"))
+		else if ((*Type == TEXT("stop") || *Type == TEXT("blind_t") || *Type == TEXT("priority")) && At.Num() >= 3)
 		{
-			bool bViale = false;
-			for (const int32 si : At) { bViale |= Segs[si].Profile == TEXT("viale"); }
-			if (bViale)
+			// The layout's sight-triangle check (D.M. 19/4/2006 4.6) picked the control: give way where
+			// the 12 s triangle is clear, STOP where only the 6 s one is, STOP and a convex mirror across
+			// the through road where neither is.
+			for (const int32 Minor : MinorArms(N, At))
 			{
-				for (const int32 si : At)
+				const FOCRoadSegment& M = Segs[Minor];
+				SignAt(*Type == TEXT("priority") ? SignGive : SignStop, M, N, 150.0);
+				if (*Type == TEXT("blind_t"))
 				{
-					if (Segs[si].Profile != TEXT("viale") && !Segs[si].bPedestrian && Segs[si].Bridge.IsNone())
-					{
-						SignAt(SignGive, Segs[si], N, 150.0);
-					}
+					const FVector Away = AwayDir(N, M);
+					Put(Mirror, Nodes[N].Location - Away * (Clear[N] + 60.0), YawForLocalY(-Away), 15.0);
 				}
 			}
 		}
@@ -954,7 +1048,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		for (const FInstance& I : Pair.Value)
 		{
 			UInstancedStaticMeshComponent* ISM = Actor->GetOrAddPiece(I.Mesh);
-			if (I.Mesh != Lantern)  // posts, poles, bins and fountains are solid; lanterns hang out of reach
+			if (I.Mesh != Lantern && I.Mesh != CableLamp && I.Mesh != Cable)  // posts, poles, bins and fountains are solid; lamps hang out of reach
 			{
 				ISM->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			}
@@ -964,7 +1058,8 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		Actor->SetActorLabel(FString::Printf(TEXT("Street_Fixtures_%d_%d"), Pair.Key.X, Pair.Key.Y));
 		Actor->SetFolderPath(TEXT("Props"));
 	}
-	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetFixtures: %d fixtures in %d chunks, %d skipped for standing on a carriageway"), Count, Chunks.Num(), Skipped);
+	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetFixtures: %d fixtures in %d chunks (%d cable lamps, %d signal heads), %d skipped for standing on a carriageway"),
+		Count, Chunks.Num(), CableLamps, Signals, Skipped);
 	return Count;
 }
 
@@ -1097,6 +1192,8 @@ int32 UOCWorldBuilderLibrary::BuildRoadDecals(UWorld* World, const FString& Layo
 	UMaterialInterface* Tyres = Mat(TEXT("TireTracks001"));
 	UMaterialInterface* Damage = Mat(TEXT("AsphaltDamage001"));
 	UMaterialInterface* Gum = Mat(TEXT("ChewingGum001"));
+	UMaterialInterface* Gully = Mat(TEXT("ManholeCover009"));        // optional (INFRA_DESIGN Phase 4)
+	UMaterialInterface* CobbleManhole = Mat(TEXT("ManholeCover010"));
 	if (!Manholes[0])
 	{
 		UE_LOG(LogOpenCity, Error, TEXT("BuildRoadDecals: decals not imported (Content/Python/oc_decals.py)"));
@@ -1137,21 +1234,35 @@ int32 UOCWorldBuilderLibrary::BuildRoadDecals(UWorld* World, const FString& Layo
 		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
 		const double Lane = S.WidthCm / (4.0 * FMath::Max(1, S.LanesPerDirection));
 		auto At = [&](double D, double Lateral) { return A + Dir * D + Right * Lateral; };
+		// Stone paving (centro storico, piazze) gets covers set in cobbles and no asphalt damage;
+		// worn roads (segment wear 0..1) get more potholes and braking marks.
+		const bool bStone = S.Paving == TEXT("sampietrini") || S.Paving == TEXT("porfido") || S.Paving == TEXT("lastricato");
+		const double WearK = 0.4 + 1.2 * FMath::Clamp(S.Wear, 0.f, 1.f);
 
 		for (double D = R.FRandRange(1500.f, 4000.f); D < Len - 1200.0; D += R.FRandRange(6000.f, 8000.f))
 		{
-			Put(Manholes[R.RandRange(0, 1)], At(D, (R.FRand() < 0.5 ? -1.0 : 1.0) * Lane), R.FRandRange(0.f, 360.f), FVector(30.0, 45.0, 45.0), 15.0);
+			UMaterialInterface* Cover = bStone && CobbleManhole ? CobbleManhole : Manholes[R.RandRange(0, 1)];
+			Put(Cover, At(D, (R.FRand() < 0.5 ? -1.0 : 1.0) * Lane), R.FRandRange(0.f, 360.f), FVector(30.0, 45.0, 45.0), 15.0);
+		}
+		// Gullies in the gutter by the kerb, about every 22 m, alternating sides (streets with kerbs).
+		if (Gully && (S.Kind == TEXT("avenue") || S.Kind == TEXT("street")))
+		{
+			int32 k = 0;
+			for (double D = R.FRandRange(600.f, 1600.f); D < Len - 600.0; D += 2200.0, ++k)
+			{
+				Put(Gully, At(D, ((k % 2) ? 1.0 : -1.0) * (S.WidthCm * 0.5 - 35.0)), Yaw, FVector(30.0, 28.0, 28.0), 15.0);
+			}
 		}
 		for (int32 End = 0; End < 2; ++End)
 		{
-			if (R.FRand() < 0.4f)  // braking marks on the approach to a junction
+			if (!bStone && R.FRand() < 0.15f + 0.45f * float(WearK - 0.4))  // braking marks on the approach to a junction
 			{
 				const double D = End == 0 ? 1100.0 : Len - 1100.0;
 				const double Side = End == 0 ? -1.0 : 1.0;  // the lane heading into that junction
 				Put(Tyres, At(D, Side * Lane), Yaw + 90.0, FVector(30.0, 100.0, 380.0), 15.0);
 			}
 		}
-		for (double D = R.FRandRange(2000.f, 9000.f); D < Len - 1000.0; D += R.FRandRange(12000.f, 18000.f))
+		for (double D = R.FRandRange(2000.f, 9000.f); !bStone && D < Len - 1000.0; D += R.FRandRange(12000.f, 18000.f) / WearK)
 		{
 			Put(Damage, At(D, R.FRandRange(-0.4f, 0.4f) * S.WidthCm), R.FRandRange(0.f, 360.f), FVector(30.0, 110.0, 110.0), 15.0);
 		}

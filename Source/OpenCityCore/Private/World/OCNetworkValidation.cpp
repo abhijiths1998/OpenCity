@@ -27,7 +27,7 @@ namespace OCValidate
 
 	const TSet<FName>& JunctionTypes()
 	{
-		static const TSet<FName> Types = { TEXT("priority"), TEXT("blind_t"), TEXT("signalized"), TEXT("roundabout"), TEXT("piazza"),
+		static const TSet<FName> Types = { TEXT("priority"), TEXT("stop"), TEXT("blind_t"), TEXT("signalized"), TEXT("roundabout"), TEXT("piazza"),
 			TEXT("gate_fork"), TEXT("ztl_gate"), TEXT("level_crossing"), TEXT("tram_crossing"), TEXT("bridge_head"), TEXT("interchange") };
 		return Types;
 	}

@@ -1611,6 +1611,63 @@ def make_fountain():
     return P
 
 
+def make_traffic_light():
+    """Three-aspect traffic signal on a 3.2 m post (original design), face toward -Y like the
+    signs, with a pedestrian push-button box. Lenses are unlit here: signal states come with
+    traffic (INFRA_DESIGN Phase 11), red is painted so the head reads at a distance."""
+    P = Piece("Prop_TrafficLight", kind="fixture")
+    post = new_bm()
+    add_cyl(post, (0, 0.05, 0), 0.07, 0.25, seg=12)                    # base collar
+    add_cyl(post, (0, 0.05, 0.25), 0.055, 2.95, seg=12)
+    add_cyl(post, (0, 0.05, 3.20), 0.06, 0.03, seg=12)                 # cap
+    P.add(post, "Metal")
+    head = new_bm()
+    add_box(head, -0.15, 0.15, -0.12, 0.10, 2.25, 3.15)                # housing
+    bevel(head, 0.02, 1)
+    for z in (2.40, 2.70, 3.00):                                       # visors
+        add_box(head, -0.13, 0.13, -0.30, -0.12, z + 0.11, z + 0.13)
+    add_box(head, -0.26, 0.26, 0.10, 0.12, 2.18, 3.22)                 # backplate
+    P.add(head, "PaintBlack")
+    red = new_bm()
+    add_cyl(red, (0, -0.12, 3.00), 0.10, 0.01, seg=16, axis="Y")
+    transform(red, Matrix.Translation((0, -0.01, 0)))
+    P.add(red, "PaintRed")
+    lens = new_bm()
+    for z in (2.40, 2.70):
+        add_cyl(lens, (0, -0.13, z), 0.10, 0.01, seg=16, axis="Y")
+    P.add(lens, "Glass")
+    button = new_bm()
+    add_box(button, -0.07, 0.07, -0.06, 0.0, 1.00, 1.22)               # pedestrian push button
+    P.add(button, "Paint")
+    P.ucx = [(-0.26, 0.26, -0.3, 0.12, 0, 3.25)]
+    return P
+
+
+def make_cable_lamp():
+    """Lamp hung on a cable across a narrow street (centro storico). Pivot at the bottom of the
+    glass bowl; the hook on the cable is 0.62 m above it."""
+    P = Piece("Prop_CableLamp", kind="fixture")
+    m = new_bm()
+    add_cyl(m, (0, 0, 0.44), 0.012, 0.18, seg=8)                       # hanger up to the hook
+    add_cyl(m, (0, 0, 0.20), 0.32, 0.24, seg=16, r2=0.05)              # shade, wide at the bottom
+    P.add(m, "Metal")
+    bowl = new_bm()
+    add_cyl(bowl, (0, 0, 0.0), 0.12, 0.20, seg=16, r2=0.24)            # glass bowl
+    P.add(bowl, "Glass")
+    P.ucx = [(-0.33, 0.33, -0.33, 0.33, 0, 0.62)]
+    return P
+
+
+def make_cable():
+    """1 m of 8 mm cable along +X from the origin, its axis 8 mm up; stretched per instance (scale X = span)."""
+    P = Piece("Prop_Cable", kind="fixture")
+    m = new_bm()
+    add_cyl(m, (0, 0, 0.008 * math.cos(math.pi / 6)), 0.008, 1.0, seg=6, axis="X")  # a hexagon resting on z = 0
+    P.add(m, "Metal")
+    P.ucx = [(0, 1, -0.01, 0.01, 0, 0.016)]
+    return P
+
+
 BUILDERS = [
     lambda: make_wall(2.0), lambda: make_wall(4.0),
     lambda: make_window(2.0, "shutters"), lambda: make_window(4.0, "shutters"),
@@ -1625,6 +1682,7 @@ BUILDERS = [
     lambda: make_sign("Speed30"), lambda: make_sign("Speed50"), lambda: make_sign("Stop"), lambda: make_sign("GiveWay"),
     lambda: make_sign("NoEntry"), lambda: make_sign("ZTL"), make_convex_mirror,
     lambda: make_bollard("Stone"), lambda: make_bollard("Iron"), make_wall_lantern, make_led_pole, make_bin, make_fountain,
+    make_traffic_light, make_cable_lamp, make_cable,
 ]
 
 

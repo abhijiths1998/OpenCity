@@ -21,7 +21,7 @@ import oc_lib as L
 TAG = "oc_kit"
 # Pieces placed with collision on (BuildRetainingWalls, BuildStreetFixtures): complex as simple.
 SOLID = ("RetainingWall_", "WallCoping_", "Sign_", "Prop_Bollard", "Prop_LedPole", "Prop_ConvexMirror",
-         "Prop_RecyclingBin", "Prop_Fountain")
+         "Prop_RecyclingBin", "Prop_Fountain", "Prop_TrafficLight")
 PROJECT_DIR = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 SRC = os.path.join(PROJECT_DIR, "SourceArt/Kit/FBX")
 DEST = "/Game/Environment/Meshes/Kit"

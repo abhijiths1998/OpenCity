@@ -76,6 +76,13 @@ bool FOCRoadGraphPathTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Avoids closed gate (no direct hop)"), Around.Num() == 2);
 
 	TestEqual(TEXT("Path to self"), G.FindPath(2, 2), TArray<int32>({ 2 }));
+
+	// No U-turns: arriving at 1 from 0 and going back to 0 means going round (1 has other roads)...
+	const TArray<int32> Back = G.FindPathNoUTurn(1, 0, 0);
+	TestTrue(TEXT("No U-turn: does not reverse straight away"), Back.Num() > 2 && Back[1] != 0);
+	TestEqual(TEXT("No U-turn: still gets there"), Back.Num() > 0 ? Back.Last() : INDEX_NONE, 0);
+	// ...and with no arrival direction it is the plain fastest path.
+	TestEqual(TEXT("No U-turn without an arrival road = FindPath"), G.FindPathNoUTurn(0, INDEX_NONE, 2), G.FindPath(0, 2));
 	TestTrue(TEXT("Invalid node gives empty path"), G.FindPath(0, 99).IsEmpty());
 	return true;
 }

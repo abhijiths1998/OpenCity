@@ -842,7 +842,9 @@ def build_roads(terrain, rng):
     print(f"quarry spur leaves the pass at ({q0p[0]:.0f}, {q0p[1]:.0f})")
     quarry = g.path([q0p] + spur[1:] + [quarry_end], "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
-    mast_end = (X(1820), 2680)
+    # The service road ends at a turning area 70 m below the mast: the ridge rises 150 m in 150 m
+    # against the map edge, and a road up to the mast itself needed stacked 5 m switchbacks.
+    mast_end = (X(1820), 2610)
     mast = g.path(route_road(terrain, gate_n, mast_end, avoid=wet_or_quarry, loop_avoid=near_road,
                              keep_off=road_mask(g, (gate_n, mast_end)), start_dir=tangent(quarry, quarry[-2])), "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
@@ -852,6 +854,25 @@ def build_roads(terrain, rng):
     hermitage = g.path(route_road(terrain, dam_w, hermitage_end, avoid=wet_or_crest_side, loop_avoid=near_road,
                                   keep_off=road_mask(g, (dam_w, hermitage_end))), "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
+    def turning_circle(ids, r=HAIRPIN_R, n=10):
+        """A turning circle at a dead end (slargo di inversione): a ring of radius r beyond the last
+        node, level with it. Traffic can't U-turn on a 7 m mountain road; with the ring the end is
+        no longer a dead end, so the lane graph routes round it."""
+        e, p = g.nodes[ids[-1]], g.nodes[ids[-2]]
+        dx, dy = e[0] - p[0], e[1] - p[1]
+        l = math.hypot(dx, dy) or 1.0
+        cx, cy = e[0] + dx / l * r, e[1] + dy / l * r
+        a0 = math.atan2(e[1] - cy, e[0] - cx)
+        ring = [ids[-1]] + [g.node(cx + r * math.cos(a0 + 2 * math.pi * k / n), cy + r * math.sin(a0 + 2 * math.pi * k / n), 1.0)
+                            for k in range(1, n)]
+        for i in ring:
+            g.nodes[i][2] = e[2]
+        for a, b in zip(ring, ring[1:] + ring[:1]):
+            g.connect(a, b, "pass")
+        LOOP_NODES.update(ring)
+        return ring
+    turning_circle(mast)
+    turning_circle(hermitage)
     print(f"hairpin loops: {len(climb_bulbs)} on the pass (radius {HAIRPIN_R:.0f} m)")
     print(f"mountain roads: pass {len(climb)} nodes, quarry {len(quarry)}, mast {len(mast)}, hermitage {len(hermitage)}")
 
@@ -1540,6 +1561,40 @@ def flatten_roads(h, g):
     return best
 
 
+def sink_junctions(h, g):
+    """Keep the land at or below each junction's height under its junction surface. The road builder
+    draws a flat polygon at the node's height out to the widest road's half width; the land there
+    follows each road's own grade, so between two roads climbing apart (the hills gate: the pass up,
+    a street down) it rose through the polygon's corner and stopped the tour car."""
+    degree = {}
+    reach = {}
+    for sg in g.segments:
+        if sg["bridge"]:
+            continue
+        for k in ("a", "b"):
+            degree[sg[k]] = degree.get(sg[k], 0) + 1
+            reach[sg[k]] = max(reach.get(sg[k], 0.0), sg["width"] / 2.0 + 1.5)
+    sunk = 0
+    for n, d in degree.items():
+        if d < 3:
+            continue
+        x, y = g.nodes[n][0], g.nodes[n][1]
+        r = reach[n]
+        xi, yi = int(round(x)), int(round(y - Y_MIN))
+        if not (0 <= xi <= W and 0 <= yi <= H):
+            continue
+        z0 = float(h[yi, xi])
+        x0, x1 = max(0, int(x - r)), min(W, int(x + r) + 1)
+        y0, y1 = max(0, int(y - r - Y_MIN)), min(H, int(y + r - Y_MIN) + 1)
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        disc = np.hypot(xx - x, yy + Y_MIN - y) <= r
+        patch = h[y0:y1, x0:x1]
+        over = disc & (patch > z0)
+        sunk += int(over.sum())
+        patch[over] = z0
+    print(f"junction surfaces: {sunk} m2 of land lowered to the junction height")
+
+
 def box_blur(a, r):
     """Mean over a (2r+1)^2 window (separable cumulative sums, edges clamped)."""
     out = a
@@ -1809,6 +1864,102 @@ def rect_mask(cx, cy, w, d, yaw, grow=0.0):
     px, py = xx - cx, (yy + Y_MIN) - cy
     u, v = px * c + py * sn, -px * sn + py * c
     return y0, y1, x0, x1, (np.abs(u) <= hw) & (np.abs(v) <= hd)
+
+
+def junction_arms(g, n, segs):
+    """(through, minor): the through road is the most nearly straight pair of arms of the highest
+    rank (then the widest); every other arm is minor (D.M. 19/4/2006 4.6: every junction has a
+    hierarchy, no plain priority-to-the-right)."""
+    def away(sg):
+        o = g.nodes[sg["b"] if sg["a"] == n else sg["a"]]
+        dx, dy = o[0] - g.nodes[n][0], o[1] - g.nodes[n][1]
+        l = math.hypot(dx, dy) or 1.0
+        return dx / l, dy / l
+    best, key = None, None
+    for i in range(len(segs)):
+        for k in range(i + 1, len(segs)):
+            a, b = away(segs[i]), away(segs[k])
+            straight = -(a[0] * b[0] + a[1] * b[1])  # 1 = opposite directions
+            kk = (min(ROAD_RANK[segs[i]["kind"]], ROAD_RANK[segs[k]["kind"]]),
+                  min(segs[i]["width"], segs[k]["width"]), straight)
+            if straight > 0.5 and (key is None or kk > key):
+                best, key = (i, k), kk
+    if best is None:  # no straight pair (a Y): the two widest arms are the through road
+        order = sorted(range(len(segs)), key=lambda i: (ROAD_RANK[segs[i]["kind"]], segs[i]["width"]), reverse=True)
+        best = (order[0], order[1])
+    through = [segs[i] for i in best]
+    return through, [sg for i, sg in enumerate(segs) if i not in best], away
+
+
+def sight_triangles(g, buildings, junctions):
+    """D.M. 19/4/2006 section 4.6 at every priority and blind-T junction. The long leg along the
+    through road is D = v t (v its speed limit in m/s; t = 12 s under give way, 6 s under STOP, plus
+    1 s per point of the minor arm's grade above 2%); the short leg runs 20 m back from the through
+    road's edge (give way) or 3 m behind the stop line (STOP). No building may stand in the triangle
+    (the decree's limit is 0.8 m; buildings are the obstacles the layout knows).
+    Retypes the junction: give-way triangles clear -> "priority" (give way on the minor arms);
+    STOP triangles clear -> "stop"; neither -> "blind_t" (STOP and a convex mirror)."""
+    occ = np.zeros((H + 1, W + 1), dtype=bool)
+    for b in buildings:
+        m = rect_mask(b["pos"][0], b["pos"][1], b["size"][0], b["size"][1], math.radians(b["yaw"]))
+        if m is not None:
+            y0, y1, x0, x1, mk = m
+            occ[y0:y1, x0:x1] |= mk
+
+    def blocked(tri):
+        (ax, ay), (bx, by), (cx, cy) = tri
+        n = max(2, int(max(math.dist(tri[0], tri[1]), math.dist(tri[0], tri[2]), math.dist(tri[1], tri[2])) / 1.5))
+        for i in range(n + 1):
+            for j in range(n + 1 - i):
+                u, v = i / n, j / n
+                x, y = ax + (bx - ax) * u + (cx - ax) * v, ay + (by - ay) * u + (cy - ay) * v
+                xi, yi = int(round(x)), int(round(y - Y_MIN))
+                if 0 <= xi <= W and 0 <= yi <= H and occ[yi, xi]:
+                    return True
+        return False
+
+    by_node = {}
+    for sg in g.segments:
+        by_node.setdefault(sg["a"], []).append(sg)
+        by_node.setdefault(sg["b"], []).append(sg)
+    counts = {"priority": 0, "stop": 0, "blind_t": 0}
+    for jn in junctions:
+        if jn["type"] not in ("priority", "blind_t"):
+            continue
+        n = jn["node"]
+        segs = [sg for sg in by_node.get(n, []) if not sg["pedestrian"]]
+        if len(segs) < 3:
+            continue
+        through, minor, away = junction_arms(g, n, segs)
+        v = max(sg["speed_kmh"] for sg in through) / 3.6
+        half = max(sg["width"] for sg in through) / 2.0
+        verdict = "priority"
+        for mi in minor:
+            o = g.nodes[mi["b"] if mi["a"] == n else mi["a"]]
+            length = math.dist(o[:2], g.nodes[n][:2]) or 1.0
+            extra = max(0.0, abs(o[2] - g.nodes[n][2]) / length * 100.0 - 2.0)
+            md = away(mi)
+            for t, back, kind in ((12.0, 20.0, "priority"), (6.0, 3.0, "stop")):
+                obs = (g.nodes[n][0] + md[0] * (half + back), g.nodes[n][1] + md[1] * (half + back))
+                clear = True
+                for th in through:
+                    td = away(th)
+                    far = (g.nodes[n][0] + td[0] * v * (t + extra), g.nodes[n][1] + td[1] * v * (t + extra))
+                    if blocked((obs, tuple(g.nodes[n][:2]), far)):
+                        clear = False
+                        break
+                if clear:
+                    break
+            else:
+                kind = "blind_t"
+            rank = {"priority": 0, "stop": 1, "blind_t": 2}
+            if rank[kind] > rank[verdict]:
+                verdict = kind
+        jn["type"] = verdict
+        counts[verdict] += 1
+    print(f"sight triangles (D.M. 19/4/2006 4.6): {counts['priority']} junctions clear for give way, "
+          f"{counts['stop']} need STOP, {counts['blind_t']} need STOP and a mirror")
+    return counts
 
 
 def place_buildings(terrain, best, g, rng, landmarks=LANDMARKS):
@@ -2106,6 +2257,7 @@ def main():
     best = flatten_roads(terrain, g)
     relax_slopes(terrain, best)
     clamp_iters = clamp_slopes(terrain, best)
+    sink_junctions(terrain, g)
     for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
 
@@ -2115,6 +2267,7 @@ def main():
     t0 = time.time()
     buildings = place_buildings(terrain, best, g, random.Random(SEED + 7), landmarks)
     buildings += landmark_buildings(terrain, landmarks)
+    sight_triangles(g, buildings, junctions)
     bt = time.time() - t0
 
     # Connectivity: report pieces of the road network that can't be reached from the start.

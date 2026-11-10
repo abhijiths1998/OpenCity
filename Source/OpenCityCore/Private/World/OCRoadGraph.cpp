@@ -278,6 +278,80 @@ TArray<int32> FOCRoadGraph::FindPath(int32 Start, int32 Goal, const TSet<FName>&
 	return Path;
 }
 
+TArray<int32> FOCRoadGraph::FindPathNoUTurn(int32 Start, int32 ArrivedFrom, int32 Goal, const TSet<FName>& ClosedGates) const
+{
+	TArray<int32> Path;
+	if (!Nodes.IsValidIndex(Start) || !Nodes.IsValidIndex(Goal))
+	{
+		return Path;
+	}
+	// Search over (node, previous node) states: the same node reached from different roads may
+	// continue differently. Same A* on travel time as FindPath.
+	double MaxSpeed = 1.0;
+	for (const FOCRoadSegment& S : Segments)
+	{
+		MaxSpeed = FMath::Max(MaxSpeed, static_cast<double>(S.SpeedKmh) / 0.036);
+	}
+	auto Heuristic = [&](int32 N) { return FVector::Dist(Nodes[N].Location, Nodes[Goal].Location) / MaxSpeed; };
+	const int64 Stride = int64(Nodes.Num()) + 1;
+	auto Key = [Stride](int32 N, int32 Prev) { return int64(N) * Stride + int64(Prev + 1); };
+	TMap<int64, double> Cost;
+	TMap<int64, int64> Came;
+	struct FOpen { double F; int32 Node; int32 Prev; bool operator<(const FOpen& O) const { return F < O.F; } };
+	TArray<FOpen> Open;
+	Cost.Add(Key(Start, ArrivedFrom), 0.0);
+	Open.HeapPush({ Heuristic(Start), Start, ArrivedFrom });
+	while (!Open.IsEmpty())
+	{
+		FOpen Top;
+		Open.HeapPop(Top);
+		const int64 K = Key(Top.Node, Top.Prev);
+		const double G = Cost[K];
+		if (Top.F > G + Heuristic(Top.Node) + KINDA_SMALL_NUMBER)
+		{
+			continue; // stale heap entry
+		}
+		if (Top.Node == Goal)
+		{
+			for (int64 At = K;;)
+			{
+				Path.Insert(int32(At / Stride), 0);
+				const int64* Back = Came.Find(At);
+				if (!Back)
+				{
+					break;
+				}
+				At = *Back;
+			}
+			return Path;
+		}
+		const bool bDeadEnd = Adjacency[Top.Node].Num() <= 1;
+		for (const int32 SegIdx : Adjacency[Top.Node])
+		{
+			const FOCRoadSegment& S = Segments[SegIdx];
+			if ((!S.Gate.IsNone() && ClosedGates.Contains(S.Gate)) || !S.AllowsFrom(Top.Node))
+			{
+				continue;
+			}
+			const int32 Next = S.A == Top.Node ? S.B : S.A;
+			if (Next == Top.Prev && !bDeadEnd)
+			{
+				continue; // no U-turn except at a dead end
+			}
+			const int64 NK = Key(Next, Top.Node);
+			const double NewCost = G + SegmentTime(S);
+			const double* Old = Cost.Find(NK);
+			if (!Old || NewCost < *Old)
+			{
+				Cost.Add(NK, NewCost);
+				Came.Add(NK, K);
+				Open.HeapPush({ NewCost + Heuristic(Next), Next, Top.Node });
+			}
+		}
+	}
+	return Path;
+}
+
 double FOCRoadGraph::PathTimeSeconds(const TArray<int32>& Path) const
 {
 	double T = 0.0;

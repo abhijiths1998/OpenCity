@@ -363,6 +363,16 @@
    "id": "ChewingGum001",
    "res": "1K-PNG",
    "notes": "Pavement clutter"
+  },
+  {
+   "id": "ManholeCover009",
+   "res": "1K-PNG",
+   "notes": "Gutter gullies along kerbs (BuildRoadDecals, INFRA_DESIGN Phase 4)"
+  },
+  {
+   "id": "ManholeCover010",
+   "res": "1K-PNG",
+   "notes": "Manhole set in cobbles on sampietrini and porfido paving (BuildRoadDecals, Phase 4)"
   }
  ]
 }

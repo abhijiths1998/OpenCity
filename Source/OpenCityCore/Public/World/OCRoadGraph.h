@@ -114,6 +114,12 @@ public:
 	 * Returns node indices from Start to Goal, or empty if unreachable.
 	 */
 	TArray<int32> FindPath(int32 Start, int32 Goal, const TSet<FName>& ClosedGates = TSet<FName>()) const;
+	/**
+	 * As FindPath, but never straight back along the road just travelled, at Start (ArrivedFrom =
+	 * the node before Start, or INDEX_NONE) or on the way: U-turns only at dead ends, as in the lane
+	 * graph. A route through waypoints joins its legs with this, so it never reverses at one.
+	 */
+	TArray<int32> FindPathNoUTurn(int32 Start, int32 ArrivedFrom, int32 Goal, const TSet<FName>& ClosedGates = TSet<FName>()) const;
 
 	/** Travel time in seconds along a path at each segment's speed limit. */
 	double PathTimeSeconds(const TArray<int32>& Path) const;

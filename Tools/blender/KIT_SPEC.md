@@ -64,6 +64,9 @@ Names are the exported mesh names; UE adds the `SM_Kit_` prefix (`SM_Kit_Wall_40
 | `Prop_LedPole` | 8 m, 1.85 m arm | galvanised LED street light (periphery, extra-urban); arm along -Y |
 | `Prop_RecyclingBin` | 1.36 × 1.0 × 1.3 | wheeled kerbside bin, coloured per instance |
 | `Prop_Fountain` | 0.6 × 0.62 × 1.14 | cast-iron drinking fountain (original design) |
+| `Prop_TrafficLight` | 0.52 × 0.42 × 3.23 | three-aspect signal on a post with a pedestrian push button (original design); pivot at the post foot, faces -Y; lenses unlit until traffic (Phase 11) |
+| `Prop_CableLamp` | 0.64 × 0.64 × 0.62 | lamp hung on a cable across a centro storico street; pivot at the bowl's bottom, hook 0.62 m above |
+| `Prop_Cable` | 1 × 0.016 × 0.014 | 8 mm cable along +X from the origin, stretched per instance (scale X = span) |
 
 Street fixtures (kind `fixture`) keep their pivot at the post foot or wall attachment (no recentring).
 

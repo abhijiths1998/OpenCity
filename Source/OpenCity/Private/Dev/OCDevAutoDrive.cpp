@@ -501,7 +501,9 @@ namespace OCAutoDrive
 			// Waypoints are map x, y: match in plan, or stacked hairpin legs snap to the lower one.
 			const int32 A = Roads->FindNearestNodePlanar(Waypoints[w]);
 			const int32 B = Roads->FindNearestNodePlanar(Waypoints[w + 1]);
-			TArray<int32> Leg = Roads->FindPath(A, B, Closed);
+			// Each leg continues from the way the previous one arrived: reversing at a waypoint in
+			// the middle of a road needs a U-turn, which the car can't make (the tour stuck there).
+			TArray<int32> Leg = Roads->FindPathNoUTurn(A, Nodes.Num() >= 2 ? Nodes[Nodes.Num() - 2] : INDEX_NONE, B, Closed);
 			if (Leg.IsEmpty())
 			{
 				UE_LOG(LogOpenCity, Warning, TEXT("OCDEV route: no open road from waypoint %d to %d (closed gates: %d)"), w, w + 1, Closed.Num());
