@@ -53,6 +53,8 @@ Names are the exported mesh names; UE adds the `SM_Kit_` prefix (`SM_Kit_Wall_40
 | `RoofFlat` | 1 × 1 × 0.25 | flat roof slab, scaled per building |
 | `Prop_WaterTank`, `Prop_ACUnit`, `Prop_Dish`, `Prop_Chimney`, `Prop_RoofHut` | real sizes | roof clutter |
 | `Drainpipe_320` | 0.12 diameter × 3.2 | vertical downpipe segment |
+| `RetainingWall_Stone_400`, `RetainingWall_Concrete_400` | 4 × 2 × 0.5 (face at Y = 0) | retaining-wall rows, stacked to height with the lowest row buried; stone (coursed, `Trim`) on old roads and the 1930s pass, concrete (`Concrete`) on post-war roads (INFRA_DESIGN.md Phase 3) |
+| `WallCoping_400` | 4 × 0.16 × 0.6 | stone cap on a retaining wall's top row |
 
 ## Quality bar
 

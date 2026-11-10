@@ -1302,6 +1302,10 @@ def expected(name):
         return {"x": (0, W), "z": (0, 0.35)}
     if name.startswith("Parapet_"):
         return {"x": (0, W), "z": (0, 0.9)}
+    if name.startswith("RetainingWall_"):
+        return {"x": (0, W), "z": (0, RW_H)}
+    if name == "WallCoping_400":
+        return {"x": (0, W), "z": (0, 0.16)}
     if name == "Corner_320":
         return {"x": (-0.2, 0.2), "y": (-0.2, 0.2), "z": (0, H)}
     if name == "CorniceCorner":
@@ -1328,6 +1332,56 @@ def recenter_prop(P, bm):
             if not (s and s[0] == "hull") else s for s in P.ucx]
 
 
+RW_H, RW_T = 2.0, 0.50  # retaining wall panel: 2 m tall rows, 0.5 m thick (stacked by the assembler)
+
+
+def make_retaining_wall(kind):
+    """Retaining wall panel, 4 x 2 m, face at Y=0. Stone: coursed blocks with sawn joints (old roads,
+    the 1930s pass); concrete: smooth pours with lift joints every metre (post-war roads). Stacked
+    in rows by UOCWorldBuilderLibrary::BuildRetainingWalls; the X ends and Z faces are seams."""
+    W = 4.0
+    P = Piece(f"RetainingWall_{kind}_400")
+    bm = box(0.0, W, 0.0, RW_T, 0.0, RW_H)
+    cb = new_bm()
+    if kind == "Stone":
+        rows = 5
+        for r in range(1, rows):  # bed joints
+            z = RW_H * r / rows
+            add_box(cb, -0.1, W + 0.1, -0.1, 0.015, z - 0.008, z + 0.008)
+        for r in range(rows):  # staggered head joints, irregular block lengths
+            z0, z1 = RW_H * r / rows, RW_H * (r + 1) / rows
+            x = 0.25 + 0.31 * (r % 3)
+            k = 0
+            while x < W - 0.15:
+                # Stop short of the bed joints: overlapping cutters make the exact boolean fail.
+                add_box(cb, x - 0.008, x + 0.008, -0.1, 0.015, z0 + (0.009 if r else -0.1), z1 - (0.009 if r < rows - 1 else -0.1))
+                x += (0.55, 0.72, 0.63, 0.8)[(r + k) % 4]
+                k += 1
+        mat = "Trim"
+    else:
+        add_box(cb, -0.1, W + 0.1, -0.1, 0.01, 0.995, 1.005)  # pour lift
+        for x in (1.0, 2.0, 3.0):  # formwork panel seams (split at the lift joint: no overlapping cutters)
+            add_box(cb, x - 0.004, x + 0.004, -0.1, 0.006, -0.1, 0.994)
+            add_box(cb, x - 0.004, x + 0.004, -0.1, 0.006, 1.006, RW_H + 0.1)
+        mat = "Concrete"
+    bm = bool_diff(bm, cb)
+    bevel(bm, 0.012, 2, keep=[(X, 0.0), (X, W), (Z, 0.0), (Z, RW_H), (Y, RW_T)])
+    P.add(bm, mat)
+    P.ucx = [(0, W, 0, RW_T, 0, RW_H)]
+    return P
+
+
+def make_wall_coping():
+    """Stone coping that caps the top row of a retaining wall (5 cm overhang both sides)."""
+    W = 4.0
+    P = Piece("WallCoping_400")
+    bm = box(0.0, W, -0.05, RW_T + 0.05, 0.0, 0.16)
+    bevel(bm, 0.015, 2, keep=[(X, 0.0), (X, W), (Z, 0.0)])
+    P.add(bm, "Trim")
+    P.ucx = [(0, W, -0.05, RW_T + 0.05, 0, 0.16)]
+    return P
+
+
 BUILDERS = [
     lambda: make_wall(2.0), lambda: make_wall(4.0),
     lambda: make_window(2.0, "shutters"), lambda: make_window(4.0, "shutters"),
@@ -1338,6 +1392,7 @@ BUILDERS = [
     lambda: make_parapet(2.0), lambda: make_parapet(4.0),
     make_roof_hip, make_roof_flat,
     make_water_tank, make_ac_unit, make_dish, make_chimney, make_roof_hut, make_drainpipe,
+    lambda: make_retaining_wall("Stone"), lambda: make_retaining_wall("Concrete"), make_wall_coping,
 ]
 
 

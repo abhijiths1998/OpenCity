@@ -393,6 +393,13 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	OuterHalf.Init(0.f, Nodes.Num());
 	TArray<int32> Degree;
 	Degree.Init(0, Nodes.Num());
+	TArray<TArray<int32>> NodeSegments;  // segment indices per node (mitred bends)
+	NodeSegments.SetNum(Nodes.Num());
+	for (int32 i = 0; i < Segments.Num(); ++i)
+	{
+		NodeSegments[Segments[i].A].Add(i);
+		NodeSegments[Segments[i].B].Add(i);
+	}
 	for (const FOCRoadSegment& S : Segments)
 	{
 		const bool bWalk = SidewalkKinds.Contains(S.Kind);
@@ -420,8 +427,13 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	 * sidewalks get world-planar metres.
 	 */
 	auto AddStrip = [&](FChunk& C, const FVector& P0, const FVector& P1, const FVector& Side, float In, float Out,
-		float Lift, int32 Group, double AlongStartM, const FVector2f& UV1)
+		float Lift, int32 Group, double AlongStartM, const FVector2f& UV1, const FVector& SideStart = FVector::ZeroVector,
+		const FVector& SideEnd = FVector::ZeroVector)
 	{
+		// Mitred ends: the lateral direction at each end (scaled so offsets still measure along Side),
+		// blended along the strip, so two strips meeting at a bend share one edge on the bisector.
+		const FVector S0 = SideStart.IsNearlyZero() ? Side : SideStart;
+		const FVector S1 = SideEnd.IsNearlyZero() ? Side : SideEnd;
 		const double Len = FVector::Dist2D(P0, P1);
 		const int32 Steps = FMath::Max(1, FMath::CeilToInt32(Len / StepCm));
 		const int32 Cols = FMath::Max(1, FMath::CeilToInt32(FMath::Abs(Out - In) / ColumnCm));
@@ -437,7 +449,8 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 				FRoadPoly Poly;
 				Poly.Group = Group;
 				Poly.UV1 = UV1;
-				for (const FVector& Corner : { A + Side * L0, A + Side * L1, B + Side * L1, B + Side * L0 })
+				const FVector SA = FMath::Lerp(S0, S1, T0), SB = FMath::Lerp(S0, S1, T1);
+				for (const FVector& Corner : { A + SA * L0, A + SA * L1, B + SB * L1, B + SB * L0 })
 				{
 					const FVector V = Drape(Corner, Lift);
 					Poly.P.Add(V);
@@ -490,18 +503,50 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 		const float Lift = BaseLift + KindLift(S.Kind);
 		FChunk& C = Chunks.FindOrAdd(ChunkOf((A + B) * 0.5));
 		// Junctions (3+ roads): the strip stops at the junction polygon, which is built below.
-		// Bends (2 roads): run the strip half its width past the node so the two overlap and the
-		// markings continue; an underlay fills the outer corner.
-		auto EndOffset = [&](int32 N) { return Degree[N] >= 3 ? -RoadHalf[N] : Degree[N] == 2 ? Half : 0.f; };
+		// Bends (2 roads): the two strips meet on the bisector (mitred), so curves built from short
+		// segments (hairpin loops: 7 m) have no corners sticking out and no doubled markings.
+		auto EndOffset = [&](int32 N) { return Degree[N] >= 3 ? -RoadHalf[N] : 0.f; };
+		auto MiterSide = [&](int32 N, const FVector& DirAway) -> FVector
+		{
+			if (Degree[N] != 2)
+			{
+				return Side;
+			}
+			for (const int32 Other : NodeSegments[N])
+			{
+				const FOCRoadSegment& O = Segments[Other];
+				if (&O == &S)
+				{
+					continue;
+				}
+				const FVector OtherAway = ((O.A == N ? Nodes[O.B].Location : Nodes[O.A].Location) - Nodes[N].Location).GetSafeNormal2D();
+				const FVector Tangent = (DirAway - OtherAway).GetSafeNormal2D();
+				if (Tangent.IsNearlyZero())
+				{
+					return Side;
+				}
+				FVector M(-Tangent.Y, Tangent.X, 0.0);
+				double Along = FVector::DotProduct(M, Side);
+				if (Along < 0.0)
+				{
+					M = -M;
+					Along = -Along;
+				}
+				return M / FMath::Max(Along, 0.4);  // sharper than ~66 degrees: capped
+			}
+			return Side;
+		};
 		const float ExtA = EndOffset(S.A), ExtB = EndOffset(S.B);
+		const FVector SideA = MiterSide(S.A, Dir), SideB = MiterSide(S.B, -Dir);
 		AddStrip(C, A - Dir * ExtA, B + Dir * ExtB, Side, -Half, Half, Lift, 0, -ExtA / 100.0,
-			FVector2f(Half / 100.f, MarkedLanes(S)));
+			FVector2f(Half / 100.f, MarkedLanes(S)), SideA, SideB);
 
 		if (!SidewalkKinds.Contains(S.Kind))
 		{
 			for (const float Sign : { -1.f, 1.f }) // skirts hide the gap under a road's edge on uneven ground
 			{
-				AddWall(C, A - Dir * ExtA, B + Dir * ExtB, Side * (Sign * Half), Side * Sign, Lift - SkirtDepth, Lift, 0);
+				const FVector EA = A - Dir * ExtA + SideA * (Sign * Half), EB = B + Dir * ExtB + SideB * (Sign * Half);
+				AddWall(C, EA, EB, FVector::ZeroVector, Side * Sign, Lift - SkirtDepth, Lift, 0);
 			}
 		}
 		else

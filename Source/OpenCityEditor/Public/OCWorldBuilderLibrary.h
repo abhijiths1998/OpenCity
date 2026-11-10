@@ -95,6 +95,15 @@ public:
 		float SidewalkWidthCm, float ChunkSizeCm, int32 Seed);
 
 	/**
+	 * Retaining walls from the layout's "retaining_walls" runs (Tools/make_marevia_layout.py): kit
+	 * panels (SM_Kit_RetainingWall_Stone_400 / _Concrete_400, 4 x 2 m) stacked from the top down to
+	 * below the bottom height, capped with SM_Kit_WallCoping_400. Cut walls face the road; fill walls
+	 * face away from it and stand 1 m above it as a parapet. Walls collide. Returns the panel count.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 BuildRetainingWalls(UWorld* World, const FString& LayoutJsonPath, float ChunkSizeCm);
+
+	/**
 	 * Road decals (oc_decals.py instances): manholes about every 70 m in a lane, tyre marks on 40% of
 	 * junction approaches, broken asphalt about every 150 m, chewing gum on pavements. Bridges and
 	 * the mountain roads' junction stubs are skipped. One AOCKitBuildingChunk per ChunkSizeCm square

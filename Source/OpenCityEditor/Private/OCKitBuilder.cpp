@@ -653,6 +653,114 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 }
 
 
+int32 UOCWorldBuilderLibrary::BuildRetainingWalls(UWorld* World, const FString& LayoutJsonPath, float ChunkSizeCm)
+{
+	using namespace OCKit;
+	FString Text;
+	TSharedPtr<FJsonObject> Root;
+	if (!World || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root.IsValid())
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRetainingWalls: cannot read %s"), *LayoutJsonPath);
+		return 0;
+	}
+	const TArray<TSharedPtr<FJsonValue>>* Runs = nullptr;
+	if (!Root->TryGetArrayField(TEXT("retaining_walls"), Runs))
+	{
+		return 0;
+	}
+	auto Kit = [](const TCHAR* Name) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/Environment/Meshes/Kit/SM_Kit_%s.SM_Kit_%s"), Name, Name)); };
+	UStaticMesh* Panels[2] = { Kit(TEXT("RetainingWall_Stone_400")), Kit(TEXT("RetainingWall_Concrete_400")) };
+	UStaticMesh* Coping = Kit(TEXT("WallCoping_400"));
+	if (!Panels[0] || !Panels[1] || !Coping)
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRetainingWalls: wall pieces not imported (Tools/blender/make_kit.py, oc_import_kit.py)"));
+		return 0;
+	}
+	constexpr double PanelW = 400.0, PanelH = 200.0, Thick = 50.0;
+	TMap<FIntPoint, TArray<FInstance>> Chunks;
+	auto Put = [&](UStaticMesh* Mesh, const FVector& At, const FRotator& Rot, double ScaleX)
+	{
+		FInstance I;
+		I.Mesh = Mesh;
+		I.Transform = FTransform(Rot, At, FVector(ScaleX, 1.0, 1.0));
+		for (int32 k = 0; k < 6; ++k) { I.Data[k] = 1.f; }
+		I.Data[6] = 0.5f;
+		Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(At.X / ChunkSizeCm), FMath::FloorToInt32(At.Y / ChunkSizeCm))).Add(I);
+	};
+	int32 Count = 0, Columns = 0;
+	for (const TSharedPtr<FJsonValue>& V : *Runs)
+	{
+		const TSharedPtr<FJsonObject> Run = V->AsObject();
+		UStaticMesh* Panel = Run->GetStringField(TEXT("material")) == TEXT("Stone") ? Panels[0] : Panels[1];
+		const bool bFill = Run->GetStringField(TEXT("type")) == TEXT("fill");
+		const TArray<TSharedPtr<FJsonValue>>& Pts = Run->GetArrayField(TEXT("points"));
+		for (int32 i = 0; i + 1 < Pts.Num(); ++i)
+		{
+			const TArray<TSharedPtr<FJsonValue>>& P0 = Pts[i]->AsArray();
+			const TArray<TSharedPtr<FJsonValue>>& P1 = Pts[i + 1]->AsArray();
+			FVector A = FOCRoadGraph::LayoutToWorld(P0[0]->AsNumber(), P0[1]->AsNumber(), 0.0);
+			FVector B = FOCRoadGraph::LayoutToWorld(P1[0]->AsNumber(), P1[1]->AsNumber(), 0.0);
+			const double Top = FMath::Max(P0[2]->AsNumber(), P1[2]->AsNumber()) * 100.0;
+			const double Bottom = FMath::Min(P0[3]->AsNumber(), P1[3]->AsNumber()) * 100.0;
+			// The points lie on the wall's road-side line; "outward" (layout x, y) points away from the
+			// road. Cut walls face the road, fill walls face away; a panel's face is at local Y = 0
+			// looking along -Y with its thickness behind, so the run direction is chosen to match.
+			FVector Dir = (B - A).GetSafeNormal2D();
+			const FVector Left(-Dir.Y, Dir.X, 0.0);  // local +Y for yaw = Dir
+			FVector Outward = FVector::ZeroVector;
+			const TArray<TSharedPtr<FJsonValue>>* Out = nullptr;
+			if (Run->TryGetArrayField(TEXT("outward"), Out) && Out->Num() >= 2)
+			{
+				Outward = FVector((*Out)[0]->AsNumber(), -(*Out)[1]->AsNumber(), 0.0).GetSafeNormal();
+			}
+			const FVector Facing = bFill ? Outward : -Outward;
+			if (FVector::DotProduct(Left, -Facing) < 0.0)
+			{
+				Swap(A, B);
+				Dir = -Dir;
+			}
+			const FRotator Rot(0.0, FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)), 0.0);
+			const double ScaleX = FVector::Dist2D(A, B) / PanelW;
+			// Fill walls: the face line is 0.5 m out from the road edge (the wall stands on the edge).
+			const FVector FaceLine = bFill ? A + Outward * Thick : A;
+			const int32 Rows = FMath::Clamp(FMath::CeilToInt32((Top - Bottom) / PanelH), 1, 24);
+			for (int32 r = 0; r < Rows; ++r)
+			{
+				Put(Panel, FVector(FaceLine.X, FaceLine.Y, Top - PanelH * (r + 1)), Rot, ScaleX);
+				++Count;
+			}
+			Put(Coping, FVector(FaceLine.X, FaceLine.Y, Top), Rot, ScaleX);
+			++Columns;
+		}
+	}
+	for (const TPair<FIntPoint, TArray<FInstance>>& Pair : Chunks)
+	{
+		FBox Bounds(ForceInit);
+		for (const FInstance& I : Pair.Value)
+		{
+			Bounds += I.Transform.GetLocation();
+		}
+		AOCKitBuildingChunk* Actor = World->SpawnActor<AOCKitBuildingChunk>(FVector(Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.Min.Z), FRotator::ZeroRotator);
+		if (!Actor)
+		{
+			continue;
+		}
+		for (const FInstance& I : Pair.Value)
+		{
+			UInstancedStaticMeshComponent* ISM = Actor->GetOrAddPiece(I.Mesh);
+			ISM->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);  // walls and parapets stop cars
+			const int32 Index = ISM->AddInstance(I.Transform, /*bWorldSpace*/ true);
+			ISM->SetCustomData(Index, TArrayView<const float>(I.Data, AOCKitBuildingChunk::NumCustomData));
+		}
+		Actor->SetActorLabel(FString::Printf(TEXT("Retaining_Walls_%d_%d"), Pair.Key.X, Pair.Key.Y));
+		Actor->SetFolderPath(TEXT("Walls"));
+	}
+	UE_LOG(LogOpenCity, Display, TEXT("BuildRetainingWalls: %d panels in %d columns, %d chunks"), Count, Columns, Chunks.Num());
+	return Count;
+}
+
+
 int32 UOCWorldBuilderLibrary::BuildRoadDecals(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
 	float SidewalkWidthCm, float ChunkSizeCm, int32 Seed)
 {

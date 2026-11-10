@@ -1159,6 +1159,110 @@ def clamp_slopes(h, best, max_slope=MAX_SLOPE, max_iters=200):
     return it + 1
 
 
+WALL_STEP = 4.0      # m: retaining-wall panels are 4 m long (Tools/blender/KIT_SPEC.md)
+WALL_CUT_MIN = 2.0   # m of ground above the road edge before it gets a cut wall
+WALL_FILL_MIN = 2.5  # m of drop below the road edge before it gets a fill wall (with a 1 m parapet)
+
+
+def retaining_walls(terrain, g):
+    """Retaining walls where the ground right beside a road edge jumps (INFRA_DESIGN.md Phase 3):
+    stacked hairpin legs and other near-vertical steps the slope clamp can't soften. Fill walls carry
+    a road over a drop (their top is a 1 m parapet); cut walls hold back ground rising at the edge.
+    Material by era: stone on old roads, the coast road and the 1930s pass, concrete elsewhere.
+    Returns runs: {"material", "type", "outward": [x, y] away from the road, "points": [[x, y, top_z,
+    bottom_z], ...]} along the wall's road-side line."""
+    def ground(x, y):
+        xi = int(min(max(round(x), 0), W))
+        yi = int(min(max(round(y - Y_MIN), 0), H))
+        return float(terrain[yi, xi])
+
+    degree = [0] * len(g.nodes)
+    for sg in g.segments:
+        degree[sg["a"]] += 1
+        degree[sg["b"]] += 1
+    half_w = []
+    for sg in g.segments:
+        half_w.append(sg["width"] / 2.0 + (SIDEWALK_W if sg["kind"] in SIDEWALK_KINDS else 0.0))
+    # Segment index on a 50 m grid: a wall may not stand on another road.
+    grid = {}
+    for i, sg in enumerate(g.segments):
+        a, b = g.nodes[sg["a"]], g.nodes[sg["b"]]
+        for t in np.linspace(0.0, 1.0, max(2, int(math.dist(a[:2], b[:2]) / 25.0) + 1)):
+            key = (int((a[0] + (b[0] - a[0]) * t) // 50), int((a[1] + (b[1] - a[1]) * t) // 50))
+            grid.setdefault(key, set()).add(i)
+
+    def on_other_road(x, y, own):
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for i in grid.get((int(x // 50) + dx, int(y // 50) + dy), ()):
+                    if i == own:
+                        continue
+                    a, b = g.nodes[g.segments[i]["a"]], g.nodes[g.segments[i]["b"]]
+                    vx, vy = b[0] - a[0], b[1] - a[1]
+                    t = max(0.0, min(1.0, ((x - a[0]) * vx + (y - a[1]) * vy) / max(vx * vx + vy * vy, 1e-9)))
+                    if math.hypot(x - a[0] - t * vx, y - a[1] - t * vy) < half_w[i] + 1.0:
+                        return True
+        return False
+
+    samples = []  # (segment, side, type, material, x, y, top, bottom, along)
+    for i, sg in enumerate(g.segments):
+        if sg["bridge"] or sg["kind"] == "pier":
+            continue
+        a, b = g.nodes[sg["a"]], g.nodes[sg["b"]]
+        length = math.dist(a[:2], b[:2])
+        if length < WALL_STEP:
+            continue
+        ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
+        clear_a = max(half_w) + 4.0 if degree[sg["a"]] > 2 else 0.0
+        clear_b = max(half_w) + 4.0 if degree[sg["b"]] > 2 else 0.0
+        district = district_at((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+        material = "Stone" if sg["kind"] in ("pass", "coast") or district == "CittaAlta" else "Concrete"
+        d = clear_a
+        while d <= length - clear_b:
+            zr = a[2] + (b[2] - a[2]) * d / length
+            for side in (-1.0, 1.0):
+                rx, ry = -uy * side, ux * side
+                ex, ey = a[0] + ux * d + rx * (half_w[i] + 0.3), a[1] + uy * d + ry * (half_w[i] + 0.3)
+                hp = ground(ex + rx * 1.5, ey + ry * 1.5)
+                dz = hp - zr
+                if dz > WALL_CUT_MIN:
+                    kind, top, bottom = "cut", hp + 0.3, zr - 0.3
+                elif dz < -WALL_FILL_MIN:
+                    kind, top, bottom = "fill", zr + 1.0, hp - 0.5
+                else:
+                    continue
+                if on_other_road(ex + rx * 0.25, ey + ry * 0.25, i):
+                    continue
+                samples.append((i, side, kind, material, ex, ey, top, bottom, d, (round(rx, 4), round(ry, 4))))
+            d += WALL_STEP
+    # A cut wall where another road's fill wall already holds the step is a double wall: drop it.
+    fills = {}
+    for smp in samples:
+        if smp[2] == "fill":
+            fills.setdefault((int(smp[4] // 10), int(smp[5] // 10)), []).append(smp)
+    def near_fill(smp):
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for f in fills.get((int(smp[4] // 10) + dx, int(smp[5] // 10) + dy), ()):
+                    if f[0] != smp[0] and math.dist(f[4:6], smp[4:6]) < 4.0:
+                        return True
+        return False
+    samples = [smp for smp in samples if smp[2] == "fill" or not near_fill(smp)]
+    # Consecutive samples (same segment, side and type, 4 m apart) form a run.
+    samples.sort(key=lambda smp: (smp[0], smp[1], smp[2], smp[8]))
+    runs, cur = [], None
+    for smp in samples:
+        key = (smp[0], smp[1], smp[2])
+        if cur is None or cur["key"] != key or smp[8] - cur["last"] > WALL_STEP + 0.01:
+            cur = {"key": key, "material": smp[3], "type": smp[2], "outward": list(smp[9]), "points": [], "last": smp[8]}
+            runs.append(cur)
+        cur["points"].append([round(smp[4], 2), round(smp[5], 2), round(smp[6], 2), round(smp[7], 2)])
+        cur["last"] = smp[8]
+    out = [{"material": r["material"], "type": r["type"], "outward": r["outward"], "points": r["points"]}
+           for r in runs if len(r["points"]) >= 2]
+    return out
+
+
 # --- Buildings -----------------------------------------------------------------------------
 
 BUILDING_STYLES = ["oldtown", "grid90", "grid120", "beach", "village", "terminal", "hills"]
@@ -1489,6 +1593,7 @@ def main():
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
 
     profiles, junctions = annotate_networks(g, landmarks, random.Random(SEED + 11))
+    walls = retaining_walls(terrain, g)
 
     t0 = time.time()
     buildings = place_buildings(terrain, best, g, random.Random(SEED + 7), landmarks)
@@ -1535,6 +1640,7 @@ def main():
         "gates": [{"tag": t, "opens_with": m, "while_locked": w} for t, m, w in GATES],
         "roads": {"kinds": ROAD_KINDS, "sidewalk_kinds": sorted(SIDEWALK_KINDS), "sidewalk_width": SIDEWALK_W,
                   "nodes": g.nodes, "segments": g.segments, "profiles": profiles, "junctions": junctions},
+        "retaining_walls": walls,
         # Rail (regional line, tram, funicular) is designed in INFRA_DESIGN.md and waits for approval.
         "rail": {"lines": []},
         "water_network": water_network(make_heightmap.river_profile, make_heightmap.reservoir_level),
@@ -1555,6 +1661,9 @@ def main():
     prof = {}
     for sg in g.segments:
         prof[sg["profile"]] = prof.get(sg["profile"], 0) + 1
+    wall_m = sum(WALL_STEP * (len(w["points"]) - 1) for w in walls)
+    print(f"retaining walls: {len(walls)} runs, {wall_m:.0f} m "
+          f"({sum(1 for w in walls if w['type'] == 'fill')} fill, {sum(1 for w in walls if w['type'] == 'cut')} cut)")
     print(f"profiles {prof}; ZTL {sum(sg['ztl'] for sg in g.segments)}, tram {sum(sg['tram'] for sg in g.segments)}, junctions {len(junctions)}")
     print(f"nodes {len(g.nodes)}, segments {len(g.segments)} {kinds}, gated {gated}, "
           f"bridges {sum(1 for s in g.segments if s['bridge'])}, unreachable nodes {len(unreachable)}")
