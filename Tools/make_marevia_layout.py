@@ -463,7 +463,13 @@ def road_mask(g, ends, margin=12.0, free=40.0):
     return keep_off
 
 
-def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None, keep_off=None):
+SWITCHBACK_MIN = 12.0  # m between the legs of a switchback where it turns (a hairpin loop needs 9 m after smoothing)
+SWITCHBACK_COST = 300.0  # m-equivalent for doubling back closer than SWITCHBACK_MIN
+BRANCH_MIN_DEG = 30.0  # a branch leaves its parent road at least this far off its line (50 is too steep to start on the quarry hillside)
+
+
+def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None, keep_off=None, start_dir=None,
+               strict=True, fallback=True):
     """Terrain-following road from start to goal (layout metres): A* on a ROUTE_CELL grid over the
     smoothed land, 16 move directions, cost = length x (1 + grade penalty) + a turn penalty, never
     steeper than ROUTE_GRADE_MAX. Switchbacks appear by themselves where the slope demands them.
@@ -521,16 +527,42 @@ def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None
             if grade > ROUTE_GRADE_MAX:
                 continue
             cost = length * (1.0 + 60.0 * max(0.0, grade - ROUTE_GRADE_OK)) + (KEEP_OFF_COST if off_road else 0.0)
+            if par is None and start_dir is not None and strict:
+                # A branch leaves its road square-ish: at 17 degrees the quarry spur ran beside the
+                # pass for 40 m and the pass parapet stood across it.
+                if abs(dx * start_dir[0] + dy * start_dir[1]) / math.hypot(dx, dy) > math.cos(math.radians(BRANCH_MIN_DEG)):
+                    continue
             if par is not None:
                 ax, ay = c[0] - par[0], c[1] - par[1]
                 cosang = (ax * dx + ay * dy) / (math.hypot(ax, ay) * math.hypot(dx, dy))
                 cost += turn_cost * (1.0 - cosang)
+                if strict:
+                    # No switchback onto a leg closer than SWITCHBACK_MIN: the radio-mast road doubled
+                    # back 5 m from itself (one cell over), no loop fitted and its parapets stood on
+                    # the other leg. Checked against the last move and the one before it.
+                    back = [(par, c)]
+                    if came.get(par) is not None:
+                        back.append((came[par], par))
+                    for p0, p1 in back:
+                        bx, by = p1[0] - p0[0], p1[1] - p0[1]
+                        bl = math.hypot(bx, by)
+                        if (bx * dx + by * dy) / (bl * math.hypot(dx, dy)) < -0.85:  # heading back (> 148 degrees)
+                            off = abs(bx * (n[1] - p0[1]) - by * (n[0] - p0[0])) / bl * ROUTE_CELL
+                            if off < SWITCHBACK_MIN:
+                                break
+                    else:
+                        off = None
+                    if off is not None and off < SWITCHBACK_MIN:
+                        cost += SWITCHBACK_COST  # a cost, not a ban: the search keeps one parent per cell
             g1 = g0 + cost
             if g1 < best.get(n, 1e18):
                 best[n] = g1
                 came[n] = c
                 heapq.heappush(todo, (g1 + math.hypot(n[0] - s1[0], n[1] - s1[1]) * ROUTE_CELL, n))
     if s1 not in came:
+        if strict and fallback:  # the rules above boxed it in: route without them (the validator reports the result)
+            print(f"  WARNING: no route from {start} to {goal} leaving at {BRANCH_MIN_DEG:.0f} degrees; routing without the rule")
+            return route_road(terrain, start, goal, avoid, turn_cost, loop_avoid, keep_off, start_dir, strict=False)
         raise RuntimeError(f"no road route from {start} to {goal} within {ROUTE_GRADE_MAX:.0%}")
     cells = [s1]
     while came[cells[-1]] is not None:
@@ -777,22 +809,42 @@ def build_roads(terrain, rng):
             d = math.dist(g.nodes[i][:2], target)
             grade = abs(g.nodes[i][2] - tz) / max(d, 1.0)
             return (d if d >= 150.0 else 1e9) * (1.0 + 10.0 * max(0.0, grade - ROUTE_GRADE_OK))
-        return min(pass_ids[:n_climb], key=cost)
+        return sorted(pass_ids[:n_climb], key=cost)
     # The yard has one entrance, in the middle of its north side: the spur from the pass arrives
     # there and the radio-mast road leaves from it (the spur used to end in the yard's centre and
     # crossed the mast road's exit stub 5 m above it). Routed roads keep off roads already built
     # (road_mask), so the branches no longer cross each other or the pass legs at grade.
     gate_n = (quarry_end[0], quarry_end[1] + qd + 3.0)
-    q0 = branch_from(gate_n)
-    q0p = tuple(g.nodes[q0][:2])
+    q_cands = branch_from(gate_n)
     def near_road(x, y):  # hairpin loops keep 14 m from roads already built
         return any((n[0] - x) ** 2 + (n[1] - y) ** 2 < 14.0 ** 2 for n in g.nodes)
-    quarry = g.path([q0p] + route_road(terrain, q0p, gate_n, avoid=wet_or_quarry, loop_avoid=near_road,
-                                       keep_off=road_mask(g, (q0p, gate_n)))[1:] + [quarry_end], "pass", merge=2.0)
+    def tangent(ids, i):  # unit direction of a road through node i
+        k = ids.index(i)
+        a, b = g.nodes[ids[max(0, k - 1)]], g.nodes[ids[min(len(ids) - 1, k + 1)]]
+        l = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
+        return ((b[0] - a[0]) / l, (b[1] - a[1]) / l)
+    # The best branch points first; the first one from which the spur can leave the pass at
+    # BRANCH_MIN_DEG wins (on a steep side slope a square exit is too steep to start).
+    for q0 in q_cands[:12] + [None]:
+        if q0 is None:
+            q0 = q_cands[0]
+            spur = route_road(terrain, tuple(g.nodes[q0][:2]), gate_n, avoid=wet_or_quarry, loop_avoid=near_road,
+                              keep_off=road_mask(g, (tuple(g.nodes[q0][:2]), gate_n)), start_dir=tangent(pass_ids, q0))
+            break
+        try:
+            spur = route_road(terrain, tuple(g.nodes[q0][:2]), gate_n, avoid=wet_or_quarry, loop_avoid=near_road,
+                              keep_off=road_mask(g, (tuple(g.nodes[q0][:2]), gate_n)), start_dir=tangent(pass_ids, q0),
+                              fallback=False)
+            break
+        except RuntimeError:
+            continue
+    q0p = tuple(g.nodes[q0][:2])
+    print(f"quarry spur leaves the pass at ({q0p[0]:.0f}, {q0p[1]:.0f})")
+    quarry = g.path([q0p] + spur[1:] + [quarry_end], "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
     mast_end = (X(1820), 2680)
     mast = g.path(route_road(terrain, gate_n, mast_end, avoid=wet_or_quarry, loop_avoid=near_road,
-                             keep_off=road_mask(g, (gate_n, mast_end))), "pass", merge=2.0)
+                             keep_off=road_mask(g, (gate_n, mast_end)), start_dir=tangent(quarry, quarry[-2])), "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
     hermitage_end = (X(500), 2640)
     def wet_or_crest_side(x, y):  # the first leg may not double back east along the dam (a 158-degree bend at the junction)
@@ -895,6 +947,7 @@ def build_roads(terrain, rng):
     return g
 
 
+SIGNAL_SPACING = 180.0  # m: corso junctions get signals at most this often (the others stay priority junctions)
 ROAD_RANK = {"pier": 0, "alley": 1, "street": 2, "coast": 3, "avenue": 3, "pass": 3}
 
 
@@ -1608,6 +1661,21 @@ def retaining_walls(terrain, g):
                         return True
         return False
 
+    def on_road_surface(x, y, margin=0.2):
+        """True if (x, y) lies on any road's carriageway (any height, any road, its own included):
+        on the inside of a bend a segment's wall line runs into the next segment's road, and where
+        two roads part at a shallow angle one road's parapet stood across the other."""
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for i in grid.get((int(x // 50) + dx, int(y // 50) + dy), ()):
+                    sg = g.segments[i]
+                    a, b = g.nodes[sg["a"]], g.nodes[sg["b"]]
+                    vx, vy = b[0] - a[0], b[1] - a[1]
+                    t = max(0.0, min(1.0, ((x - a[0]) * vx + (y - a[1]) * vy) / max(vx * vx + vy * vy, 1e-9)))
+                    if math.hypot(x - a[0] - t * vx, y - a[1] - t * vy) < sg["width"] / 2.0 + margin:
+                        return True
+        return False
+
     samples = []  # (segment, side, type, material, x, y, top, bottom, along)
     for i, sg in enumerate(g.segments):
         if sg["bridge"] or sg["kind"] == "pier":
@@ -1647,6 +1715,9 @@ def retaining_walls(terrain, g):
                 else:
                     continue
                 if on_other_road(ex + rx * 0.25, ey + ry * 0.25, i, zr):
+                    continue
+                half = WALL_STEP / 2.0  # the panel reaches 2 m along the road each way
+                if any(on_road_surface(ex + ux * f * half, ey + uy * f * half) for f in (-1.0, 0.0, 1.0)):
                     continue
                 samples.append((i, side, kind, material, ex, ey, top, bottom, d, (round(rx, 4), round(ry, 4))))
             d += WALL_STEP
@@ -1694,8 +1765,10 @@ def retaining_walls(terrain, g):
         if best is None or (k, e) in joined:
             continue
         _, k2, e2 = best
-        joined |= {(k, e), (k2, e2)}
         p, q = out[k]["points"][e], out[k2]["points"][e2]
+        if any(on_road_surface(p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f) for f in (0.25, 0.5, 0.75)):
+            continue  # a bridging panel across a road mouth
+        joined |= {(k, e), (k2, e2)}
         o = [out[k]["outward"][0] + out[k2]["outward"][0], out[k]["outward"][1] + out[k2]["outward"][1]]
         n = math.hypot(*o)
         bridges.append({"material": out[k]["material"], "type": out[k]["type"], "outward": [round(o[0] / n, 4), round(o[1] / n, 4)],
@@ -1955,6 +2028,7 @@ def annotate_networks(g, landmarks, rng):
         by_node.setdefault(sg["a"], []).append(sg)
         by_node.setdefault(sg["b"], []).append(sg)
     piazza = min(range(len(g.nodes)), key=lambda i: (g.nodes[i][0] - 702) ** 2 + (g.nodes[i][1] - 1224) ** 2)  # Santa Lucia
+    signals = []
     for n, segs in by_node.items():
         x, y = g.nodes[n][0], g.nodes[n][1]
         district = district_at(x, y)
@@ -1969,15 +2043,18 @@ def annotate_networks(g, landmarks, rng):
             kind = "piazza"
         elif len(segs) < 3:
             continue
-        elif avenues >= 2 and district in ("PortoVecchio", "LeFornaci", "Lungomare"):
-            kind = "roundabout"
-        elif avenues >= 2:
-            kind = "signalized"
+        elif avenues >= 3 and district in ("PortoVecchio", "LeFornaci", "Lungomare"):
+            kind = "roundabout"  # two avenues crossing in the periphery
+        elif avenues >= 3 or (avenues == 2 and len(segs) >= 4 and any(sg["kind"] == "street" for sg in segs)
+                              and all(math.dist(g.nodes[n][:2], g.nodes[m][:2]) > SIGNAL_SPACING for m in signals)):
+            kind = "signalized"  # corso junctions: a street crossing an avenue, at most one per SIGNAL_SPACING
+            signals.append(n)
         elif len(segs) == 3 and district in ("CittaAlta", "LeColline", "BorgoMarino", "MonteFerrale"):
             kind = "blind_t"
         else:
             kind = "priority"
-        # Nothing in the world shows these controls yet (signals, roundabouts, gates): Phase 5.
+        # Signals, ZTL panels, STOP and give-way signs are placed by BuildStreetFixtures (Phase 5);
+        # roundabouts and gates are still only planned.
         junctions.append({"node": n, "type": kind, "planned": True})
     return profiles, junctions
 
