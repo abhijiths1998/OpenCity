@@ -225,19 +225,22 @@ Proposed infrastructure waits in `SourceArt/Infra/proposed_networks.json` until 
 `scripts/run_python.sh Content/Python/oc_validate_networks.py` runs `FOCNetworkValidator`, which is C++ with 4 unit tests. It writes `Saved/Validation/networks.md` and fails on errors.
 
 **Checks:**
-- **Roads:** profile, width against the profile, lanes, gradient, curve radius at through-nodes, speed, connectivity from the start, one-way traps, ZTL boundaries without gates, tram branches, junction types.
+- **Roads:** profile, width against the profile, lanes, gradient, curve radius at through-nodes, clearance between stacked roads, roads crossing in plan without a junction (only a bridge with 5 m of headroom may), speed, connectivity from the start, one-way traps, ZTL boundaries without gates, tram branches, junction types.
 - **Rail:** geometry, gradient, electrification for the line kind, stations.
 - **Water:** body type, depth, still water with flow, edge treatments.
 
-**Current result (2026-11-10, after Phase 3 a and c): 74 issues, 5 errors** (was 106 and 27).
+**Current result (2026-11-10, after the junction clean-up): 68 issues, 3 errors** (was 72 and 7 in the morning, 106 and 27 before Phase 3).
 
 | Check | Result | Notes |
 |---|---|---|
-| Gradient | 2 errors, 5 warnings (was 20 and 23) | `limit_grades` holds road nodes within each road's grade before the terrain is cut and filled to them |
-| Radius | 0 errors, 5 warnings (was 7 and 9) | Hairpins tighter than 12 m become light-bulb loops of 13 m (`bulb_hairpins`). The 5 left sit within 25 m of the north map edge or where a loop would hit another leg. |
-| Clearance | 3 errors, 15 warnings | Loops pass 9 m from the other leg at a different height. **Retaining walls** (Phase 3b, next) |
-| Width | 44 warnings | 5.5 m local streets outside the centre (F minimum 6.5 m); widening needs the road mesh rebuild (Phase 4) |
+| Gradient | 0 errors, 1 warning | One pass segment at 13% against 12% |
+| Radius | 3 errors, 6 warnings | Four pass hairpins of 4 to 6 m that `bulb_hairpins` could not loop (another leg or the map edge in the way): the tour drive gets stuck on exactly these. Four grid corners at 30 to 50 m against the 51 m urban minimum. |
+| Clearance | 0 errors, 11 warnings | Stacked hairpin legs with retaining walls between them |
+| Crossing | 0 | The layout had 65 plan crossings with no junction (grid streets through the viale, the coast road and the lungomare) and 19 streets lying along those roads. `split_crossings`, `drop_coincident`, `merge_short_segments` and `fix_shallow_forks` in the generator now leave none; the validator keeps the check. |
+| Width | 47 warnings | 5.5 m local streets outside the centre (F minimum 6.5 m); widening needs the road mesh rebuild (Phase 4) |
 | Speed, connectivity, ZTL gates, junctions | 0 | |
+
+**Tour drive** (`oc.dev.route` over 20 km through every district, 70 km/h cap, 2026-11-10 evening): reaches 59% (11.9 km) before its ninth recovery, from 7% in the morning. The remaining stops are the four unlooped pass hairpins above, two spots on the Le Colline roads near the pass gate, and one bend of the Villa Salvi drive (car ends on the sidewalk).
 
 Not checkable from data yet, so they come with the geometry phases:
 - Gaps or overlaps between meshes, and kerb height mismatches
@@ -281,9 +284,9 @@ Rules:
 |---|---|---|
 | 1 | History and network design (this document and the plan) | **Approved 2026-11-10** (defaults in section 0 accepted) |
 | 2 | Data model and tools | **Done** (not visible in game) |
-| 3 | Terrain integration: re-grade the steep roads (**done**), hairpin loops (**done**), retaining walls by era (**done**: about 7,200 m, mostly 1 m parapets along drops; stone on old roads and the pass, concrete elsewhere; runs continue across road nodes), mitred road joins (**done**), road corridors keep their own grade to 1 m past the edge (**done**: a neighbouring leg or the slope relaxation no longer tilts the outer lane), terraces, RVT edge blending | In progress: the hairpin loop test drive (`oc.dev.route 1847 2319 1843 2355`) completes with no stuck or fall. Open: terraces, RVT blending, legs that cross in plan without a bridge (clearance errors) |
+| 3 | Terrain integration: re-grade the steep roads (**done**), hairpin loops (**done**), retaining walls by era (**done**: about 7,200 m, mostly 1 m parapets along drops; stone on old roads and the pass, concrete elsewhere; runs continue across road nodes), mitred road joins (**done**), road corridors keep their own grade to 1 m past the edge (**done**: a neighbouring leg or the slope relaxation no longer tilts the outer lane), terraces, RVT edge blending | In progress: the hairpin loop test drive (`oc.dev.route 1847 2319 1843 2355`) completes with no stuck or fall; routed branches keep off other roads (`road_mask`: 150 m of cost per cell of another road's corridor) and the quarry yard has one entrance, so no mountain road crosses another any more. Open: terraces, RVT blending, the four hairpins `bulb_hairpins` cannot loop (radius errors; the tour drive stops there) |
 | 4 | Surfaces, markings, wear, physical materials | In progress: paving per segment (asphalt, sampietrini, porfido, lastricato, gravel, concrete; `MI_Paving_*`), Codice della Strada marking styles, zebra crossings and stop lines, parking bays (white free, blue paid, yellow reserved), 9 physical materials (`PM_*`), road meshes collide. Open: patches and wear decals, raised crossings, wet gaps between stones. |
-| 5 | Street infrastructure | In progress: 13 Blender kit fixtures and `M_Master_Paint`, placed from the road data by `BuildStreetFixtures` (C++, deterministic, rather than PCG): ZTL panel + Zona 30 at ZTL gates, 50 at urban entries, STOP + convex mirror at blind T-junctions, give way where minor roads meet a viale, wall lanterns in the centro storico, galvanised LED poles on post-war streets and the coast road, five-stream recycling bin groups, drinking fountains and cast-iron bollards at centro corners. US-style hydrants removed. Walls and fixtures collide (complex as simple: the FBX UCX boxes don't survive the 5.8 import). Open: sign-facing visual check, cable-hung lamps, traffic signals (with Phase 11), D.M. 19/4/2006 sight distances. |
+| 5 | Street infrastructure | In progress: 13 Blender kit fixtures and `M_Master_Paint`, placed from the road data by `BuildStreetFixtures` (C++, deterministic, rather than PCG): ZTL panel + Zona 30 at ZTL gates, 50 at urban entries, STOP + convex mirror at blind T-junctions, give way where minor roads meet a viale, wall lanterns in the centro storico, galvanised LED poles on post-war streets and the coast road, five-stream recycling bin groups, drinking fountains and cast-iron bollards at centro corners. US-style hydrants removed. Walls and fixtures collide (complex as simple: the FBX UCX boxes don't survive the 5.8 import). Nothing is placed on a carriageway (957 signs and bins stood on the road they joined, mostly on zebra crossings). Open: sign-facing visual check, cable-hung lamps, traffic signals (with Phase 11), D.M. 19/4/2006 sight distances. |
 | 6 | Bridges, tunnels, walls and gates | Waiting |
 | 7 | Rail and tram | Waiting (needs this design approved) |
 | 8 | Water | Waiting |
