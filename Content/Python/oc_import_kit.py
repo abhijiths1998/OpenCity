@@ -3,9 +3,10 @@
   scripts/run_python.sh Content/Python/oc_import_kit.py
 
 Each FBX becomes /Game/Environment/Meshes/Kit/SM_Kit_<Piece> (Tools/blender/KIT_SPEC.md):
-- Nanite on, no lightmap UVs (fully dynamic lighting), no auto-generated collision; the FBX's
-  UCX_ boxes are kept but the assembler places pieces without collision (buildings collide through
-  the hidden blockout boxes).
+- Nanite on, no lightmap UVs (fully dynamic lighting), no auto-generated collision. The FBX's UCX_
+  boxes are not picked up by the 5.8 importer; building pieces are placed without collision
+  (buildings collide through the hidden blockout boxes), and the SOLID pieces (walls, street
+  fixtures) collide with their render mesh (complex as simple).
 - Material slots are matched by name to the kit instances: Wall -> MI_Kit_Wall, Trim -> MI_Kit_Trim,
   Wood, Glass, Metal, Roof, Concrete (built by oc_art_materials.py; run that first).
 Re-running replaces the meshes in place.
@@ -18,6 +19,9 @@ import unreal
 import oc_lib as L
 
 TAG = "oc_kit"
+# Pieces placed with collision on (BuildRetainingWalls, BuildStreetFixtures): complex as simple.
+SOLID = ("RetainingWall_", "WallCoping_", "Sign_", "Prop_Bollard", "Prop_LedPole", "Prop_ConvexMirror",
+         "Prop_RecyclingBin", "Prop_Fountain")
 PROJECT_DIR = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir())
 SRC = os.path.join(PROJECT_DIR, "SourceArt/Kit/FBX")
 DEST = "/Game/Environment/Meshes/Kit"
@@ -72,6 +76,13 @@ def main():
                 mesh.set_material(i, mis[base])
             else:
                 unknown.append(slot)
+        if any(name.startswith("SM_Kit_" + k) for k in SOLID):
+            # The UCX_ boxes don't survive the 5.8 FBX import (0 simple shapes), and Chaos vehicles
+            # only collide with simple shapes: walls, coping and street fixtures use their render
+            # mesh as collision, so cars stop at parapets instead of driving through them.
+            bs = mesh.get_editor_property("body_setup")
+            bs.set_editor_property("collision_trace_flag", unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE)
+            mesh.set_editor_property("body_setup", bs)
         b = mesh.get_bounds()
         ext = b.box_extent
         L.save(mesh)

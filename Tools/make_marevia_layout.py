@@ -680,7 +680,13 @@ def build_roads(terrain, rng):
                  (420, 1960), (600, 2030), (850, 2000), (1000, 1930)])
     g.path(coast_pts, "coast", gate=None)
     # Hills roads and gates (checkpoints where roads leave the open districts).
-    g.path(P([(520, 1660), (540, 1760), (480, 1900), (450, 1960)]), "street", gate="Gate.Colline")  # to Villa Salvi
+    # Start on the centro grid itself: a free start 37 m off it got a connector running alongside an
+    # alley 9 m below (two corridors in one place, an 11 m hump; the autopilot crashed there).
+    villa = P([(520, 1660), (540, 1760), (480, 1900), (450, 1960)])
+    near = min(g.nodes, key=lambda n: math.dist(n[:2], villa[0]))
+    if math.dist(near[:2], villa[0]) < 45.0:
+        villa[0] = (near[0], near[1])
+    g.path(villa, "street", gate="Gate.Colline")  # to Villa Salvi
     g.path(P([(1400, 1660), (1380, 1800), (1300, 1900), (1180, 1905)]), "street", gate="Gate.Colline")
     # Monte Ferrale roads, routed over the terrain (route_road): the pass from the hills checkpoint up
     # to the dam's east end, then straight along the dam crest; the quarry spur, the radio-mast road
@@ -1069,6 +1075,11 @@ def flatten_roads(h, g):
     best = np.full(h.shape, np.inf, dtype=np.float32)   # distance past the nearest road edge (m), < 0 inside
     wsum = np.zeros(h.shape, dtype=np.float32)
     tsum = np.zeros(h.shape, dtype=np.float32)
+    csum = np.zeros(h.shape, dtype=np.float32)   # inside a corridor only the roads whose corridor it is count:
+    cnum = np.zeros(h.shape, dtype=np.float32)   # a stacked hairpin leg 9 m below no longer tilts the road above
+    near_grade = np.zeros(h.shape, dtype=np.float32)
+    near_dist = np.full(h.shape, np.inf, dtype=np.float32)
+    cores = []
     for s in g.segments:
         if s["bridge"]:
             continue
@@ -1087,11 +1098,23 @@ def flatten_roads(h, g):
         t = np.clip(((xx - ax) * dx + (yy - ay) * dy) / L2, 0.0, 1.0)
         edge = np.hypot(xx - (ax + t * dx), yy - (ay + t * dy)) - half
         k = np.exp(-np.clip(edge, -half, SHOULDER_MAX) / BLEND)
-        best[y0:y1, x0:x1] = np.minimum(best[y0:y1, x0:x1], edge)
         wsum[y0:y1, x0:x1] += k
         # 20 cm below the road surface, so distant (coarser) landscape LODs never poke through.
-        tsum[y0:y1, x0:x1] += k * (az + t * (bz - az) - 0.2)
+        grade = az + t * (bz - az) - 0.2
+        tsum[y0:y1, x0:x1] += k * grade
+        cores.append((y0, y1, x0, x1, edge, grade))
+        nearer = edge + half < near_dist[y0:y1, x0:x1]   # nearest centreline (a wide road must not win inside a narrow one)
+        near_grade[y0:y1, x0:x1] = np.where(nearer, grade, near_grade[y0:y1, x0:x1])
+        near_dist[y0:y1, x0:x1] = np.where(nearer, edge + half, near_dist[y0:y1, x0:x1])
+        best[y0:y1, x0:x1] = np.minimum(best[y0:y1, x0:x1], edge)
+    # Inside corridors, average only the roads whose grade is within 1 m of the road the cell is
+    # most inside: junction approaches still blend, a leg passing metres above or below does not.
+    for y0, y1, x0, x1, edge, grade in cores:
+        use = (edge <= 0.0) & (np.abs(grade - near_grade[y0:y1, x0:x1]) < 1.0)
+        csum[y0:y1, x0:x1] += np.where(use, grade, 0.0)
+        cnum[y0:y1, x0:x1] += use
     target = np.where(wsum > 0, tsum / np.maximum(wsum, 1e-12), h)
+    target = np.where(cnum > 0, csum / np.maximum(cnum, 1.0), target)
     # 1 inside a road, fading to 0 over a shoulder that widens with the cut or fill height, so the
     # pass road gets graded slopes instead of sheer walls (a fixed 10 m left 30 m cliffs).
     need = np.clip(np.abs(target - h) * CUT_RATIO, SHOULDER, SHOULDER_MAX)
@@ -1125,7 +1148,9 @@ def relax_slopes(h, best, passes=((8, 3), (6, 3), (4, 2))):
     free &= ~((np.abs(xs - rx) < rhw + 14.0) & (ys < DAM_Y + 30))
     rx0, ry0, rx1, ry1 = RESERVOIR
     free &= ~((xs > rx0 - 60) & (xs < rx1 + 60) & (ys > ry0 - 60) & (ys < ry1 + 60))
-    free = box_blur(free.astype(np.float32), 3)  # feather the mask edge
+    # Feather the mask edge outward only: a blur reaching into the corridors tilted the outer lane of
+    # roads beside drops by up to 2.4 m (cars slid into the parapets).
+    free = box_blur(free.astype(np.float32), 3) * free
     for r, n in passes:
         for _ in range(n):
             gy, gx = np.gradient(h)
@@ -1171,8 +1196,8 @@ def clamp_slopes(h, best, max_slope=MAX_SLOPE, max_iters=200):
 
 WALL_STEP = 4.0      # m: retaining-wall panels are 4 m long (Tools/blender/KIT_SPEC.md)
 WALL_CUT_MIN = 2.0   # m of ground above the road edge before it gets a cut wall
-WALL_FILL_MIN = 2.5  # m of drop below the road edge before it gets a fill wall (with a 0.8 m parapet)
-WALL_GAP = 0.9       # m from the road edge to a cut wall's face (fill walls stand at 0.3 m: no drop beside the road)
+WALL_FILL_MIN = 2.5  # m of drop below the road edge before it gets a fill wall (with a 1 m parapet)
+WALL_GAP = 0.9       # m from the road edge to a wall's road-side face (cut and fill)
 
 
 def retaining_walls(terrain, g):
@@ -1250,13 +1275,12 @@ def retaining_walls(terrain, g):
                 foot = hp
                 if dz <= WALL_CUT_MIN and low - zr < -WALL_FILL_MIN:
                     dz, foot = low - zr, min(hp, zr)
-                if dz < -WALL_FILL_MIN:
-                    # Fill walls carry the road: they stand right at the edge (a gap there is a drop).
-                    ex, ey = a[0] + ux * d + rx * (half_w[i] + 0.3), a[1] + uy * d + ry * (half_w[i] + 0.3)
+                # Fill walls stand 0.9 m out too: flatten_roads keeps each corridor flat to 1 m past
+                # the edge, so the shoulder in front of the parapet no longer drops away.
                 if dz > WALL_CUT_MIN:
                     kind, top, bottom = "cut", hp + 0.3, zr - 0.3
                 elif dz < -WALL_FILL_MIN:
-                    kind, top, bottom = "fill", zr + 0.8, foot - 0.5
+                    kind, top, bottom = "fill", zr + 1.0, foot - 0.5  # 1 m parapet: at 0.8 m wheels climbed it
                 else:
                     continue
                 if on_other_road(ex + rx * 0.25, ey + ry * 0.25, i, zr):
@@ -1288,7 +1312,32 @@ def retaining_walls(terrain, g):
         cur["last"] = smp[8]
     out = [{"material": r["material"], "type": r["type"], "outward": r["outward"], "points": r["points"]}
            for r in runs if len(r["points"]) >= 2]
-    return out
+    # Runs stop up to a step short of each node, and on the outside of a bend the two segments'
+    # wall lines diverge: join run ends that meet (same type, within 6 m) with a bridging panel, or
+    # a car swinging wide finds the gap.
+    ends = [(k, e) for k in range(len(out)) for e in (0, -1)]
+    joined = set()
+    bridges = []
+    for i, (k, e) in enumerate(ends):
+        best = None
+        for k2, e2 in ends[i + 1:]:
+            if k2 == k or out[k2]["type"] != out[k]["type"] or (k2, e2) in joined:
+                continue
+            p, q = out[k]["points"][e], out[k2]["points"][e2]
+            dist = math.dist(p[:2], q[:2])
+            o1, o2 = out[k]["outward"], out[k2]["outward"]
+            if 0.05 < dist < 6.0 and o1[0] * o2[0] + o1[1] * o2[1] > 0.5 and (best is None or dist < best[0]):
+                best = (dist, k2, e2)
+        if best is None or (k, e) in joined:
+            continue
+        _, k2, e2 = best
+        joined |= {(k, e), (k2, e2)}
+        p, q = out[k]["points"][e], out[k2]["points"][e2]
+        o = [out[k]["outward"][0] + out[k2]["outward"][0], out[k]["outward"][1] + out[k2]["outward"][1]]
+        n = math.hypot(*o)
+        bridges.append({"material": out[k]["material"], "type": out[k]["type"], "outward": [round(o[0] / n, 4), round(o[1] / n, 4)],
+                        "points": [p, q[:2] + [max(p[2], q[2]), min(p[3], q[3])]]})
+    return out + bridges
 
 
 # --- Buildings -----------------------------------------------------------------------------

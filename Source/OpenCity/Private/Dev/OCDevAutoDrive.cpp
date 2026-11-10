@@ -44,6 +44,7 @@ namespace OCAutoDrive
 		FVector Pos;
 		double Along = 0.0;     // m from the route start
 		double MaxSpeed = 1e9;  // m/s allowed at this point (corners)
+		double Limit = 1e9;     // m/s speed limit of the road from this point on (the segment's SpeedKmh)
 	};
 
 	enum class EState : uint8 { Idle, Boarding, Settling, Driving };
@@ -104,7 +105,8 @@ namespace OCAutoDrive
 	double FDriver::TargetSpeed(double AlongM) const
 	{
 		// Slowest of: the cap, and every corner ahead reachable with planned braking.
-		double V = CapMps;
+		// Speed limits count like corners: the current road's limit now, the next ones braked for.
+		double V = FMath::Min(CapMps, Route.IsValidIndex(Seg) ? Route[Seg].Limit : CapMps);
 		for (int32 i = Seg; i < Route.Num(); ++i)
 		{
 			const double D = Route[i].Along - AlongM;
@@ -112,7 +114,8 @@ namespace OCAutoDrive
 			{
 				continue;
 			}
-			const double Reach = FMath::Sqrt(FMath::Square(Route[i].MaxSpeed) + 2.0 * BrakeDecel * FMath::Max(0.0, D));
+			const double Allowed = FMath::Min(Route[i].MaxSpeed, Route[i].Limit);
+			const double Reach = FMath::Sqrt(FMath::Square(Allowed) + 2.0 * BrakeDecel * FMath::Max(0.0, D));
 			V = FMath::Min(V, Reach);
 			if (D > 400.0)
 			{
@@ -490,14 +493,16 @@ namespace OCAutoDrive
 		FOCLaneGraph Lanes;
 		Lanes.Build(*Roads);
 		TArray<FPoint> R;
-		auto Add = [&R](const FVector& P)
+		auto Add = [&R](const FVector& P, double LimitMps)
 		{
 			if (!R.IsEmpty() && FVector::Dist(R.Last().Pos, P) < 50.0)
 			{
 				return;
 			}
 			const double Along = R.IsEmpty() ? 0.0 : R.Last().Along + FVector::Dist(R.Last().Pos, P) / 100.0;
-			R.Add({ P, Along });
+			FPoint Pt{ P, Along };
+			Pt.Limit = LimitMps;
+			R.Add(Pt);
 		};
 		for (int32 i = 0; i + 1 < Nodes.Num(); ++i)
 		{
@@ -516,8 +521,9 @@ namespace OCAutoDrive
 				continue;
 			}
 			const FOCLane& L = Lanes.GetLanes()[SegLanes[0]];
-			Add(L.Start);
-			Add(L.End);
+			const double Limit = FMath::Max(10.0, static_cast<double>(Roads->GetSegments()[Seg].SpeedKmh)) / 3.6;
+			Add(L.Start, Limit);
+			Add(L.End, Limit);
 		}
 		if (R.Num() < 2)
 		{

@@ -518,7 +518,6 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 	UStaticMesh* Lamp = LoadProp(TEXT("SM_Prop_street_lamp_01"));
 	UStaticMesh* Trees[2] = { LoadProp(TEXT("SM_Prop_island_tree_01")), LoadProp(TEXT("SM_Prop_island_tree_02")) };
 	UStaticMesh* Bin = LoadProp(TEXT("SM_Prop_metal_trash_can"));
-	UStaticMesh* Hydrant = LoadProp(TEXT("SM_Prop_fire_hydrant"));
 	if (!Lamp)
 	{
 		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetProps: props not imported (Content/Python/oc_import_props.py)"));
@@ -612,15 +611,12 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 				}
 			}
 		}
-		// A bin near each junction end, a hydrant every ~90 m.
+		// A bin near each junction end. No standalone hydrants: Italian ones are underground or
+		// wall-mounted (INFRA_DESIGN.md section 1).
 		for (int32 Side = -1; Side <= 1; Side += 2)
 		{
 			if (R.FRand() < 0.6f) { Put(Bin, At(From + 150.0, Side, Curb + 30.0), SegYaw + 90.0, 1.0); }
 			if (R.FRand() < 0.4f) { Put(Bin, At(To - 150.0, Side, Curb + 30.0), SegYaw + 90.0, 1.0); }
-		}
-		for (double D = From + R.FRandRange(500.f, 3000.f); D < To; D += 9000.0)
-		{
-			Put(Hydrant, At(D, R.FRand() < 0.5f ? -1.0 : 1.0, Curb + 10.0), SegYaw, 1.0);
 		}
 	}
 
@@ -640,8 +636,8 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 		for (const FInstance& I : Pair.Value)
 		{
 			UInstancedStaticMeshComponent* ISM = Actor->GetOrAddPiece(I.Mesh);
-			// Lamps, trunks, bins and hydrants are solid; leaves, ferns and pots are not.
-			if (I.Mesh == Lamp || I.Mesh == Bin || I.Mesh == Hydrant)
+			// Lamps, trunks and bins are solid; leaves, ferns and pots are not.
+			if (I.Mesh == Lamp || I.Mesh == Bin)
 			{
 				ISM->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			}
@@ -1004,7 +1000,7 @@ int32 UOCWorldBuilderLibrary::BuildRetainingWalls(UWorld* World, const FString& 
 			}
 			const FRotator Rot(0.0, FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)), 0.0);
 			const double ScaleX = FVector::Dist2D(A, B) / PanelW;
-			// Fill walls: the face line is 0.5 m out from the road edge (the wall stands on the edge).
+			// Fill walls: the points are the wall's road-side face, the outer face is a thickness further out.
 			const FVector FaceLine = bFill ? A + Outward * Thick : A;
 			const int32 Rows = FMath::Clamp(FMath::CeilToInt32((Top - Bottom) / PanelH), 1, 24);
 			for (int32 r = 0; r < Rows; ++r)

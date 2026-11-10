@@ -1,6 +1,6 @@
 # OpenCity: INFRA_DESIGN.md (roads, rail, water and street infrastructure)
 
-Status: **Phase 1 approved (2026-11-10, the user delegated the phase decisions); Phase 2 done; Phase 3 in progress.**
+Status: **Phase 1 approved (2026-11-10, the user delegated the phase decisions); Phase 2 done; Phases 3, 4 and 5 in progress.**
 
 Marevia is a fictional town on a fictional Italian coast. All names are original: towns, streets, the motorway operator, rail and bus companies, utilities, fuel brands, beach clubs and police. The layout follows `STORY.md`. This document adds infrastructure to it and does not replace any district.
 
@@ -249,7 +249,7 @@ Not checkable from data yet, so they come with the geometry phases:
 
 | Plugin | Status | Use |
 |---|---|---|
-| PCG | **Production** (1.0) | Phase 5 street furniture from the networks |
+| PCG | **Production** (1.0) | Not used yet: Phase 5 fixtures are placed by C++ from the road data (deterministic, testable); PCG stays an option for scatter (litter, planters) |
 | Landscape splines | Engine core, stable | Not needed: roads are baked meshes from the graph |
 | Nanite spline meshes | Enabled by default (`r.Nanite.AllowSplineMeshes=1`), not flagged experimental | Not needed for the same reason |
 | Water | **Experimental** (0.1) | **Not used.** Custom surfaces stay (ARCHITECTURE section 7). |
@@ -281,9 +281,9 @@ Rules:
 |---|---|---|
 | 1 | History and network design (this document and the plan) | **Approved 2026-11-10** (defaults in section 0 accepted) |
 | 2 | Data model and tools | **Done** (not visible in game) |
-| 3 | Terrain integration: re-grade the steep roads (**done**), hairpin loops (**done**), retaining walls by era (**done**: 608 m, stone on old roads and the pass, concrete elsewhere), mitred road joins (**done**), terraces, RVT edge blending | In progress |
-| 4 | Surfaces, markings, wear, physical materials | In progress: paving per segment (asphalt, sampietrini, porfido, lastricato, gravel, concrete; `MI_Paving_*`), Codice della Strada marking styles, 9 physical materials (`PM_*`), road meshes collide (cars sit on the visible surface). Open: patches and wear decals, raised crossings, parking bay paint, wet gaps between stones. |
-| 5 | Street infrastructure (PCG) | Waiting |
+| 3 | Terrain integration: re-grade the steep roads (**done**), hairpin loops (**done**), retaining walls by era (**done**: about 7,200 m, mostly 1 m parapets along drops; stone on old roads and the pass, concrete elsewhere; runs continue across road nodes), mitred road joins (**done**), road corridors keep their own grade to 1 m past the edge (**done**: a neighbouring leg or the slope relaxation no longer tilts the outer lane), terraces, RVT edge blending | In progress: the hairpin loop test drive (`oc.dev.route 1847 2319 1843 2355`) completes with no stuck or fall. Open: terraces, RVT blending, legs that cross in plan without a bridge (clearance errors) |
+| 4 | Surfaces, markings, wear, physical materials | In progress: paving per segment (asphalt, sampietrini, porfido, lastricato, gravel, concrete; `MI_Paving_*`), Codice della Strada marking styles, zebra crossings and stop lines, parking bays (white free, blue paid, yellow reserved), 9 physical materials (`PM_*`), road meshes collide. Open: patches and wear decals, raised crossings, wet gaps between stones. |
+| 5 | Street infrastructure | In progress: 13 Blender kit fixtures and `M_Master_Paint`, placed from the road data by `BuildStreetFixtures` (C++, deterministic, rather than PCG): ZTL panel + Zona 30 at ZTL gates, 50 at urban entries, STOP + convex mirror at blind T-junctions, give way where minor roads meet a viale, wall lanterns in the centro storico, galvanised LED poles on post-war streets and the coast road, five-stream recycling bin groups, drinking fountains and cast-iron bollards at centro corners. US-style hydrants removed. Walls and fixtures collide (complex as simple: the FBX UCX boxes don't survive the 5.8 import). Open: sign-facing visual check, cable-hung lamps, traffic signals (with Phase 11), D.M. 19/4/2006 sight distances. |
 | 6 | Bridges, tunnels, walls and gates | Waiting |
 | 7 | Rail and tram | Waiting (needs this design approved) |
 | 8 | Water | Waiting |
