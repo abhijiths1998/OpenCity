@@ -296,9 +296,9 @@ class RoadGraph:
         self.segments.append({"a": a, "b": b, "kind": kind, "lanes_per_dir": lanes, "width": width,
                               "speed_kmh": speed, "shape": shape or [], "bridge": bridge, "gate": gate})
 
-    def path(self, points, kind, **kw):
-        """Chain of nodes through points."""
-        ids = [self.node(x, y) for x, y in points]
+    def path(self, points, kind, merge=6.0, **kw):
+        """Chain of nodes through points (points within `merge` m of an existing node reuse it)."""
+        ids = [self.node(x, y, merge) for x, y in points]
         for a, b in zip(ids, ids[1:]):
             self.connect(a, b, kind, **kw)
         return ids
@@ -313,7 +313,119 @@ ROUTE_STEP = 25.0         # m between nodes of a routed road: the corridor gradi
                           # linear, so short steps keep the road on the land instead of cutting it
 
 
-def route_road(terrain, start, goal, avoid=None, turn_cost=40.0):
+HAIRPIN_R = 13.0  # m: hairpin loop radius, 1 m over the 12 m game minimum so node sampling stays above it (INFRA_DESIGN.md)
+
+
+def bulb_hairpins(pts, r=HAIRPIN_R, avoid=None):
+    """Hairpins tighter than r become "light bulbs": the road swings out, loops round a circle of
+    radius r beyond the apex and swings back, joined by reverse curves of the same radius (the
+    router packs switchback legs ~12 m apart, a 5 m turn no car makes). Returns the new dense
+    path and the loops as lists of points (for an even grade round each one)."""
+    def heading(a, b):
+        return math.atan2(b[1] - a[1], b[0] - a[0])
+
+    def wrap(t):
+        return (t + math.pi) % (2 * math.pi) - math.pi
+
+    acc = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        acc.append(acc[-1] + math.dist(a, b))
+    def at(sv):  # index of the point nearest arc length sv
+        return min(range(len(pts)), key=lambda k: abs(acc[k] - sv))
+
+    out, bulbs, i = [], [], 0
+    while i < len(pts) - 2:
+        # Total signed turn over the next 50 m.
+        j, turn = i, 0.0
+        while j < len(pts) - 2 and acc[j + 1] - acc[i] < 50.0:
+            turn += wrap(heading(pts[j + 1], pts[j + 2]) - heading(pts[j], pts[j + 1]))
+            j += 1
+        if abs(turn) < math.radians(150):
+            out.append(pts[i])
+            i += 1
+            continue
+        # Apex: the sharpest point in the window. The router's legs converge in a V, so the loop
+        # starts where they are at least 9 m apart (graph nodes merge within 6 m): back along the
+        # in-leg to that point, and the nearest point of the out-leg opposite it.
+        apex = max(range(i + 1, j + 1), key=lambda k: abs(wrap(heading(pts[k], pts[k + 1]) - heading(pts[k - 1], pts[k]))))
+        out_leg = [m for m in range(apex, len(pts)) if acc[m] - acc[apex] < 90.0]
+        k_in = None
+        for k in range(apex - 1, 0, -1):
+            if acc[apex] - acc[k] > 90.0:
+                break
+            if min(math.dist(pts[k], pts[m]) for m in out_leg) >= 9.0:
+                k_in = k
+                break
+        if k_in is None:
+            out.append(pts[i])
+            i += 1
+            continue
+        k_out = min(out_leg, key=lambda m: math.dist(pts[m], pts[k_in]))
+        d_in = heading(pts[k_in - 1], pts[k_in + 1])
+        d_out = heading(pts[k_out - 1], pts[min(k_out + 1, len(pts) - 1)])
+        u = (math.cos(d_in) - math.cos(d_out), math.sin(d_in) - math.sin(d_out))
+        un = math.hypot(*u)
+        if un < 1e-6 or k_in <= i:
+            out.append(pts[i])
+            i += 1
+            continue
+        u = (u[0] / un, u[1] / un)
+        w = (pts[k_out][0] - pts[k_in][0], pts[k_out][1] - pts[k_in][1])
+        along = w[0] * u[0] + w[1] * u[1]
+        vv = (w[0] - along * u[0], w[1] - along * u[1])
+        sep = math.hypot(*vv)
+        if sep >= 2 * r or sep < 1.0:
+            out.append(pts[i])
+            i += 1
+            continue
+        v = (vv[0] / sep, vv[1] / sep)
+        o = pts[k_in]
+
+        def world(x, y):
+            return (o[0] + x * u[0] + y * v[0], o[1] + x * u[1] + y * v[1])
+        x1 = 0.0
+        xc, yc = x1 + math.sqrt((2 * r) ** 2 - (sep / 2.0 + r) ** 2), sep / 2.0
+        alpha = math.atan2(xc - x1, sep / 2.0 + r)
+        loop = []
+        step = 7.0 / r  # ~7 m between loop nodes (graph nodes merge within 6 m)
+        n = max(1, int(alpha / step))
+        for q in range(1, n + 1):  # entry curve, turning away from the other leg
+            ph = alpha * q / n
+            loop.append(world(x1 + r * math.sin(ph), -r + r * math.cos(ph)))
+        t1 = (x1 + r * math.sin(alpha), -r + r * math.cos(alpha))
+        t2 = (x1 + r * math.sin(alpha), sep + r - r * math.cos(alpha))
+        b1 = math.atan2(t1[1] - yc, t1[0] - xc)
+        b2 = math.atan2(t2[1] - yc, t2[0] - xc)
+        while b2 <= b1:
+            b2 += 2 * math.pi
+        n = max(2, int((b2 - b1) / step))
+        for q in range(1, n):  # round the loop (counter to the entry curve)
+            b = b1 + (b2 - b1) * q / n
+            loop.append(world(xc + r * math.cos(b), yc + r * math.sin(b)))
+        n = max(1, int(alpha / step))
+        for q in range(n, 0, -1):  # exit curve back onto the other leg (pts[k_out] closes it)
+            ph = alpha * q / n
+            loop.append(world(x1 + r * math.sin(ph), sep + r - r * math.cos(ph)))
+        # A loop must stay on the map and on dry land; otherwise the hairpin keeps its shape (and the
+        # validator reports it).
+        # Nor may it touch the road elsewhere (a stacked leg 30 m+ along the road from its ends):
+        # graph nodes there would merge into an accidental junction.
+        far = [pts[m] for m in range(len(pts)) if acc[m] < acc[k_in] - 30.0 or acc[m] > acc[k_out] + 30.0]
+        if any(not (15.0 < x < W - 15.0 and Y_MIN + 15.0 < y < Y_MIN + H - 15.0) or (avoid is not None and avoid(x, y))
+               or any(math.dist((x, y), f) < 14.0 for f in far[::2])
+               for x, y in loop):
+            out.append(pts[i])
+            i += 1
+            continue
+        out.extend(pts[i:k_in + 1])
+        out.extend(loop)
+        bulbs.append([pts[k_in]] + loop + [pts[k_out]])
+        i = k_out
+    out.extend(pts[i:])
+    return out, bulbs
+
+
+def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None):
     """Terrain-following road from start to goal (layout metres): A* on a ROUTE_CELL grid over the
     smoothed land, 16 move directions, cost = length x (1 + grade penalty) + a turn penalty, never
     steeper than ROUTE_GRADE_MAX. Switchbacks appear by themselves where the slope demands them.
@@ -388,10 +500,15 @@ def route_road(terrain, start, goal, avoid=None, turn_cost=40.0):
         for a, b in zip(pts, pts[1:]):
             sm += [(0.75 * a[0] + 0.25 * b[0], 0.75 * a[1] + 0.25 * b[1]), (0.25 * a[0] + 0.75 * b[0], 0.25 * a[1] + 0.75 * b[1])]
         pts = sm + [pts[-1]]
+    pts, bulbs = bulb_hairpins(pts, avoid=lambda x, y: (avoid is not None and avoid(x, y)) or (loop_avoid is not None and loop_avoid(x, y)))
+    keep = {p for loop in bulbs for p in loop}
+    route_road.bulbs = bulbs  # the callers grade each loop evenly (grade_bulbs)
+    for loop in bulbs:
+        print(f"  hairpin loop at ({loop[len(loop) // 2][0]:.0f}, {loop[len(loop) // 2][1]:.0f}), {len(loop)} points")
     out, acc = [pts[0]], 0.0
     for a, b in zip(pts, pts[1:]):
         acc += math.dist(a, b)
-        if acc >= ROUTE_STEP:
+        if acc >= ROUTE_STEP or b in keep:
             out.append(b)
             acc = 0.0
     if math.dist(out[-1], goal) > 1.0:
@@ -400,6 +517,73 @@ def route_road(terrain, start, goal, avoid=None, turn_cost=40.0):
         else:
             out.append(goal)
     return [(round(x, 1), round(y, 1)) for x, y in out]
+
+
+def max_grade(seg, g):
+    """The steepest a segment may be (INFRA_DESIGN.md section 4, by the profile it will get)."""
+    kind = seg["kind"]
+    a, b = g.nodes[seg["a"]], g.nodes[seg["b"]]
+    district = district_at((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+    if kind == "pier":
+        return 0.04
+    if kind == "pass":
+        return 0.12
+    if kind == "coast" or district in ("LeColline", "MonteFerrale"):
+        return 0.10
+    if district == "CittaAlta":
+        return 0.15 if kind in ("street", "alley") else 0.08
+    return 0.10 if kind == "alley" else 0.08
+
+
+def limit_grades(g, max_iters=400):
+    """Hold every road node within its roads' maximum grade of its neighbours (iterated to a fixed
+    point), so roads stop inheriting the hillside's slope (Le Colline streets climbed at 24%); the
+    terrain is then cut and filled to the roads. Bridge ends and the dam crest stay where they are.
+    Returns the number of segments still too steep (pinned ends closer than their grade allows)."""
+    crest = make_heightmap.reservoir_level + 2.0
+    pinned = set()
+    for sg in g.segments:
+        if sg["bridge"]:
+            pinned.update((sg["a"], sg["b"]))
+    for i, n in enumerate(g.nodes):
+        if abs(n[1] - DAM_Y) < 2.0 and abs(n[2] - crest) < 0.05:
+            pinned.add(i)
+    edges = []
+    for sg in g.segments:
+        a, b = sg["a"], sg["b"]
+        run = math.hypot(g.nodes[b][0] - g.nodes[a][0], g.nodes[b][1] - g.nodes[a][1])
+        edges.append((a, b, max_grade(sg, g) * max(run, 1.0)))
+    for _ in range(max_iters):
+        moved = 0.0
+        for a, b, rise in edges:
+            za, zb = g.nodes[a][2], g.nodes[b][2]
+            excess = abs(zb - za) - rise
+            if excess <= 0.005:
+                continue
+            # Split the correction between the free ends (the higher comes down, the lower goes up).
+            fa, fb = a not in pinned, b not in pinned
+            if not (fa or fb):
+                continue
+            share = excess / (int(fa) + int(fb))
+            sign = 1.0 if zb > za else -1.0
+            if fa:
+                g.nodes[a][2] = round(za + sign * share, 3)
+            if fb:
+                g.nodes[b][2] = round(zb - sign * share, 3)
+            moved = max(moved, excess)
+        if moved < 0.01:
+            break
+    return sum(1 for a, b, rise in edges if abs(g.nodes[b][2] - g.nodes[a][2]) - rise > 0.05)
+
+
+def grade_bulbs(g, bulbs):
+    """An even grade round each hairpin loop, from the height where it leaves one leg to where it
+    joins the other (the loop crosses the slope; terrain heights would make it a ramp)."""
+    for loop in bulbs:
+        ids = [g.node(x, y, 2.0) for x, y in loop]
+        ids = [k for n, k in enumerate(ids) if n == 0 or k != ids[n - 1]]
+        if len(ids) > 2:
+            grade_chain(g, ids, g.nodes[ids[0]][2], g.nodes[ids[-1]][2])
 
 
 def grade_chain(g, ids, z0, z1):
@@ -475,7 +659,7 @@ def build_roads(terrain, rng):
 
     bridge("PonteSanRocco", 1250, "avenue")
     bridge("PonteMobile", 350, "avenue", gate="Gate.PonteMobile")
-    bridge("Passerella", 800, "alley")                      # footbridge (narrow, cars allowed for now)
+    bridge("Passerella", 800, "alley")                      # footbridge (pedestrian: annotate_networks)
     bridge("PonteDelleColline", 1900, "street", gate="Gate.Colline")
 
     # Swing bridge to Molo Salvi across the Darsena.
@@ -512,7 +696,10 @@ def build_roads(terrain, rng):
     # road continues level (ending below the crest made a 70% ramp onto the dam).
     abutment = (dam_e[0] + 60.0, DAM_Y)
     climb = route_road(terrain, (X(1300), 1905), abutment, avoid=wet_or_quarry)
-    pass_ids = g.path(climb + [dam_e, (X(1130), DAM_Y), dam_w], "pass", gate="Gate.Ferrale")
+    climb_bulbs = route_road.bulbs
+    # Routed roads merge nodes only within 2 m: hairpin loops pass 9 m from the other leg.
+    pass_ids = g.path(climb + [dam_e, (X(1130), DAM_Y), dam_w], "pass", merge=2.0, gate="Gate.Ferrale")
+    grade_bulbs(g, climb_bulbs)
     n_climb = len(climb)
     grade_chain(g, pass_ids[n_climb - 1:n_climb + 1], g.nodes[pass_ids[n_climb - 1]][2], crest)
     for i in pass_ids[n_climb:]:
@@ -521,10 +708,16 @@ def build_roads(terrain, rng):
     def branch_from(target):
         return min(pass_ids[:n_climb], key=lambda i: math.dist(g.nodes[i][:2], target))
     q0 = branch_from(quarry_end)
-    quarry = g.path([tuple(g.nodes[q0][:2])] + route_road(terrain, tuple(g.nodes[q0][:2]), quarry_end, avoid=wet)[1:], "pass")
+    def near_road(x, y):  # hairpin loops keep 14 m from roads already built
+        return any((n[0] - x) ** 2 + (n[1] - y) ** 2 < 14.0 ** 2 for n in g.nodes)
+    quarry = g.path([tuple(g.nodes[q0][:2])] + route_road(terrain, tuple(g.nodes[q0][:2]), quarry_end, avoid=wet, loop_avoid=near_road)[1:], "pass", merge=2.0)
+    grade_bulbs(g, route_road.bulbs)
     gate_n = (quarry_end[0], quarry_end[1] + qd + 3.0)  # out of the yard's north side
-    mast = g.path([quarry_end] + route_road(terrain, gate_n, (X(1820), 2680), avoid=wet_or_quarry), "pass")
-    hermitage = g.path(route_road(terrain, dam_w, (X(500), 2640), avoid=wet), "pass")
+    mast = g.path([quarry_end] + route_road(terrain, gate_n, (X(1820), 2680), avoid=wet_or_quarry, loop_avoid=near_road), "pass", merge=2.0)
+    grade_bulbs(g, route_road.bulbs)
+    hermitage = g.path(route_road(terrain, dam_w, (X(500), 2640), avoid=wet, loop_avoid=near_road), "pass", merge=2.0)
+    grade_bulbs(g, route_road.bulbs)
+    print(f"hairpin loops: {len(climb_bulbs)} on the pass (radius {HAIRPIN_R:.0f} m)")
     print(f"mountain roads: pass {len(climb)} nodes, quarry {len(quarry)}, mast {len(mast)}, hermitage {len(hermitage)}")
 
     # Stitch: join every road end that is still loose (bridge ends, arterial ends) and the
@@ -1288,6 +1481,7 @@ def main():
     g = build_roads(terrain, rng)
     landmarks = settle_landmarks(terrain, g)   # may remove minor streets under big landmarks
     drop_orphan_nodes(g)
+    still_steep = limit_grades(g)
     best = flatten_roads(terrain, g)
     relax_slopes(terrain, best)
     clamp_iters = clamp_slopes(terrain, best)
@@ -1368,7 +1562,8 @@ def main():
     for b in buildings:
         per[b["district"]] = per.get(b["district"], 0) + 1
     print(f"buildings {per} total {len(buildings)} in {bt:.1f}s")
-    print(f"slope clamp: {clamp_iters} passes to hold every free cell under {MAX_SLOPE} m/m")
+    print(f"slope clamp: {clamp_iters} passes to hold every free cell under {MAX_SLOPE} m/m; "
+          f"{still_steep} road segment(s) still over their grade limit")
     print(f"terrain {terrain.min():.1f}..{terrain.max():.1f} m; heightmap {HEIGHT_MIN:.0f} m = 0, {HEIGHT_MAX:.0f} m = 65535")
 
 

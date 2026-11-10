@@ -1,6 +1,6 @@
 # OpenCity: INFRA_DESIGN.md (roads, rail, water and street infrastructure)
 
-Status: **Phase 1 draft plus the Phase 2 data model, awaiting approval.** Nothing in this document changes the world's geometry yet. Phases 3 to 13 wait for approval, one phase at a time.
+Status: **Phase 1 approved (2026-11-10, the user delegated the phase decisions); Phase 2 done; Phase 3 in progress.**
 
 Marevia is a fictional town on a fictional Italian coast. All names are original: towns, streets, the motorway operator, rail and bus companies, utilities, fuel brands, beach clubs and police. The layout follows `STORY.md`. This document adds infrastructure to it and does not replace any district.
 
@@ -229,21 +229,15 @@ Proposed infrastructure waits in `SourceArt/Infra/proposed_networks.json` until 
 - **Rail:** geometry, gradient, electrification for the line kind, stations.
 - **Water:** body type, depth, still water with flow, edge treatments.
 
-**Current result (2026-11-10): 106 issues, 27 errors.** All of them are Phase 3 work:
+**Current result (2026-11-10, after Phase 3 a and c): 74 issues, 5 errors** (was 106 and 27).
 
-| Check | Result | Cause |
+| Check | Result | Notes |
 |---|---|---|
-| Gradient | 20 errors, 23 warnings | Le Colline local roads climb at up to 23.6% (limit 10%); centro streets reach 19% (game limit 15%); the coast road reaches 14.8% |
-| Radius | 7 errors, 9 warnings | **16 pass-road hairpins are tighter than the 12 m game minimum**, 7 of them under 6 m. The autopilot wrecked at one (node 728, 1695, 2352): its legs are 12 m apart and 10 m apart in height. |
-| Clearance | 3 warnings | Stacked legs too close for a slope between them, so a wall forms. This undercounts, because nodes are 25 m apart. |
-| Width | 44 warnings | 5.5 m local streets outside the centre, against the 6.5 m F minimum |
+| Gradient | 2 errors, 5 warnings (was 20 and 23) | `limit_grades` holds road nodes within each road's grade before the terrain is cut and filled to them |
+| Radius | 0 errors, 5 warnings (was 7 and 9) | Hairpins tighter than 12 m become light-bulb loops of 13 m (`bulb_hairpins`). The 5 left sit within 25 m of the north map edge or where a loop would hit another leg. |
+| Clearance | 3 errors, 15 warnings | Loops pass 9 m from the other leg at a different height. **Retaining walls** (Phase 3b, next) |
+| Width | 44 warnings | 5.5 m local streets outside the centre (F minimum 6.5 m); widening needs the road mesh rebuild (Phase 4) |
 | Speed, connectivity, ZTL gates, junctions | 0 | |
-
-**Proposed fixes for Phase 3 (approval needed):**
-
-1. **Hairpins.** Give the pass router a minimum turn radius: limit the turn per move and use longer moves where the route reverses. Then widen each apex into a bulb of radius 14 m or more, widened by 45/R per lane.
-2. **Stacked legs.** Where the legs still sit within height difference ÷ 1.6 of each other, add retaining walls from the Blender kit: rough stone on the old roads, concrete faced with stone on the 1930s pass road.
-3. **Steep local roads.** Re-grade the Le Colline local roads, adding switchbacks where needed, so they stay within 10% (+1).
 
 Not checkable from data yet, so they come with the geometry phases:
 - Gaps or overlaps between meshes, and kerb height mismatches
@@ -285,9 +279,9 @@ Rules:
 
 | Phase | Content | Status |
 |---|---|---|
-| 1 | History and network design (this document and the plan) | **Draft, awaiting approval** |
+| 1 | History and network design (this document and the plan) | **Approved 2026-11-10** (defaults in section 0 accepted) |
 | 2 | Data model and tools | **Done** (not visible in game) |
-| 3 | Terrain integration: re-grade the steep roads, retaining walls by era, terraces, space the hairpin legs, RVT edge blending | Waiting |
+| 3 | Terrain integration: re-grade the steep roads (**done**), hairpin loops (**done**), retaining walls by era, terraces, RVT edge blending | In progress |
 | 4 | Surfaces, markings, wear, physical materials | Waiting |
 | 5 | Street infrastructure (PCG) | Waiting |
 | 6 | Bridges, tunnels, walls and gates | Waiting |
