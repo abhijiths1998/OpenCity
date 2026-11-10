@@ -425,11 +425,45 @@ def bulb_hairpins(pts, r=HAIRPIN_R, avoid=None):
     return out, bulbs
 
 
-def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None):
+KEEP_OFF_COST = 150.0  # m of road a routed road would rather build than cross one 6 m cell of another road's corridor
+
+
+def road_mask(g, ends, margin=12.0, free=40.0):
+    """`keep_off(x, y)` for route_road: true within `margin` m of any road already in the graph,
+    except within `free` m of the route's ends, where it joins the network. Cells in the mask cost
+    KEEP_OFF_COST each, so a routed road crosses another road only where the detour would be
+    longer than a few hundred metres (split_crossings then makes the crossing a junction), and it
+    never runs beside one for long (the quarry spur and the radio-mast road ran across each other
+    at grade, and the mast road's exit stub passed 5 m below the spur)."""
+    nx, ny = int(W / ROUTE_CELL) + 2, int(H / ROUTE_CELL) + 2
+    mask = np.zeros((ny, nx), dtype=bool)
+    r = int(math.ceil(margin / ROUTE_CELL))
+    offs = [(dx, dy) for dx in range(-r, r + 1) for dy in range(-r, r + 1) if math.hypot(dx, dy) * ROUTE_CELL <= margin]
+    for s in g.segments:
+        a, b = g.nodes[s["a"]], g.nodes[s["b"]]
+        n = max(1, int(math.dist(a[:2], b[:2]) / (ROUTE_CELL / 2)))
+        for k in range(n + 1):
+            t = k / n
+            cx = int(round((a[0] + (b[0] - a[0]) * t) / ROUTE_CELL))
+            cy = int(round((a[1] + (b[1] - a[1]) * t - Y_MIN) / ROUTE_CELL))
+            for dx, dy in offs:
+                x, y = cx + dx, cy + dy
+                if 0 <= x < nx and 0 <= y < ny:
+                    mask[y, x] = True
+
+    def keep_off(x, y):
+        if any(math.dist((x, y), e) < free for e in ends):
+            return False
+        return bool(mask[int(round((y - Y_MIN) / ROUTE_CELL)), int(round(x / ROUTE_CELL))])
+    return keep_off
+
+
+def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None, keep_off=None):
     """Terrain-following road from start to goal (layout metres): A* on a ROUTE_CELL grid over the
     smoothed land, 16 move directions, cost = length x (1 + grade penalty) + a turn penalty, never
     steeper than ROUTE_GRADE_MAX. Switchbacks appear by themselves where the slope demands them.
-    `avoid(x, y)` marks cells the road may not use (water). Returns a smoothed polyline [(x, y)]."""
+    `avoid(x, y)` marks cells the road may not use (water); `keep_off(x, y)` (road_mask) cells
+    beside roads already built, which cost KEEP_OFF_COST each. Returns a smoothed polyline [(x, y)]."""
     import heapq
     soft = terrain.copy()
     for _ in range(2):  # 10 m smoothing: route on the land's shape, not its noise
@@ -473,11 +507,12 @@ def route_road(terrain, start, goal, avoid=None, turn_cost=40.0, loop_avoid=None
             x, y = n[0] * ROUTE_CELL, n[1] * ROUTE_CELL + Y_MIN
             if avoid is not None and avoid(x, y) and n != s1:
                 continue
+            off_road = keep_off is not None and n != s1 and keep_off(x, y)
             length = math.hypot(dx, dy) * ROUTE_CELL
             grade = abs(hgt(*n) - h0) / length
             if grade > ROUTE_GRADE_MAX:
                 continue
-            cost = length * (1.0 + 60.0 * max(0.0, grade - ROUTE_GRADE_OK))
+            cost = length * (1.0 + 60.0 * max(0.0, grade - ROUTE_GRADE_OK)) + (KEEP_OFF_COST if off_road else 0.0)
             if par is not None:
                 ax, ay = c[0] - par[0], c[1] - par[1]
                 cosang = (ax * dx + ay * dy) / (math.hypot(ax, ay) * math.hypot(dx, dy))
@@ -723,15 +758,25 @@ def build_roads(terrain, rng):
     # Branches start from the pass node nearest their destination.
     def branch_from(target):
         return min(pass_ids[:n_climb], key=lambda i: math.dist(g.nodes[i][:2], target))
-    q0 = branch_from(quarry_end)
+    # The yard has one entrance, in the middle of its north side: the spur from the pass arrives
+    # there and the radio-mast road leaves from it (the spur used to end in the yard's centre and
+    # crossed the mast road's exit stub 5 m above it). Routed roads keep off roads already built
+    # (road_mask), so the branches no longer cross each other or the pass legs at grade.
+    gate_n = (quarry_end[0], quarry_end[1] + qd + 3.0)
+    q0 = branch_from(gate_n)
+    q0p = tuple(g.nodes[q0][:2])
     def near_road(x, y):  # hairpin loops keep 14 m from roads already built
         return any((n[0] - x) ** 2 + (n[1] - y) ** 2 < 14.0 ** 2 for n in g.nodes)
-    quarry = g.path([tuple(g.nodes[q0][:2])] + route_road(terrain, tuple(g.nodes[q0][:2]), quarry_end, avoid=wet, loop_avoid=near_road)[1:], "pass", merge=2.0)
+    quarry = g.path([q0p] + route_road(terrain, q0p, gate_n, avoid=wet_or_quarry, loop_avoid=near_road,
+                                       keep_off=road_mask(g, (q0p, gate_n)))[1:] + [quarry_end], "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
-    gate_n = (quarry_end[0], quarry_end[1] + qd + 3.0)  # out of the yard's north side
-    mast = g.path([quarry_end] + route_road(terrain, gate_n, (X(1820), 2680), avoid=wet_or_quarry, loop_avoid=near_road), "pass", merge=2.0)
+    mast_end = (X(1820), 2680)
+    mast = g.path(route_road(terrain, gate_n, mast_end, avoid=wet_or_quarry, loop_avoid=near_road,
+                             keep_off=road_mask(g, (gate_n, mast_end))), "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
-    hermitage = g.path(route_road(terrain, dam_w, (X(500), 2640), avoid=wet, loop_avoid=near_road), "pass", merge=2.0)
+    hermitage_end = (X(500), 2640)
+    hermitage = g.path(route_road(terrain, dam_w, hermitage_end, avoid=wet, loop_avoid=near_road,
+                                  keep_off=road_mask(g, (dam_w, hermitage_end))), "pass", merge=2.0)
     grade_bulbs(g, route_road.bulbs)
     print(f"hairpin loops: {len(climb_bulbs)} on the pass (radius {HAIRPIN_R:.0f} m)")
     print(f"mountain roads: pass {len(climb)} nodes, quarry {len(quarry)}, mast {len(mast)}, hermitage {len(hermitage)}")
@@ -759,18 +804,51 @@ def build_roads(terrain, rng):
                 best, bd = j, dd
         return best
 
+    def nearest_foot(i, max_d):
+        """Nearest point on the interior of another road's segment (a T-junction onto it), or None."""
+        x, y = g.nodes[i][0], g.nodes[i][1]
+        best, bd = None, max_d
+        for sg in g.segments:
+            if sg["bridge"] or sg["kind"] == "pier" or i in (sg["a"], sg["b"]):
+                continue
+            a, b = g.nodes[sg["a"]], g.nodes[sg["b"]]
+            vx, vy = b[0] - a[0], b[1] - a[1]
+            l2 = vx * vx + vy * vy
+            if l2 < 1.0:
+                continue
+            t = ((x - a[0]) * vx + (y - a[1]) * vy) / l2
+            if not 0.1 < t < 0.9:
+                continue
+            fx, fy = a[0] + vx * t, a[1] + vy * t
+            d = math.hypot(fx - x, fy - y)
+            if d < bd and segment_on_land(x, y, fx, fy):
+                best, bd = (fx, fy), d
+        return best, bd
+
     deg = degree()
     for i in range(len(g.nodes)):
         if deg[i] <= 1:  # loose end
             linked = {s["b"] if s["a"] == i else s["a"] for s in g.segments if i in (s["a"], s["b"])}
             j = nearest(i, 120.0, exclude=linked)
-            if j is not None:
+            # Joining the nearest *node* can run the link alongside a road at a few degrees (the
+            # Villa Salvi drive met the coast road 45 m along it at 15 degrees, and the two road
+            # meshes overlapped); a right-angle T onto the road itself is used when it is shorter.
+            foot, fd = nearest_foot(i, 120.0)
+            if foot is not None and (j is None or fd + 5.0 < math.dist(g.nodes[i][:2], g.nodes[j][:2])):
+                g.connect(i, g.node(foot[0], foot[1], merge=3.0), "street")  # split_crossings joins it to the road
+            elif j is not None:
                 g.connect(i, j, "street")
     # Border links between neighbouring districts, about every 150 m.
     for i, (x, y, _) in enumerate(list(g.nodes)):
         j = nearest(i, 75.0, other_district=True)
         if j is not None and rng.random() < 0.6:
             g.connect(i, j, "street")
+
+    drop_coincident(g)
+    merge_short_segments(g)
+    split_crossings(g)
+    merge_short_segments(g)
+    split_crossings(g)  # a junction node a metre off a road's line can leave one crossing; none after this
 
     # Gates: every road that crosses between districts is closed by the gate of whichever side
     # unlocks later in the story. Explicit tags (bridges) are kept. This catches every
@@ -791,6 +869,204 @@ def build_roads(terrain, rng):
         if UNLOCK_RANK[later] > 0:
             s["gate"] = DISTRICT_GATE[later]
     return g
+
+
+ROAD_RANK = {"pier": 0, "alley": 1, "street": 2, "coast": 3, "avenue": 3, "pass": 3}
+
+
+def merge_short_segments(g, min_len=4.0):
+    """Merge the two ends of any segment shorter than `min_len` m (junction nodes that landed a
+    few metres from an existing node): the stubs made one-node-wide zigzags in the road meshes and
+    a road end could cross another road a metre past its junction. The end with more roads stays."""
+    merged = 0
+    while True:
+        degree = {}
+        for sg in g.segments:
+            degree[sg["a"]] = degree.get(sg["a"], 0) + 1
+            degree[sg["b"]] = degree.get(sg["b"], 0) + 1
+        victim = None
+        for sg in g.segments:
+            if sg["bridge"] or sg["kind"] == "pier":
+                continue
+            if math.dist(g.nodes[sg["a"]][:2], g.nodes[sg["b"]][:2]) < min_len:
+                victim = sg
+                break
+        if victim is None:
+            break
+        keep, drop = (victim["a"], victim["b"]) if degree[victim["a"]] >= degree[victim["b"]] else (victim["b"], victim["a"])
+        out, have = [], set()
+        for sg in g.segments:
+            if sg is victim:
+                continue
+            if sg["a"] == drop:
+                sg["a"] = keep
+            if sg["b"] == drop:
+                sg["b"] = keep
+            key = frozenset((sg["a"], sg["b"]))
+            if sg["a"] == sg["b"] or key in have:
+                continue
+            have.add(key)
+            out.append(sg)
+        g.segments = out
+        merged += 1
+    print(f"short segments: {merged} under {min_len:.0f} m merged away")
+
+
+def drop_coincident(g, max_angle=30.0):
+    """Drop a street that runs inside another road's corridor: the district grids' edge columns lay
+    along the viale and the coast road at a few degrees, so two road meshes (and one road's kerbs,
+    bins and poles) sat on the other road's asphalt. The wider road (or the longer one of equal
+    width) stays; the streets that ended on the dropped one are joined to it by split_crossings."""
+    cell = 50.0
+    grid = {}
+    for j, s in enumerate(g.segments):
+        a, b = g.nodes[s["a"]], g.nodes[s["b"]]
+        for gx in range(int(min(a[0], b[0]) // cell) - 1, int(max(a[0], b[0]) // cell) + 2):
+            for gy in range(int(min(a[1], b[1]) // cell) - 1, int(max(a[1], b[1]) // cell) + 2):
+                grid.setdefault((gx, gy), set()).add(j)
+    dropped = set()
+    for p, sp in enumerate(g.segments):
+        if sp["bridge"] or sp["kind"] in ("pier", "pass"):
+            continue
+        A, B = g.nodes[sp["a"]], g.nodes[sp["b"]]
+        lp = math.dist(A[:2], B[:2])
+        if lp < 1.0:
+            continue
+        near = set()
+        for gx in range(int(min(A[0], B[0]) // cell), int(max(A[0], B[0]) // cell) + 1):
+            for gy in range(int(min(A[1], B[1]) // cell), int(max(A[1], B[1]) // cell) + 1):
+                near |= grid.get((gx, gy), set())
+        for q in near:
+            sq = g.segments[q]
+            if q == p or q in dropped or sq["bridge"]:
+                continue
+            C, D = g.nodes[sq["a"]], g.nodes[sq["b"]]
+            lq = math.dist(C[:2], D[:2])
+            # The road that matters stays: the coast road and the avenues over streets over alleys,
+            # then the longer one.
+            if lq < 1.0 or (ROAD_RANK[sq["kind"]], lq) <= (ROAD_RANK[sp["kind"]], lp):
+                continue
+            cosang = abs(((B[0] - A[0]) * (D[0] - C[0]) + (B[1] - A[1]) * (D[1] - C[1])) / (lp * lq))
+            if cosang < math.cos(math.radians(max_angle)):
+                continue
+            reach = (sp["width"] + sq["width"]) / 2.0  # edges overlap
+            vx, vy = D[0] - C[0], D[1] - C[1]
+            inside = True
+            for k in range(5):
+                x, y = A[0] + (B[0] - A[0]) * k / 4.0, A[1] + (B[1] - A[1]) * k / 4.0
+                t = ((x - C[0]) * vx + (y - C[1]) * vy) / (lq * lq)
+                if not -0.05 <= t <= 1.05 or math.hypot(x - C[0] - vx * t, y - C[1] - vy * t) > reach:
+                    inside = False
+                    break
+            if inside:
+                dropped.add(p)
+                break
+    g.segments = [s for j, s in enumerate(g.segments) if j not in dropped]
+    print(f"coincident roads: {len(dropped)} street segment(s) dropped from inside another road's corridor")
+
+
+def split_crossings(g, same_level=2.5, snap=4.0, bridge_snap=15.0):
+    """Roads that cross in plan without sharing a node get a junction node at the crossing, and
+    a road end that all but touches another road is joined to it (65 grid streets ran through
+    the long viale and coast-road segments with no junction: no turn in the lane graph, two road
+    meshes on top of each other, and a bump where their heights disagreed). Urban roads sit on
+    the terrain, so they always cross at grade. Graded mountain roads ("pass") are only joined
+    when the two heights are within `same_level` m; other crossings are reported, because they
+    need a bridge or a different route. A bridge deck that overruns the riverside street by up to
+    `bridge_snap` m is shortened to end at the street."""
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    def project(p, a, b):  # (t along a-b, distance) of the point nearest p
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        l2 = dx * dx + dy * dy
+        t = max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) if l2 else 0.0
+        return t, math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dy * t)
+
+    cell = 50.0
+    grid = {}
+    for j, s in enumerate(g.segments):
+        a, b = g.nodes[s["a"]], g.nodes[s["b"]]
+        for gx in range(int(min(a[0], b[0]) // cell), int(max(a[0], b[0]) // cell) + 1):
+            for gy in range(int(min(a[1], b[1]) // cell), int(max(a[1], b[1]) // cell) + 1):
+                grid.setdefault((gx, gy), []).append(j)
+    splits = {}   # segment -> [(t, node)]
+    joined = {}   # node -> segments it was joined into (an end touching a road)
+    unbridged, crossings, touches = [], 0, 0
+    done = set()
+    for js in grid.values():
+        for i in range(len(js)):
+            for k in range(i + 1, len(js)):
+                p, q = min(js[i], js[k]), max(js[i], js[k])
+                if (p, q) in done:
+                    continue
+                done.add((p, q))
+                sp, sq = g.segments[p], g.segments[q]
+                if {sp["a"], sp["b"]} & {sq["a"], sq["b"]}:
+                    continue
+                A, B = g.nodes[sp["a"]], g.nodes[sp["b"]]
+                C, D = g.nodes[sq["a"]], g.nodes[sq["b"]]
+                # A road end that all but touches the other road: join it there.
+                touched = False
+                for n, seg, (E, F) in ((sp["a"], q, (C, D)), (sp["b"], q, (C, D)), (sq["a"], p, (A, B)), (sq["b"], p, (A, B))):
+                    t, d = project(g.nodes[n], E, F)
+                    if d < snap and 0.02 < t < 0.98 and seg not in joined.get(n, ()):
+                        splits.setdefault(seg, []).append((t, n))
+                        joined.setdefault(n, []).append(seg)
+                        touches += 1
+                        touched = True
+                if touched:
+                    continue
+                d1, d2, d3, d4 = cross(C, D, A), cross(C, D, B), cross(A, B, C), cross(A, B, D)
+                if not (((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0))) or d1 == d2 or d3 == d4:
+                    continue
+                t, u = d1 / (d1 - d2), d3 / (d3 - d4)
+                x, y = A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t
+                za, zb = A[2] + (B[2] - A[2]) * t, C[2] + (D[2] - C[2]) * u
+                if (sp["kind"] == "pass" or sq["kind"] == "pass") and abs(za - zb) > same_level:
+                    unbridged.append((p, q, x, y, za, zb))
+                    continue
+                # A bridge deck overrunning the street at its end: pull the deck's end node to the street.
+                moved = None
+                for seg, s_, tt in ((p, sp, t), (q, sq, u)):
+                    if s_["bridge"]:
+                        end = s_["a"] if tt < 0.5 else s_["b"]
+                        if math.dist(g.nodes[end][:2], (x, y)) < bridge_snap:
+                            g.nodes[end][0], g.nodes[end][1] = round(x, 1), round(y, 1)
+                            moved = (seg, end)
+                if moved is not None:
+                    other = q if moved[0] == p else p
+                    tt = u if other == q else t
+                    splits.setdefault(other, []).append((tt, moved[1]))
+                    crossings += 1
+                    continue
+                n = g.node(x, y, merge=1.0)
+                g.nodes[n][2] = round((za + zb) / 2.0, 2)
+                splits.setdefault(p, []).append((t, n))
+                splits.setdefault(q, []).append((u, n))
+                crossings += 1
+    have = {frozenset((s["a"], s["b"])) for s in g.segments}
+    out = []
+    for j, s in enumerate(g.segments):
+        if j not in splits:
+            out.append(s)
+            continue
+        chain = [s["a"]] + [n for _, n in sorted(splits[j])] + [s["b"]]
+        for a, b in zip(chain, chain[1:]):
+            key = frozenset((a, b))
+            if a == b or (key in have and key != frozenset((s["a"], s["b"]))):
+                continue
+            ns = dict(s)
+            ns["a"], ns["b"] = a, b
+            out.append(ns)
+            have.add(key)
+    g.segments = out
+    for p, q, x, y, za, zb in unbridged:
+        print(f"  WARNING: roads cross without a junction at ({x:.0f}, {y:.0f}): heights {za:.1f} and {zb:.1f} m "
+              f"({g.segments[p]['kind']} over {g.segments[q]['kind']}); needs a bridge or another route")
+    print(f"crossings: {crossings} junction(s) added where roads crossed, {touches} road end(s) joined to the road "
+          f"they touched, {len(unbridged)} unbridged crossing(s) left")
+    return unbridged
 
 
 # --- Landmarks and gates ---------------------------------------------------------------

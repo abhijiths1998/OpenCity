@@ -152,7 +152,9 @@ namespace OCAutoDrive
 		V->GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	}
 
-	/** Teleport to the start of route segment AtSeg, facing along it, and wait for ground to stream in. */
+	/** Teleport to the start of route segment AtSeg, facing along it, and wait for ground to stream in.
+	 *  Moves on to a later segment while the car would stand inside something there (a building corner
+	 *  on the lane at an alley junction): depenetration from inside geometry wrecked the car in 0.1 s. */
 	void FDriver::Place(int32 AtSeg)
 	{
 		AOCVehicle* V = Vehicle.Get();
@@ -161,6 +163,29 @@ namespace OCAutoDrive
 			return;
 		}
 		Seg = FMath::Clamp(AtSeg, 0, Route.Num() - 2);
+		if (UWorld* W = World.Get())
+		{
+			const FVector Extent = V->GetMesh()->Bounds.BoxExtent;
+			FCollisionQueryParams Q(TEXT("OCAutoDrivePlace"), false, V);
+			Q.AddIgnoredActor(Walker.Get());
+			for (int32 Try = 0; Try < 8 && Seg < Route.Num() - 2; ++Try)
+			{
+				FHitResult Ground;
+				if (!HasGround(Route[Seg].Pos, &Ground))
+				{
+					break;  // nothing streamed in yet: Settling waits for the ground and sets the car down
+				}
+				const FVector Dir = (Route[Seg + 1].Pos - Route[Seg].Pos).GetSafeNormal2D();
+				const FQuat Rot = FRotator(0.f, Dir.Rotation().Yaw, 0.f).Quaternion();
+				const FVector Centre = Ground.ImpactPoint + FVector(0, 0, Extent.Z + 40.0);
+				if (!W->OverlapBlockingTestByChannel(Centre, Rot, ECC_WorldStatic, FCollisionShape::MakeBox(Extent), Q))
+				{
+					break;
+				}
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV route: segment %d starts inside geometry at %s, placing one segment on"), Seg, *Route[Seg].Pos.ToCompactString());
+				++Seg;
+			}
+		}
 		const FVector From = Route[Seg].Pos;
 		const FVector Dir = (Route[Seg + 1].Pos - From).GetSafeNormal2D();
 		TeleportCar(V, From + FVector(0, 0, 150), FRotator(0.f, Dir.Rotation().Yaw, 0.f));

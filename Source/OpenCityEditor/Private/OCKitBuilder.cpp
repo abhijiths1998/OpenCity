@@ -700,14 +700,52 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 	// Fixtures reach (or face) along their local -Y: yaw that turns local +Y onto Dir.
 	auto YawForLocalY = [](const FVector& Dir) { return FMath::RadiansToDegrees(FMath::Atan2(-Dir.X, Dir.Y)); };
 
+	// Nothing may stand on a carriageway: a sign placed off its own road's edge can land on the
+	// road it joins at a junction (STOP signs stood on the viale's zebra crossings), so every
+	// fixture is checked against all roads around it, with 0.3 m of margin past the edge.
+	TMap<FIntPoint, TArray<int32>> RoadCells;  // 50 m cells
+	const double RoadCellCm = 5000.0;
+	for (int32 s = 0; s < Segs.Num(); ++s)
+	{
+		const FVector& PA = Nodes[Segs[s].A].Location;
+		const FVector& PB = Nodes[Segs[s].B].Location;
+		for (int32 x = FMath::FloorToInt32(FMath::Min(PA.X, PB.X) / RoadCellCm) - 1; x <= FMath::FloorToInt32(FMath::Max(PA.X, PB.X) / RoadCellCm) + 1; ++x)
+		{
+			for (int32 y = FMath::FloorToInt32(FMath::Min(PA.Y, PB.Y) / RoadCellCm) - 1; y <= FMath::FloorToInt32(FMath::Max(PA.Y, PB.Y) / RoadCellCm) + 1; ++y)
+			{
+				RoadCells.FindOrAdd(FIntPoint(x, y)).Add(s);
+			}
+		}
+	}
+	auto OnCarriageway = [&](const FVector& At)
+	{
+		const TArray<int32>* Cell = RoadCells.Find(FIntPoint(FMath::FloorToInt32(At.X / RoadCellCm), FMath::FloorToInt32(At.Y / RoadCellCm)));
+		for (const int32 s : Cell ? *Cell : TArray<int32>())
+		{
+			const FVector& PA = Nodes[Segs[s].A].Location;
+			const FVector& PB = Nodes[Segs[s].B].Location;
+			const FVector2D Foot = FMath::ClosestPointOnSegment2D(FVector2D(At), FVector2D(PA), FVector2D(PB));
+			if (FVector2D::Distance(FVector2D(At), Foot) < Segs[s].WidthCm * 0.5 + 30.0)
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
 	TMap<FIntPoint, TArray<FInstance>> Chunks;
 	TSet<UStaticMesh*> Solid;
 	FRandomStream R(Seed);
-	int32 Count = 0;
+	int32 Count = 0, Skipped = 0;
 	auto Put = [&](UStaticMesh* Mesh, const FVector& At, double YawDeg, double Lift = 0.0, const FLinearColor& Colour = FLinearColor::White, bool bOnGround = true)
 	{
 		if (!Mesh)
 		{
+			return;
+		}
+		if (bOnGround && OnCarriageway(At))
+		{
+			++Skipped;
 			return;
 		}
 		FInstance I;
@@ -926,7 +964,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		Actor->SetActorLabel(FString::Printf(TEXT("Street_Fixtures_%d_%d"), Pair.Key.X, Pair.Key.Y));
 		Actor->SetFolderPath(TEXT("Props"));
 	}
-	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetFixtures: %d fixtures in %d chunks"), Count, Chunks.Num());
+	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetFixtures: %d fixtures in %d chunks, %d skipped for standing on a carriageway"), Count, Chunks.Num(), Skipped);
 	return Count;
 }
 
