@@ -100,10 +100,23 @@ public:
 	 * Retaining walls from the layout's "retaining_walls" runs (Tools/make_marevia_layout.py): kit
 	 * panels (SM_Kit_RetainingWall_Stone_400 / _Concrete_400, 4 x 2 m) stacked from the top down to
 	 * below the bottom height, capped with SM_Kit_WallCoping_400. Cut walls face the road; fill walls
-	 * face away from it and stand 1 m above it as a parapet. Walls collide. Returns the panel count.
+	 * face away from it and stand 0.8 m above it as a parapet. Walls collide. Returns the panel count.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
 	static int32 BuildRetainingWalls(UWorld* World, const FString& LayoutJsonPath, float ChunkSizeCm);
+
+	/**
+	 * Street fixtures from the road data (INFRA_DESIGN.md Phase 5), kit pieces from
+	 * Tools/blender/make_kit.py: wall lanterns along centro storico streets, galvanised LED poles on
+	 * post-war streets and the coast road (BuildStreetProps keeps the cast-iron lamps for the rest),
+	 * Codice della Strada signs at ZTL gates (ZTL + 30), urban entries (50), blind T-junctions (STOP +
+	 * convex mirror opposite) and minor roads meeting a viale (give way), recycling bins on post-war
+	 * pavements, drinking fountains at the piazza and some centro junctions, iron bollards at centro
+	 * corners. Returns the number of fixtures.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "OpenCity|World Builder")
+	static int32 BuildStreetFixtures(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+		float SidewalkWidthCm, float ChunkSizeCm, int32 Seed);
 
 	/**
 	 * Road decals (oc_decals.py instances): manholes about every 70 m in a lane, tyre marks on 40% of

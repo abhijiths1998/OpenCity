@@ -577,9 +577,13 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 		auto At = [&](double D, double Side, double Off) { return A + Dir * D + Right * (Side * Off); };
 		const double SegYaw = FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
 
-		// Street lights every 28 m, staggered across the two sides; both sides on boulevards.
+		// Street lights every 28 m, staggered across the two sides; both sides on boulevards. Centro
+		// storico (wall lanterns), post-war streets and the coast road (LED poles) are lit by
+		// BuildStreetFixtures instead.
+		const bool bFixtureLit = S.Profile == TEXT("centro_storico") || S.Profile == TEXT("costiera")
+			|| (S.Era == TEXT("postwar") && (S.Profile == TEXT("urbana_quartiere") || S.Profile == TEXT("urbana_locale")));
 		int32 k = 0;
-		for (double D = From + 6.0 * 100.0; D <= To; D += 2800.0, ++k)
+		for (double D = From + 6.0 * 100.0; D <= (bFixtureLit ? -1.0 : To); D += 2800.0, ++k)
 		{
 			for (int32 Side = -1; Side <= 1; Side += 2)
 			{
@@ -649,6 +653,284 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 		Actor->SetFolderPath(TEXT("Props"));
 	}
 	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetProps: %d props (%d lamps, %d trees) in %d chunks"), Count, Lamps, TreeCount, Chunks.Num());
+	return Count;
+}
+
+
+int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,
+	float SidewalkWidthCm, float ChunkSizeCm, int32 Seed)
+{
+	using namespace OCKit;
+	FString Text, Error;
+	TSharedPtr<FJsonObject> Root;
+	OCWorld::FHeightField Height;
+	FOCRoadGraph Roads;
+	if (!World || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root.IsValid()
+		|| !Height.Load(HeightmapPng, Root) || !Roads.LoadFromLayoutJson(Text, Error))
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetFixtures: cannot read the layout or heightmap"));
+		return 0;
+	}
+	auto Kit = [](const TCHAR* Name) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/Environment/Meshes/Kit/SM_Kit_%s.SM_Kit_%s"), Name, Name)); };
+	UStaticMesh* Lantern = Kit(TEXT("Prop_WallLantern"));
+	UStaticMesh* LedPole = Kit(TEXT("Prop_LedPole"));
+	UStaticMesh* SignZTL = Kit(TEXT("Sign_ZTL"));
+	UStaticMesh* Sign30 = Kit(TEXT("Sign_Speed30"));
+	UStaticMesh* Sign50 = Kit(TEXT("Sign_Speed50"));
+	UStaticMesh* SignStop = Kit(TEXT("Sign_Stop"));
+	UStaticMesh* SignGive = Kit(TEXT("Sign_GiveWay"));
+	UStaticMesh* Mirror = Kit(TEXT("Prop_ConvexMirror"));
+	UStaticMesh* Bin = Kit(TEXT("Prop_RecyclingBin"));
+	UStaticMesh* Fountain = Kit(TEXT("Prop_Fountain"));
+	UStaticMesh* BollardIron = Kit(TEXT("Prop_BollardIron"));
+	if (!Lantern || !LedPole || !SignZTL || !Bin)
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetFixtures: fixtures not imported (Tools/blender/make_kit.py, oc_import_kit.py)"));
+		return 0;
+	}
+	const TArray<FOCRoadNode>& Nodes = Roads.GetNodes();
+	const TArray<FOCRoadSegment>& Segs = Roads.GetSegments();
+	TArray<double> Clear;
+	Clear.Init(0.0, Nodes.Num());
+	for (const FOCRoadSegment& S : Segs)
+	{
+		for (const int32 N : { S.A, S.B })
+		{
+			Clear[N] = FMath::Max(Clear[N], S.WidthCm * 0.5 + SidewalkWidthCm);
+		}
+	}
+	auto HasWalk = [](const FOCRoadSegment& S) { return S.Kind == TEXT("avenue") || S.Kind == TEXT("street"); };
+	// Fixtures reach (or face) along their local -Y: yaw that turns local +Y onto Dir.
+	auto YawForLocalY = [](const FVector& Dir) { return FMath::RadiansToDegrees(FMath::Atan2(-Dir.X, Dir.Y)); };
+
+	TMap<FIntPoint, TArray<FInstance>> Chunks;
+	TSet<UStaticMesh*> Solid;
+	FRandomStream R(Seed);
+	int32 Count = 0;
+	auto Put = [&](UStaticMesh* Mesh, const FVector& At, double YawDeg, double Lift = 0.0, const FLinearColor& Colour = FLinearColor::White, bool bOnGround = true)
+	{
+		if (!Mesh)
+		{
+			return;
+		}
+		FInstance I;
+		I.Mesh = Mesh;
+		const double Z = bOnGround ? Height.HeightCm(At.X, At.Y) + 27.0 + Lift : At.Z;
+		I.Transform = FTransform(FRotator(0.0, YawDeg, 0.0), FVector(At.X, At.Y, Z));
+		I.Data[0] = Colour.R;
+		I.Data[1] = Colour.G;
+		I.Data[2] = Colour.B;
+		for (int32 k = 3; k < 6; ++k) { I.Data[k] = 1.f; }
+		I.Data[7] = 1.f;  // lamp glass lit at night (M_Master_KitGlass)
+		Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(At.X / ChunkSizeCm), FMath::FloorToInt32(At.Y / ChunkSizeCm))).Add(I);
+		++Count;
+	};
+
+	// Signs where traffic approaches node N along segment S: on the approaching driver's right,
+	// Offset cm before the junction edge, facing the traffic.
+	auto SignAt = [&](UStaticMesh* Sign, const FOCRoadSegment& S, int32 N, double Offset)
+	{
+		const FVector A = Nodes[S.A].Location, B = Nodes[S.B].Location;
+		const FVector Dir = (B - A).GetSafeNormal2D();
+		const FVector Side(-Dir.Y, Dir.X, 0.0);
+		const bool bAtB = N == S.B;
+		const FVector Travel = bAtB ? Dir : -Dir;
+		const FVector Right = bAtB ? Side : -Side;
+		const double Len = FVector::Dist2D(A, B);
+		const double Back = FMath::Min(Clear[N] + Offset, Len * 0.45);
+		const FVector P = Nodes[N].Location - Travel * Back + Right * (S.WidthCm * 0.5 + (HasWalk(S) ? SidewalkWidthCm * 0.6 : 60.0));
+		Put(Sign, P, YawForLocalY(Travel), HasWalk(S) ? 15.0 : 0.0);
+	};
+
+	for (const FOCRoadSegment& S : Segs)
+	{
+		if (!S.Bridge.IsNone() || S.bPedestrian)
+		{
+			continue;
+		}
+		const FVector A = Nodes[S.A].Location, B = Nodes[S.B].Location;
+		const FVector Dir = (B - A).GetSafeNormal2D();
+		const FVector Side(-Dir.Y, Dir.X, 0.0);
+		const double Len = FVector::Dist2D(A, B);
+		const double From = Clear[S.A] + 300.0, To = Len - Clear[S.B] - 300.0;
+		if (To - From < 300.0)
+		{
+			continue;
+		}
+		const double Half = S.WidthCm * 0.5;
+		const double Walk = HasWalk(S) ? SidewalkWidthCm : 0.0;
+		auto At = [&](double D, double Sign, double Off) { return A + Dir * D + Side * (Sign * Off); };
+
+		// Centro storico: lanterns on the facades, alternating sides every 18 m, 4.2 m up.
+		if (S.Profile == TEXT("centro_storico"))
+		{
+			int32 k = 0;
+			for (double D = From; D <= To; D += 1800.0, ++k)
+			{
+				const double SideSign = (k % 2) ? 1.0 : -1.0;
+				const FVector Wall = At(D, SideSign, Half + Walk + 30.0);
+				Put(Lantern, Wall, YawForLocalY(Side * SideSign), 420.0);
+			}
+		}
+		// Post-war streets and the coast road: galvanised LED poles at the kerb, arm over the road.
+		const bool bPostwar = S.Era == TEXT("postwar") && (S.Profile == TEXT("urbana_quartiere") || S.Profile == TEXT("urbana_locale"));
+		if (bPostwar || S.Profile == TEXT("costiera"))
+		{
+			int32 k = 0;
+			for (double D = From + 500.0; D <= To; D += (bPostwar ? 3200.0 : 4500.0), ++k)
+			{
+				const double SideSign = (k % 2) ? 1.0 : -1.0;
+				Put(LedPole, At(D, SideSign, Half + (Walk > 0.0 ? 45.0 : 80.0)), YawForLocalY(Side * SideSign), Walk > 0.0 ? 15.0 : 0.0);
+			}
+		}
+		// Recycling bins: groups of five (glass, plastic, paper, organic, unsorted) every ~150 m on
+		// post-war pavements, side by side along the kerb.
+		if (bPostwar && Walk > 0.0)
+		{
+			static const FLinearColor Streams[5] = { FLinearColor(0.05f, 0.25f, 0.06f), FLinearColor(0.75f, 0.6f, 0.02f),
+				FLinearColor(0.03f, 0.12f, 0.45f), FLinearColor(0.22f, 0.12f, 0.05f), FLinearColor(0.25f, 0.25f, 0.25f) };
+			for (double D = From + R.FRandRange(600.f, 4000.f); D + 800.0 <= To; D += 15000.0)
+			{
+				const double SideSign = R.FRand() < 0.5 ? 1.0 : -1.0;
+				for (int32 b = 0; b < 5; ++b)
+				{
+					Put(Bin, At(D + b * 150.0, SideSign, Half + 95.0), FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)), 15.0, Streams[b]);
+				}
+			}
+		}
+	}
+
+	// Junction fixtures.
+	TMap<int32, FName> JunctionType;
+	for (const FOCRoadJunction& J : Roads.GetJunctions())
+	{
+		JunctionType.Add(J.Node, J.Type);
+	}
+	int32 CentroCorners = 0;
+	for (int32 N = 0; N < Nodes.Num(); ++N)
+	{
+		const TArray<int32>& At = Roads.SegmentsAt(N);
+		const FName* Type = JunctionType.Find(N);
+		if (!Type || At.IsEmpty())
+		{
+			continue;
+		}
+		if (*Type == TEXT("ztl_gate"))
+		{
+			// Entering the ZTL: the panel and a Zona 30 sign on the outside approach.
+			for (const int32 si : At)
+			{
+				if (!Segs[si].bZTL && !Segs[si].bPedestrian && Segs[si].Bridge.IsNone())
+				{
+					SignAt(SignZTL, Segs[si], N, 300.0);
+					SignAt(Sign30, Segs[si], N, 700.0);
+				}
+			}
+		}
+		else if (*Type == TEXT("blind_t") && At.Num() == 3)
+		{
+			// The narrowest road is the minor one: STOP on it, a convex mirror across the main road.
+			int32 Minor = At[0];
+			for (const int32 si : At)
+			{
+				if (Segs[si].WidthCm < Segs[Minor].WidthCm) { Minor = si; }
+			}
+			const FOCRoadSegment& M = Segs[Minor];
+			if (!M.bPedestrian && M.Bridge.IsNone())
+			{
+				SignAt(SignStop, M, N, 150.0);
+				const FVector Away = ((M.A == N ? Nodes[M.B].Location : Nodes[M.A].Location) - Nodes[N].Location).GetSafeNormal2D();
+				Put(Mirror, Nodes[N].Location - Away * (Clear[N] + 60.0), YawForLocalY(-Away), 15.0);
+			}
+		}
+		else if (*Type == TEXT("priority"))
+		{
+			bool bViale = false;
+			for (const int32 si : At) { bViale |= Segs[si].Profile == TEXT("viale"); }
+			if (bViale)
+			{
+				for (const int32 si : At)
+				{
+					if (Segs[si].Profile != TEXT("viale") && !Segs[si].bPedestrian && Segs[si].Bridge.IsNone())
+					{
+						SignAt(SignGive, Segs[si], N, 150.0);
+					}
+				}
+			}
+		}
+		// Centro storico corners: a drinking fountain at the piazza and every 7th centro junction,
+		// cast-iron bollards guarding the corners of the pavement.
+		bool bCentro = false;
+		for (const int32 si : At) { bCentro |= Segs[si].Profile == TEXT("centro_storico"); }
+		if (bCentro && At.Num() >= 3)
+		{
+			const FVector C = Nodes[N].Location;
+			const FVector D0 = ((Segs[At[0]].A == N ? Nodes[Segs[At[0]].B].Location : Nodes[Segs[At[0]].A].Location) - C).GetSafeNormal2D();
+			const FVector Corner = C + (D0 + FVector(-D0.Y, D0.X, 0.0)) * (Clear[N] * 0.72);
+			if (*Type == TEXT("piazza") || ++CentroCorners % 7 == 0)
+			{
+				Put(Fountain, Corner, YawForLocalY(-(Corner - C).GetSafeNormal2D()), 15.0);
+			}
+			for (int32 b = -1; b <= 1; ++b)
+			{
+				Put(BollardIron, Corner + D0 * (b * 120.0 + 200.0), 0.0, 15.0);
+			}
+		}
+	}
+	// Urban entries: where an extra-urban road becomes urban, a 50 sign on the urban side.
+	for (int32 N = 0; N < Nodes.Num(); ++N)
+	{
+		const TArray<int32>& At = Roads.SegmentsAt(N);
+		bool bUrban = false, bRural = false;
+		for (const int32 si : At)
+		{
+			if (const FOCRoadProfile* P = Roads.FindProfile(Segs[si].Profile))
+			{
+				(P->bUrban ? bUrban : bRural) = true;
+			}
+		}
+		if (bUrban && bRural)
+		{
+			for (const int32 si : At)
+			{
+				const FOCRoadProfile* P = Roads.FindProfile(Segs[si].Profile);
+				if (P && !P->bUrban && Segs[si].Bridge.IsNone())
+				{
+					// Traffic arriving from the rural road meets the sign as it enters: place it on the
+					// rural segment just before the node, facing that traffic.
+					SignAt(Sign50, Segs[si], N, 400.0);
+				}
+			}
+		}
+	}
+
+	for (const TPair<FIntPoint, TArray<FInstance>>& Pair : Chunks)
+	{
+		FBox Bounds(ForceInit);
+		for (const FInstance& I : Pair.Value)
+		{
+			Bounds += I.Transform.GetLocation();
+		}
+		AOCKitBuildingChunk* Actor = World->SpawnActor<AOCKitBuildingChunk>(FVector(Bounds.GetCenter().X, Bounds.GetCenter().Y, Bounds.Min.Z), FRotator::ZeroRotator);
+		if (!Actor)
+		{
+			continue;
+		}
+		for (const FInstance& I : Pair.Value)
+		{
+			UInstancedStaticMeshComponent* ISM = Actor->GetOrAddPiece(I.Mesh);
+			if (I.Mesh != Lantern)  // posts, poles, bins and fountains are solid; lanterns hang out of reach
+			{
+				ISM->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			}
+			const int32 Index = ISM->AddInstance(I.Transform, /*bWorldSpace*/ true);
+			ISM->SetCustomData(Index, TArrayView<const float>(I.Data, AOCKitBuildingChunk::NumCustomData));
+		}
+		Actor->SetActorLabel(FString::Printf(TEXT("Street_Fixtures_%d_%d"), Pair.Key.X, Pair.Key.Y));
+		Actor->SetFolderPath(TEXT("Props"));
+	}
+	UE_LOG(LogOpenCity, Display, TEXT("BuildStreetFixtures: %d fixtures in %d chunks"), Count, Chunks.Num());
 	return Count;
 }
 

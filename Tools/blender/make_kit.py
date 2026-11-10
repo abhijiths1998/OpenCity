@@ -86,11 +86,14 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 KIT_DIR = os.path.join(ROOT, "SourceArt", "Kit")
 FBX_DIR = os.path.join(KIT_DIR, "FBX")
 
-MAT_ORDER = ["Wall", "Trim", "Wood", "Glass", "Metal", "Roof", "Concrete"]
+MAT_ORDER = ["Wall", "Trim", "Wood", "Glass", "Metal", "Roof", "Concrete",
+             "PaintRed", "PaintWhite", "PaintBlack", "PaintBlue", "Paint"]  # paint: street fixtures (Paint = colour per instance)
 PREVIEW_RGBA = {  # viewport colour only (FBX carries just the slot name)
     "Wall": (0.80, 0.58, 0.30, 1), "Trim": (0.75, 0.70, 0.58, 1), "Wood": (0.05, 0.14, 0.08, 1),
     "Glass": (0.02, 0.025, 0.03, 1), "Metal": (0.06, 0.06, 0.065, 1), "Roof": (0.46, 0.09, 0.04, 1),
     "Concrete": (0.38, 0.35, 0.31, 1),
+    "PaintRed": (0.6, 0.03, 0.03, 1), "PaintWhite": (0.85, 0.85, 0.85, 1), "PaintBlack": (0.02, 0.02, 0.02, 1),
+    "PaintBlue": (0.02, 0.12, 0.45, 1), "Paint": (0.2, 0.4, 0.2, 1),
 }
 
 # ---- metrics (KIT_SPEC / WORLD_METRICS) --------------------------------------------------------
@@ -1382,6 +1385,232 @@ def make_wall_coping():
     return P
 
 
+# ---- street fixtures (INFRA_DESIGN.md Phase 5) -------------------------------------------------
+# kind "fixture": no recentring; the pivot is the base of a post, or the wall-attachment point of
+# a bracket (the fixture reaches out along -Y like facade pieces). Sizes are real-world.
+
+def text_mesh(text, size, z0, depth=0.004, y=0.0):
+    """Extruded text (Blender's built-in font) centred on X, standing in the XZ plane facing -Y."""
+    cu = bpy.data.curves.new("txt", type="FONT")
+    cu.body = text
+    cu.size = size
+    cu.align_x = "CENTER"
+    cu.extrude = depth / 2
+    cu.resolution_u = 3  # lettering is read at 2-20 m: coarse curves keep signs inside the triangle budget
+    ob = bpy.data.objects.new("txt", cu)
+    bpy.context.scene.collection.objects.link(ob)
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
+    bm = new_bm()
+    bm.from_mesh(me)
+    bpy.data.objects.remove(ob)
+    bpy.data.curves.remove(cu)
+    bpy.data.meshes.remove(me)
+    # Font space: X right, Y up, Z out of the page. Stand it up: Y -> Z, Z -> -Y (toward the viewer).
+    transform(bm, Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1))))
+    zs = [v.co.z for v in bm.verts]
+    transform(bm, Matrix.Translation((0, y, z0 - (min(zs) + max(zs)) / 2)))
+    return bm
+
+
+def disc_y(r, y0, y1, z, seg=32, r_in=None):
+    """Disc (or ring, with r_in) facing -Y, between y0 and y1, centred at height z."""
+    bm = new_bm()
+    if r_in is None:
+        add_cyl(bm, (0, y0, z), r, y1 - y0, seg=seg, axis="Y")
+        return bm
+    pts = [(math.cos(2 * math.pi * k / seg), math.sin(2 * math.pi * k / seg)) for k in range(seg)]
+    for k in range(seg):
+        (c0, s0), (c1, s1) = pts[k], pts[(k + 1) % seg]
+        quad = [(r * c0, z + r * s0), (r * c1, z + r * s1), (r_in * c1, z + r_in * s1), (r_in * c0, z + r_in * s0)]
+        vs = [bm.verts.new((x, yy, zz)) for yy in (y0, y1) for x, zz in quad]
+        for a, b, c, d in ((0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)):
+            bm.faces.new((vs[a], vs[b], vs[c], vs[d]))
+    return bm
+
+
+def poly_y(points_xz, y0, y1):
+    """Convex polygon in XZ extruded along Y (y0 front .. y1 back)."""
+    bm = new_bm()
+    n = len(points_xz)
+    vs = [bm.verts.new((x, yy, z)) for yy in (y0, y1) for x, z in points_xz]
+    bm.faces.new([vs[k] for k in range(n)][::-1])
+    bm.faces.new([vs[n + k] for k in range(n)])
+    for k in range(n):
+        a, b = k, (k + 1) % n
+        bm.faces.new((vs[a], vs[b], vs[n + b], vs[n + a]))
+    return bm
+
+
+def sign_post(P, height=2.90):
+    m = new_bm()
+    add_cyl(m, (0, 0.03, 0), 0.03, height, seg=12)          # galvanised post, plate in front of it
+    add_cyl(m, (0, 0.03, height), 0.035, 0.03, seg=12)      # cap
+    P.add(m, "Metal")
+
+
+SIGN_Z, SIGN_R = 2.25, 0.30  # plate centre height and radius (urban 60 cm discs)
+
+
+def make_sign(kind):
+    """Codice della Strada sign on a post (original artwork: shapes, colours and text only)."""
+    P = Piece(f"Sign_{kind}", kind="fixture")
+    sign_post(P)
+    y0, y1 = -0.02, 0.0
+    if kind.startswith("Speed"):
+        P.add(disc_y(SIGN_R, y0, y1, SIGN_Z, r_in=SIGN_R * 0.78), "PaintRed")
+        P.add(disc_y(SIGN_R * 0.78, y0 + 0.002, y1, SIGN_Z), "PaintWhite")
+        P.add(text_mesh(kind[5:], 0.26, SIGN_Z, y=y0 - 0.001), "PaintBlack")
+    elif kind == "Stop":
+        r = SIGN_R
+        octo = [(r * math.cos(math.pi / 8 + k * math.pi / 4), SIGN_Z + r * math.sin(math.pi / 8 + k * math.pi / 4)) for k in range(8)]
+        P.add(poly_y(octo, y0, y1), "PaintRed")
+        P.add(text_mesh("STOP", 0.15, SIGN_Z, y=y0 - 0.001), "PaintWhite")
+    elif kind == "GiveWay":
+        h = 0.78
+        tri = [(-0.45, SIGN_Z + h * 0.4), (0.45, SIGN_Z + h * 0.4), (0.0, SIGN_Z - h * 0.6)]
+        P.add(poly_y(tri, y0, y1), "PaintRed")
+        inner = [(-0.32, SIGN_Z + h * 0.4 - 0.08), (0.32, SIGN_Z + h * 0.4 - 0.08), (0.0, SIGN_Z - h * 0.6 + 0.15)]
+        P.add(poly_y(inner, y0 - 0.002, y1), "PaintWhite")
+    elif kind == "NoEntry":
+        P.add(disc_y(SIGN_R, y0, y1, SIGN_Z), "PaintRed")
+        bar = new_bm()
+        add_box(bar, -0.21, 0.21, y0 - 0.003, y1, SIGN_Z - 0.05, SIGN_Z + 0.05)
+        P.add(bar, "PaintWhite")
+    elif kind == "ZTL":
+        panel = new_bm()
+        add_box(panel, -0.40, 0.40, y0, y1, 1.75, 2.75)
+        P.add(panel, "PaintWhite")
+        P.add(disc_y(0.22, y0 - 0.002, y1, 2.45, r_in=0.17), "PaintRed")
+        P.add(text_mesh("ZTL", 0.16, 1.95, y=y0 - 0.003), "PaintBlack")
+        P.add(text_mesh("ZONA TRAFFICO LIMITATO", 0.045, 2.12, y=y0 - 0.003), "PaintBlack")
+    P.ucx = [(-0.1, 0.1, -0.05, 0.1, 0, 2.9)]
+    return P
+
+
+def make_convex_mirror():
+    P = Piece("Prop_ConvexMirror", kind="fixture")
+    sign_post(P, 2.6)
+    P.add(disc_y(0.33, -0.08, -0.02, 2.45, r_in=0.29), "PaintRed")
+    face = new_bm()
+    add_cyl(face, (0, -0.07, 2.45), 0.29, 0.05, seg=28, axis="Y", r2=0.24)  # domed mirror
+    P.add(face, "Glass")
+    P.ucx = [(-0.1, 0.1, -0.05, 0.1, 0, 2.6)]
+    return P
+
+
+def make_bollard(kind):
+    P = Piece(f"Prop_Bollard{kind}", kind="fixture")
+    m = new_bm()
+    if kind == "Stone":
+        add_cyl(m, (0, 0, 0), 0.15, 0.48, seg=16, r2=0.13)
+        add_cyl(m, (0, 0, 0.48), 0.13, 0.10, seg=16, r2=0.05)          # rounded crown
+        bevel(m, 0.01, 2)
+        P.add(m, "Trim")
+    else:  # cast iron
+        add_cyl(m, (0, 0, 0), 0.09, 0.08, seg=14)
+        add_cyl(m, (0, 0, 0.08), 0.06, 0.70, seg=14, r2=0.05)
+        for z in (0.12, 0.72):
+            add_cyl(m, (0, 0, z), 0.075, 0.04, seg=14)
+        add_cyl(m, (0, 0, 0.78), 0.07, 0.07, seg=14, r2=0.03)          # knob
+        P.add(m, "Metal")
+    P.ucx = [(-0.15, 0.15, -0.15, 0.15, 0, 0.9)]
+    return P
+
+
+def make_wall_lantern():
+    """Wall lantern on an iron bracket; pivot at the wall plate's foot, reaching out along -Y."""
+    P = Piece("Prop_WallLantern", kind="fixture")
+    m = new_bm()
+    add_box(m, -0.06, 0.06, -0.02, 0.0, 0.0, 0.30)                    # wall plate
+    add_cyl(m, (0, 0.0, 0.24), 0.018, 0.62, seg=8, axis="Y")          # arm (built along +Y, mirrored below)
+    transform(m, Matrix.Scale(-1, 4, (0, 1, 0)))                       # arm toward -Y
+    add_cyl(m, (0, -0.55, 0.12), 0.012, 0.12, seg=8)                   # drop rod
+    lantern = new_bm()
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            add_box(lantern, sx * 0.11 - 0.012, sx * 0.11 + 0.012, -0.55 + sy * 0.11 - 0.012, -0.55 + sy * 0.11 + 0.012, -0.30, 0.04)
+    add_cyl(lantern, (0, -0.55, 0.04), 0.17, 0.10, seg=4, r2=0.02)    # roof
+    add_cyl(lantern, (0, -0.55, -0.34), 0.08, 0.04, seg=8)            # base
+    P.add(m, "Metal")
+    P.add(lantern, "Metal")
+    glass = new_bm()
+    add_box(glass, -0.10, 0.10, -0.65, -0.45, -0.28, 0.02)
+    P.add(glass, "Glass")
+    transform_piece_z(P, 0.34)
+    P.ucx = [(-0.15, 0.15, -0.7, 0.0, 0, 0.7)]
+    return P
+
+
+def transform_piece_z(P, dz):
+    for bm, _ in P.parts:
+        transform(bm, Matrix.Translation((0, 0, dz)))
+
+
+def make_led_pole():
+    """Galvanised LED street light: 8 m tapered pole, 1.6 m arm toward -Y, flat head."""
+    P = Piece("Prop_LedPole", kind="fixture")
+    m = new_bm()
+    add_cyl(m, (0, 0, 0), 0.10, 0.30, seg=12)                           # base collar
+    add_cyl(m, (0, 0, 0.30), 0.075, 7.70, seg=12, r2=0.045)
+    arm = new_bm()
+    add_cyl(arm, (0, 0, 7.85), 0.035, 1.60, seg=8, axis="Y")
+    transform(arm, Matrix.Scale(-1, 4, (0, 1, 0)))
+    transform(arm, Matrix.Translation((0, 0, 0)))
+    head = new_bm()
+    add_box(head, -0.16, 0.16, -1.85, -1.30, 7.80, 7.92)
+    P.add(m, "Metal")
+    P.add(arm, "Metal")
+    P.add(head, "Metal")
+    lens = new_bm()
+    add_box(lens, -0.13, 0.13, -1.80, -1.35, 7.785, 7.80)
+    P.add(lens, "Glass")
+    P.ucx = [(-0.12, 0.12, -0.12, 0.12, 0, 8.0)]
+    return P
+
+
+def make_bin():
+    """Wheeled kerbside recycling bin (cassonetto); colour per instance (Paint slot)."""
+    P = Piece("Prop_RecyclingBin", kind="fixture")
+    body = new_bm()
+    add_box(body, -0.65, 0.65, -0.42, 0.42, 0.18, 1.20)
+    bevel(body, 0.04, 2)
+    lid = new_bm()
+    add_box(lid, -0.68, 0.68, -0.46, 0.46, 1.20, 1.30)
+    bevel(lid, 0.03, 2)
+    P.add(body, "Paint")
+    P.add(lid, "Paint")
+    wheels = new_bm()
+    for sx in (-0.5, 0.5):
+        for sy in (-0.3, 0.3):
+            # a 10-sided wheel's lowest edge is r cos 18 deg below its centre: sit it on z = 0
+            add_cyl(wheels, (sx - 0.04, sy, 0.09 * math.cos(math.pi / 10)), 0.09, 0.08, seg=10, axis="X")
+    P.add(wheels, "Metal")
+    pedal = new_bm()
+    add_box(pedal, -0.15, 0.15, -0.55, -0.42, 0.15, 0.20)
+    P.add(pedal, "Metal")
+    P.ucx = [(-0.68, 0.68, -0.46, 0.46, 0, 1.3)]
+    return P
+
+
+def make_fountain():
+    """Cast-iron drinking fountain (original design): fluted column, spout, grate."""
+    P = Piece("Prop_Fountain", kind="fixture")
+    m = new_bm()
+    add_box(m, -0.30, 0.30, -0.45, 0.15, 0.0, 0.05)                    # grate base
+    add_cyl(m, (0, 0, 0.05), 0.17, 0.10, seg=8)                        # plinth
+    add_cyl(m, (0, 0, 0.15), 0.13, 0.85, seg=8, r2=0.11)               # octagonal column
+    add_cyl(m, (0, 0, 1.00), 0.15, 0.06, seg=8)                        # cap
+    add_cyl(m, (0, 0, 1.06), 0.09, 0.08, seg=8, r2=0.02)
+    spout = new_bm()
+    add_cyl(spout, (0, 0.0, 0.70), 0.02, 0.22, seg=8, axis="Y")
+    transform(spout, Matrix.Scale(-1, 4, (0, 1, 0)))
+    P.add(m, "Metal")
+    P.add(spout, "Metal")
+    P.ucx = [(-0.3, 0.3, -0.45, 0.17, 0, 1.15)]
+    return P
+
+
 BUILDERS = [
     lambda: make_wall(2.0), lambda: make_wall(4.0),
     lambda: make_window(2.0, "shutters"), lambda: make_window(4.0, "shutters"),
@@ -1393,6 +1622,9 @@ BUILDERS = [
     make_roof_hip, make_roof_flat,
     make_water_tank, make_ac_unit, make_dish, make_chimney, make_roof_hut, make_drainpipe,
     lambda: make_retaining_wall("Stone"), lambda: make_retaining_wall("Concrete"), make_wall_coping,
+    lambda: make_sign("Speed30"), lambda: make_sign("Speed50"), lambda: make_sign("Stop"), lambda: make_sign("GiveWay"),
+    lambda: make_sign("NoEntry"), lambda: make_sign("ZTL"), make_convex_mirror,
+    lambda: make_bollard("Stone"), lambda: make_bollard("Iron"), make_wall_lantern, make_led_pole, make_bin, make_fountain,
 ]
 
 

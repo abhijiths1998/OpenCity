@@ -264,6 +264,7 @@ namespace OCRoadMesh
 		TArray<FVector3f> N;
 		TArray<FVector2f> UV0;
 		FVector2f UV1 = FVector2f::ZeroVector;
+		FVector2f UV2 = FVector2f::ZeroVector;  // road: junction edges along the strip (crossings, stop lines)
 		int32 Group = 0;       // 0 road surface, 1 sidewalk
 		FName Paving;          // road surface: the segment's paving (asphalt, sampietrini, ...)
 	};
@@ -300,7 +301,8 @@ namespace OCRoadMesh
 	}
 
 	/**
-	 * Marking code for the road material in UV1.y: lanes per direction + 10 x style. Markings only on
+	 * Marking code for the road material in UV1.y: lanes per direction + 10 x style + 100 x parking
+	 * (0 none, 1 white, 2 blue, 3 yellow bays along the right-hand edge). Markings only on
 	 * asphalt (stone, gravel and quays carry none). Style by D.M. 5/11/2001 type (Codice della Strada,
 	 * DPR 495/1992 artt. 138 and 141): 0 urban F (10 cm lines, 3 m dash / 3 m gap), 1 urban D and E
 	 * (12 cm, 3/3), 2 extra-urban C and F (12 cm, 3/4.5), 3 A and B (15 cm, 4.5/7.5).
@@ -319,7 +321,14 @@ namespace OCRoadMesh
 			Style = (T == TEXT("A") || T == TEXT("B")) ? 3 : (T.StartsWith(TEXT("C")) || T == TEXT("F1") || T == TEXT("F2")) ? 2
 				: (T == TEXT("F")) ? 0 : 1;
 		}
-		return static_cast<float>(FMath::Max(S.LanesPerDirection, 1) + 10 * Style);
+		// Parking bays in the profile's parking strip (art. 149: white free, blue paid, yellow reserved).
+		int32 Parking = 0;
+		const FOCRoadProfile* Prof = Graph.FindProfile(S.Profile);
+		if (Prof && Prof->ParkingCm > 0.f)
+		{
+			Parking = S.Parking == TEXT("white") ? 1 : S.Parking == TEXT("blue") ? 2 : S.Parking == TEXT("yellow") ? 3 : 0;
+		}
+		return static_cast<float>(FMath::Max(S.LanesPerDirection, 1) + 10 * Style + 100 * Parking);
 	}
 
 	constexpr double StepCm = 200.0;     // drape resolution along roads
@@ -341,8 +350,8 @@ namespace OCRoadMesh
 		TVertexInstanceAttributesRef<FVector3f> Tangents = Attr.GetVertexInstanceTangents();
 		TVertexInstanceAttributesRef<float> BinormalSigns = Attr.GetVertexInstanceBinormalSigns();
 		TVertexInstanceAttributesRef<FVector2f> UVs = Attr.GetVertexInstanceUVs();
-		Desc.SetNumUVChannels(2); // the description's own channel count; the build trims UVs to it
-		UVs.SetNumChannels(2);
+		Desc.SetNumUVChannels(3); // the description's own channel count; the build trims UVs to it
+		UVs.SetNumChannels(3);
 		TPolygonGroupAttributesRef<FName> SlotNames = Attr.GetPolygonGroupMaterialSlotNames();
 
 		// One material slot per paving in the chunk, plus the sidewalks.
@@ -377,6 +386,7 @@ namespace OCRoadMesh
 				BinormalSigns[I] = 1.f;
 				UVs.Set(I, 0, Poly.UV0[i]);
 				UVs.Set(I, 1, Poly.UV1);
+				UVs.Set(I, 2, Poly.UV2);
 				Instances.Add(I);
 			}
 			Desc.CreatePolygon(GroupFor(Poly), Instances);
@@ -473,6 +483,7 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 	 * sidewalks get world-planar metres.
 	 */
 	FName CurrentPaving;  // set per segment before its strips are added
+	FVector2f CurrentUV2 = FVector2f::ZeroVector;
 	auto AddStrip = [&](FChunk& C, const FVector& P0, const FVector& P1, const FVector& Side, float In, float Out,
 		float Lift, int32 Group, double AlongStartM, const FVector2f& UV1, const FVector& SideStart = FVector::ZeroVector,
 		const FVector& SideEnd = FVector::ZeroVector)
@@ -496,6 +507,7 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 				FRoadPoly Poly;
 				Poly.Group = Group;
 				Poly.UV1 = UV1;
+				Poly.UV2 = CurrentUV2;
 				Poly.Paving = CurrentPaving;
 				const FVector SA = FMath::Lerp(S0, S1, T0), SB = FMath::Lerp(S0, S1, T1);
 				for (const FVector& Corner : { A + SA * L0, A + SA * L1, B + SB * L1, B + SB * L0 })
@@ -587,8 +599,19 @@ int32 UOCWorldBuilderLibrary::BuildRoadMeshes(UWorld* World, const FString& Layo
 		const float ExtA = EndOffset(S.A), ExtB = EndOffset(S.B);
 		const FVector SideA = MiterSide(S.A, Dir), SideB = MiterSide(S.B, -Dir);
 		CurrentPaving = S.Paving;
+		// Pedestrian crossings and stop lines at urban junctions (Codice della Strada art. 145): the
+		// road material draws them from the junction edges' distance along the strip (m from A; 0 =
+		// no junction at that end). Only on marked (asphalt) urban roads.
+		{
+			const FOCRoadProfile* Prof = Graph.FindProfile(S.Profile);
+			const bool bCrossings = MarkingCode(S, Graph) > 0.f && (!Prof || Prof->bUrban);
+			const float LenM = static_cast<float>(FVector::Dist2D(A, B) / 100.0);
+			CurrentUV2 = FVector2f(bCrossings && Degree[S.A] >= 3 ? RoadHalf[S.A] / 100.f : 0.f,
+				bCrossings && Degree[S.B] >= 3 ? LenM - RoadHalf[S.B] / 100.f : 0.f);
+		}
 		AddStrip(C, A - Dir * ExtA, B + Dir * ExtB, Side, -Half, Half, Lift, 0, -ExtA / 100.0,
 			FVector2f(Half / 100.f, MarkingCode(S, Graph)), SideA, SideB);
+		CurrentUV2 = FVector2f::ZeroVector;
 
 		if (!SidewalkKinds.Contains(S.Kind))
 		{

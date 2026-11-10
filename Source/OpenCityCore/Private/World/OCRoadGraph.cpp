@@ -112,6 +112,8 @@ bool FOCRoadGraph::LoadFromLayoutJson(const FString& JsonText, FString& OutError
 		O->TryGetBoolField(TEXT("ztl"), S.bZTL);
 		O->TryGetBoolField(TEXT("tram"), S.bTram);
 		O->TryGetBoolField(TEXT("pedestrian"), S.bPedestrian);
+		double Widening = 0.0;
+		if (O->TryGetNumberField(TEXT("widening"), Widening)) { S.WideningCm = static_cast<float>(Widening * 100.0); }
 		double Wear = S.Wear;
 		if (O->TryGetNumberField(TEXT("wear"), Wear)) { S.Wear = static_cast<float>(Wear); }
 		Segments.Add(S);
@@ -184,6 +186,22 @@ int32 FOCRoadGraph::FindNearestNode(const FVector& Location) const
 	{
 		const double D = FVector::DistSquared(Nodes[i].Location, Location);
 		if (D < BestDistSq)
+		{
+			BestDistSq = D;
+			Best = i;
+		}
+	}
+	return Best;
+}
+
+int32 FOCRoadGraph::FindNearestNodePlanar(const FVector& Location) const
+{
+	int32 Best = INDEX_NONE;
+	double BestDistSq = TNumericLimits<double>::Max();
+	for (int32 i = 0; i < Nodes.Num(); ++i)
+	{
+		const double D = FVector::DistSquared2D(Nodes[i].Location, Location);
+		if (D < BestDistSq && !Adjacency[i].IsEmpty())
 		{
 			BestDistSq = D;
 			Best = i;

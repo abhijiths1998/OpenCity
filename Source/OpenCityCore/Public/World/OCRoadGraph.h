@@ -62,6 +62,7 @@ struct OPENCITYCORE_API FOCRoadSegment
 	FName Parking;           // none, blue (paid), white (free), yellow (reserved)
 	bool bTram = false;      // tram tracks in the carriageway
 	bool bPedestrian = false; // footbridges and vicoli: no cars (paths, reach and lanes skip it)
+	float WideningCm = 0.f;  // curve widening included in WidthCm (D.M. 5/11/2001 5.2.7: 45/R per lane)
 
 	float LengthCm(const TArray<FOCRoadNode>& Nodes) const;
 	/** True if traffic may drive this segment from node From. */
@@ -104,6 +105,8 @@ public:
 
 	/** Closest node to a world position (INDEX_NONE if the graph is empty). */
 	int32 FindNearestNode(const FVector& Location) const;
+	/** Closest node in plan view, ignoring height: for points given as map x, y (stacked roads). */
+	int32 FindNearestNodePlanar(const FVector& Location) const;
 
 	/**
 	 * Shortest path by travel time (A*), skipping segments whose gate is in ClosedGates and

@@ -123,7 +123,7 @@ void FOCNetworkValidator::ValidateRoads(const FOCRoadGraph& Roads, const FOption
 			continue;
 		}
 		const float Want = P->CarriagewayCm();
-		if (Want > 0.f && FMath::Abs(S.WidthCm - Want) > Options.WidthTolerance * Want)
+		if (Want > 0.f && FMath::Abs(S.WidthCm - S.WideningCm - Want) > Options.WidthTolerance * Want)
 		{
 			Add(Out, Width, false, s, INDEX_NONE, Mid, FString::Printf(TEXT("segment %d (%s): %.1f m wide, profile carriageway %.1f m"),
 				s, *S.Profile.ToString(), S.WidthCm / 100.f, Want / 100.f));

@@ -29,6 +29,8 @@ UE import (`Content/Python/oc_import_kit.py`) and the building assembler
 | `Metal` | railings, rolling shutters, drainpipes, AC units, tanks | `MI_Kit_Metal` |
 | `Roof` | clay roof tiles | `MI_Kit_Roof` |
 | `Concrete` | flat roof slabs, parapet copings, balcony slabs | `MI_Kit_Concrete` |
+| `PaintRed`, `PaintWhite`, `PaintBlack`, `PaintBlue` | sign faces and lettering, mirror rims | `MI_Kit_Paint*` (`M_Master_Paint`, retroreflective at night) |
+| `Paint` | bins and other fixtures coloured per instance | `MI_Kit_Paint` (colour from instance custom data 0-2) |
 
 UV0 is in **metres**, laid out for tiling materials: on walls 1 UV unit = 1 m of surface (box/cube projection in world-scale), so a texture's real size is set by the material, never baked into a piece. Trims and frames use the same metre scale. No lightmap UV channel (the project is fully dynamic).
 
@@ -55,6 +57,15 @@ Names are the exported mesh names; UE adds the `SM_Kit_` prefix (`SM_Kit_Wall_40
 | `Drainpipe_320` | 0.12 diameter × 3.2 | vertical downpipe segment |
 | `RetainingWall_Stone_400`, `RetainingWall_Concrete_400` | 4 × 2 × 0.5 (face at Y = 0) | retaining-wall rows, stacked to height with the lowest row buried; stone (coursed, `Trim`) on old roads and the 1930s pass, concrete (`Concrete`) on post-war roads (INFRA_DESIGN.md Phase 3) |
 | `WallCoping_400` | 4 × 0.16 × 0.6 | stone cap on a retaining wall's top row |
+| `Sign_Speed30`, `Sign_Speed50`, `Sign_Stop`, `Sign_GiveWay`, `Sign_NoEntry`, `Sign_ZTL` | post 2.9 m, plate 0.6 m (ZTL panel 0.8 × 1.0) | Codice della Strada shapes and colours on a galvanised post; pivot at the post foot; the plate faces -Y |
+| `Prop_ConvexMirror` | post 2.6 m, mirror 0.66 m | blind-corner mirror, red rim; faces -Y |
+| `Prop_BollardStone`, `Prop_BollardIron` | 0.3 × 0.58, 0.18 × 0.85 | centro storico and ZTL bollards |
+| `Prop_WallLantern` | 0.34 × 0.74 × 0.64 | wall lantern on a bracket; pivot at the wall plate's foot, reaches out along -Y |
+| `Prop_LedPole` | 8 m, 1.85 m arm | galvanised LED street light (periphery, extra-urban); arm along -Y |
+| `Prop_RecyclingBin` | 1.36 × 1.0 × 1.3 | wheeled kerbside bin, coloured per instance |
+| `Prop_Fountain` | 0.6 × 0.62 × 1.14 | cast-iron drinking fountain (original design) |
+
+Street fixtures (kind `fixture`) keep their pivot at the post foot or wall attachment (no recentring).
 
 ## Quality bar
 

@@ -418,6 +418,8 @@ ROAD_HLSL = r"""
 // (12 cm, 3/4.5), 3 A/B (15 cm, 4.5/7.5). Edge lines 12 / 15 / 15 / 25 cm. Code 0: no markings.
 float hw = R1.x;
 float code = R1.y + 0.01;
+float parking = floor(code / 100.0);
+code -= parking * 100.0;
 float style = floor(code / 10.0);
 float lanes = floor(code - style * 10.0);
 float2 uv0 = R0;
@@ -452,9 +454,45 @@ if (lanes > 0.5)
         mk += step(au, lw * 0.5) * dash;                                    // dashed centre line
     }
 }
+// Pedestrian crossings (zebra, 50 cm stripes and gaps, 2.5 m long on E/F roads and 4 m on the
+// others) 1 m out from each urban junction edge, and a 50 cm stop line just before each one on the
+// approaching half (right-hand traffic: the A end is approached on the left half, uv0.x < 0).
+// R2 = distance along the strip of the junction edge at A and at B (0: no junction at that end).
+if (lanes > 0.5)
+{
+    float zl = style < 1.5 ? 2.5 : 4.0;
+    float inside = step(au, hw - 0.4);
+    float stripes = step(frac(au / 1.0), 0.5) * inside;
+    if (R2.x > 0.01)
+    {
+        float d = uv0.y - R2.x;
+        mk += stripes * step(1.0, d) * step(d, 1.0 + zl);
+        mk += step(1.0 + zl + 0.6, d) * step(d, 1.0 + zl + 1.1) * step(uv0.x, 0.0) * inside;
+    }
+    if (R2.y > 0.01)
+    {
+        float d = R2.y - uv0.y;
+        mk += stripes * step(1.0, d) * step(d, 1.0 + zl);
+        mk += step(1.0 + zl + 0.6, d) * step(d, 1.0 + zl + 1.1) * step(0.0, uv0.x) * inside;
+    }
+}
+// Parking bays (art. 149): the profile's 2 m strip along the segment's right-hand edge, 12 cm lines,
+// 5 m bays; white free, blue paid, yellow reserved.
+float pk = 0.0;
+if (parking > 0.5)
+{
+    float outer = hw - 0.40, inner = hw - 2.40;
+    float inStrip = step(inner, uv0.x) * step(uv0.x, outer);  // one side (the profile's 2 m strip)
+    pk = step(abs(uv0.x - inner), 0.06) + step(frac(uv0.y / 5.0), 0.024) * inStrip;
+    pk = saturate(pk) * step(0.1, uv0.y);
+}
+float3 pkColour = parking < 1.5 ? float3(0.72, 0.71, 0.66) : (parking < 2.5 ? float3(0.05, 0.22, 0.55) : float3(0.75, 0.6, 0.05));
 float wear = saturate(dot(bc, float3(0.3, 0.59, 0.11)) * 3.0);
 mk = saturate(mk) * lerp(0.55, 1.0, wear);
+pk *= lerp(0.55, 1.0, wear);
 bc = lerp(bc, float3(0.72, 0.71, 0.66), mk);
+bc = lerp(bc, pkColour, pk);
+mk = max(mk, pk);
 
 float2 n2 = (nxy * 2.0 - 1.0) * (1.0 - mk * 0.8);
 float3 tn = float3(n2, sqrt(saturate(1.0 - dot(n2, n2))));
@@ -613,7 +651,7 @@ def build_textured_master(name, code, sets, tiles, landscape=False, extra=()):
     inputs.append(("WP", MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -1100, -600)))
     inputs.append(("VN", MEL.create_material_expression(mat, unreal.MaterialExpressionVertexNormalWS, -1100, -500)))
     inputs.append(("Cam", MEL.create_material_expression(mat, unreal.MaterialExpressionCameraPositionWS, -1100, -400)))
-    for i in (0, 1):
+    for i in ((0, 1, 2) if "R2" in code else (0, 1)):
         c = MEL.create_material_expression(mat, unreal.MaterialExpressionTextureCoordinate, -1100, -300 + 100 * i)
         c.set_editor_property("coordinate_index", i)
         inputs.append((f"R{i}", c))
@@ -806,6 +844,62 @@ def build_paving_instances(road, textures):
     return made
 
 
+PAINT_HLSL = r"""
+// Painted street fixtures (INFRA_DESIGN.md Phase 5): sign faces, bins, railings. Flat paint colour
+// (or the instance's custom data 0-2 for bins coloured by recycling stream), roughened and dulled
+// by a scanned grime map; sign faces are retroreflective (a faint night glow). Wet paint is glossier.
+float3 col = UseInstance > 0.5 ? float3(I0, I1, I2) : Colour;
+float g = Texture2DSample(Grime, GrimeSampler, frac(WP.xz / 180.0 + WP.yz / 260.0)).r;
+float dirt = saturate((1.0 - g) * 1.6) * Dirt;
+float3 bc = lerp(col, col * float3(0.55, 0.5, 0.45), dirt);
+Rough = lerp(0.42, 0.75, dirt);
+Rough = lerp(Rough, 0.12, Wet * 0.8);
+Emis = col * Reflect * Night * 0.6;
+return bc;
+"""
+
+PAINTS = {  # MI: (colour, retroreflective, instance colour)
+    "MI_Kit_PaintRed": ((0.55, 0.02, 0.02), 1.0, 0.0),
+    "MI_Kit_PaintWhite": ((0.82, 0.82, 0.8), 1.0, 0.0),
+    "MI_Kit_PaintBlack": ((0.02, 0.02, 0.02), 0.0, 0.0),
+    "MI_Kit_PaintBlue": ((0.02, 0.1, 0.42), 1.0, 0.0),
+    "MI_Kit_Paint": ((0.2, 0.3, 0.2), 0.0, 1.0),
+}
+
+
+def build_paint_master(mpc):
+    mat = fresh_material("M_Master_Paint")
+    grime = unreal.load_asset("/Game/Environment/Textures/Decals/Leaking013A/T_Leaking013A_Color")
+    data = [(f"I{i}", instance_data(mat, i, 1.0, -800, 300 + 70 * i)) for i in range(3)]
+    f1, f3 = unreal.CustomMaterialOutputType.CMOT_FLOAT1, unreal.CustomMaterialOutputType.CMOT_FLOAT3
+    node = custom(mat, PAINT_HLSL,
+                  [("Colour", vector(mat, "Colour", (0.5, 0.5, 0.5), -1100, -300)),
+                   ("UseInstance", scalar(mat, "UseInstanceColour", 0.0, -1100, -200)),
+                   ("Reflect", scalar(mat, "Retroreflective", 0.0, -1100, -120)),
+                   ("Dirt", scalar(mat, "Dirt", 0.35, -1100, -40)),
+                   ("Grime", tex_object(mat, "Grime", unreal.MaterialSamplerType.SAMPLERTYPE_COLOR, grime, -1100, 40)),
+                   ("WP", MEL.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -1100, 160)),
+                   ("Night", mpc_scalar(mat, mpc, "NightAmount", -1100, 240)),
+                   ("Wet", mpc_scalar(mat, mpc, "Wetness", -1100, 320))] + data,
+                  [("Rough", f1), ("Emis", f3)], -300, 0)
+    MEL.connect_material_property(node, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    MEL.connect_material_property(node, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
+    MEL.connect_material_property(node, "Emis", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    MEL.recompile_material(mat)
+    L.save(mat)
+    for name, (col, reflect, inst) in PAINTS.items():
+        mi = L.get_or_create(name, MI_ROOT, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew(), TAG)
+        MEL.set_material_instance_parent(mi, mat)
+        MEL.clear_all_material_instance_parameters(mi)
+        MEL.set_material_instance_vector_parameter_value(mi, "Colour", unreal.LinearColor(col[0], col[1], col[2], 1.0))
+        MEL.set_material_instance_scalar_parameter_value(mi, "Retroreflective", reflect)
+        MEL.set_material_instance_scalar_parameter_value(mi, "UseInstanceColour", inst)
+        MEL.update_material_instance(mi)
+        L.save(mi)
+    log(f"built {mat.get_path_name()} and {', '.join(PAINTS)}")
+    return mat
+
+
 CAR_PAINT_HLSL = r"""
 // Car paint (M4b): clear coat over the vehicle's own body maps. Paint colour, dirt and damage come
 // from custom primitive data (AOCVehicle::ApplyPaint), so every car differs without a dynamic
@@ -994,6 +1088,7 @@ def main():
     build_car_glass(mpc)
     build_foliage_master(mpc)
     build_car_paint(mpc)
+    build_paint_master(mpc)
     made = []
     for name, (slug, tile, tint, settings) in INSTANCES.items():
         if slug not in textures:

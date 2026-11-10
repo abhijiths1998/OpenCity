@@ -59,6 +59,8 @@ bool FOCRoadGraphPathTest::RunTest(const FString& Parameters)
 	G.LoadFromLayoutJson(OCRoadGraphTest::SmallLayout, Error);
 
 	TestEqual(TEXT("Nearest node"), G.FindNearestNode(FVector(9000.0, -9500.0, 0.0)), 2);
+	// High above node 2 (layout z 1 m): 3D picks it, and so does plan view at any height.
+	TestEqual(TEXT("Nearest node in plan, from far above"), G.FindNearestNodePlanar(FVector(9900.0, -9900.0, 500000.0)), 2);
 
 	// 0 -> 2: the 10 km/h diagonal is shorter but slower than going round at 60 km/h.
 	const TArray<int32> P = G.FindPath(0, 2);

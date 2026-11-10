@@ -470,8 +470,9 @@ namespace OCAutoDrive
 		TArray<int32> Nodes;
 		for (int32 w = 0; w + 1 < Waypoints.Num(); ++w)
 		{
-			const int32 A = Roads->FindNearestNode(Waypoints[w]);
-			const int32 B = Roads->FindNearestNode(Waypoints[w + 1]);
+			// Waypoints are map x, y: match in plan, or stacked hairpin legs snap to the lower one.
+			const int32 A = Roads->FindNearestNodePlanar(Waypoints[w]);
+			const int32 B = Roads->FindNearestNodePlanar(Waypoints[w + 1]);
 			TArray<int32> Leg = Roads->FindPath(A, B, Closed);
 			if (Leg.IsEmpty())
 			{

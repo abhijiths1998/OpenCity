@@ -26,6 +26,7 @@ BUDGETS = {
     "M_Master_Foliage": 400,
     "M_Master_Character": 450,
     "M_Master_LampGlow": None,
+    "M_Master_Paint": 300,
     "M_Master_Decal": 400,
     "M_PP_Rain": None,
 }

@@ -249,6 +249,11 @@ def main():
             world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"),
             layout["roads"]["sidewalk_width"] * 100.0, 25200.0, 1951)
         log(f"street props: {n}")
+    if unreal.load_asset("/Game/Environment/Meshes/Kit/SM_Kit_Prop_WallLantern"):
+        n = unreal.OCWorldBuilderLibrary.build_street_fixtures(
+            world, os.path.join(WORLD_DIR, "marevia_layout.json"), os.path.join(WORLD_DIR, "marevia_height.png"),
+            layout["roads"]["sidewalk_width"] * 100.0, 25200.0, 2311)
+        log(f"street fixtures: {n}")
     if unreal.load_asset("/Game/Environment/Meshes/Kit/SM_Kit_RetainingWall_Stone_400"):
         n = unreal.OCWorldBuilderLibrary.build_retaining_walls(world, os.path.join(WORLD_DIR, "marevia_layout.json"), 25200.0)
         log(f"retaining wall panels: {n}")

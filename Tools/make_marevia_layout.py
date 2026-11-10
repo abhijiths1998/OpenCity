@@ -578,12 +578,22 @@ def limit_grades(g, max_iters=400):
 
 def grade_bulbs(g, bulbs):
     """An even grade round each hairpin loop, from the height where it leaves one leg to where it
-    joins the other (the loop crosses the slope; terrain heights would make it a ramp)."""
+    joins the other (the loop crosses the slope; terrain heights would make it a ramp), and the
+    loop widened per D.M. 5/11/2001 5.2.7: E = 45 / R per lane (capped at 2 m)."""
+    extra = 2.0 * min(45.0 / HAIRPIN_R, 2.0)
     for loop in bulbs:
         ids = [g.node(x, y, 2.0) for x, y in loop]
         ids = [k for n, k in enumerate(ids) if n == 0 or k != ids[n - 1]]
         if len(ids) > 2:
             grade_chain(g, ids, g.nodes[ids[0]][2], g.nodes[ids[-1]][2])
+        # Widen only round the loop itself: at the neck the entry and exit are 9 m apart, and widened
+        # surfaces there merged the two legs (cars left the loop onto the wrong one).
+        core = ids[2:-2]
+        pairs = {frozenset(p) for p in zip(core, core[1:])}
+        for sg in g.segments:
+            if frozenset((sg["a"], sg["b"])) in pairs:
+                sg["width"] = ROAD_KINDS[sg["kind"]][1] + extra
+                sg["widening"] = round(extra, 2)  # the validator compares width - widening with the profile
 
 
 def grade_chain(g, ids, z0, z1):
@@ -1161,7 +1171,8 @@ def clamp_slopes(h, best, max_slope=MAX_SLOPE, max_iters=200):
 
 WALL_STEP = 4.0      # m: retaining-wall panels are 4 m long (Tools/blender/KIT_SPEC.md)
 WALL_CUT_MIN = 2.0   # m of ground above the road edge before it gets a cut wall
-WALL_FILL_MIN = 2.5  # m of drop below the road edge before it gets a fill wall (with a 1 m parapet)
+WALL_FILL_MIN = 2.5  # m of drop below the road edge before it gets a fill wall (with a 0.8 m parapet)
+WALL_GAP = 0.9       # m from the road edge to a cut wall's face (fill walls stand at 0.3 m: no drop beside the road)
 
 
 def retaining_walls(terrain, g):
@@ -1191,16 +1202,21 @@ def retaining_walls(terrain, g):
             key = (int((a[0] + (b[0] - a[0]) * t) // 50), int((a[1] + (b[1] - a[1]) * t) // 50))
             grid.setdefault(key, set()).add(i)
 
-    def on_other_road(x, y, own):
+    def on_other_road(x, y, own, z):
+        own_ends = {g.segments[own]["a"], g.segments[own]["b"]}
+        """A wall here would stand on another road at about its height (a junction). A road metres
+        below or above is what the wall separates it from (stacked hairpin legs): keep the wall."""
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 for i in grid.get((int(x // 50) + dx, int(y // 50) + dy), ()):
-                    if i == own:
+                    # The same road's neighbouring segments are not "another road": skipping walls
+                    # near every bend left 8 m gaps in the parapets, and cars fell through them.
+                    if i == own or {g.segments[i]["a"], g.segments[i]["b"]} & own_ends:
                         continue
                     a, b = g.nodes[g.segments[i]["a"]], g.nodes[g.segments[i]["b"]]
                     vx, vy = b[0] - a[0], b[1] - a[1]
                     t = max(0.0, min(1.0, ((x - a[0]) * vx + (y - a[1]) * vy) / max(vx * vx + vy * vy, 1e-9)))
-                    if math.hypot(x - a[0] - t * vx, y - a[1] - t * vy) < half_w[i] + 1.0:
+                    if math.hypot(x - a[0] - t * vx, y - a[1] - t * vy) < half_w[i] + 1.0 and abs(a[2] + (b[2] - a[2]) * t - z) < 1.5:
                         return True
         return False
 
@@ -1222,16 +1238,28 @@ def retaining_walls(terrain, g):
             zr = a[2] + (b[2] - a[2]) * d / length
             for side in (-1.0, 1.0):
                 rx, ry = -uy * side, ux * side
-                ex, ey = a[0] + ux * d + rx * (half_w[i] + 0.3), a[1] + uy * d + ry * (half_w[i] + 0.3)
+                # Walls stand 0.9 m beyond the edge (a shoulder to the parapet, as on real mountain
+                # roads): at 0.3 m cars swinging wide out of a hairpin loop hit them.
+                ex, ey = a[0] + ux * d + rx * (half_w[i] + WALL_GAP), a[1] + uy * d + ry * (half_w[i] + WALL_GAP)
                 hp = ground(ex + rx * 1.5, ey + ry * 1.5)
                 dz = hp - zr
+                # A drop a few metres out is still a drop a car can fall into: fill if the lowest
+                # ground within 4.5 m is far below the road.
+                # The wall itself only reaches down to the ground at its foot (mostly a parapet).
+                low = min(hp, ground(ex + rx * 3.0, ey + ry * 3.0), ground(ex + rx * 4.5, ey + ry * 4.5))
+                foot = hp
+                if dz <= WALL_CUT_MIN and low - zr < -WALL_FILL_MIN:
+                    dz, foot = low - zr, min(hp, zr)
+                if dz < -WALL_FILL_MIN:
+                    # Fill walls carry the road: they stand right at the edge (a gap there is a drop).
+                    ex, ey = a[0] + ux * d + rx * (half_w[i] + 0.3), a[1] + uy * d + ry * (half_w[i] + 0.3)
                 if dz > WALL_CUT_MIN:
                     kind, top, bottom = "cut", hp + 0.3, zr - 0.3
                 elif dz < -WALL_FILL_MIN:
-                    kind, top, bottom = "fill", zr + 1.0, hp - 0.5
+                    kind, top, bottom = "fill", zr + 0.8, foot - 0.5
                 else:
                     continue
-                if on_other_road(ex + rx * 0.25, ey + ry * 0.25, i):
+                if on_other_road(ex + rx * 0.25, ey + ry * 0.25, i, zr):
                     continue
                 samples.append((i, side, kind, material, ex, ey, top, bottom, d, (round(rx, 4), round(ry, 4))))
             d += WALL_STEP

@@ -22,7 +22,8 @@ PROJECT_DIR = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_di
 SRC = os.path.join(PROJECT_DIR, "SourceArt/Kit/FBX")
 DEST = "/Game/Environment/Meshes/Kit"
 MI_ROOT = "/Game/Environment/Materials"
-SLOTS = ("Wall", "Trim", "Wood", "Glass", "Metal", "Roof", "Concrete")
+SLOTS = ("Wall", "Trim", "Wood", "Glass", "Metal", "Roof", "Concrete",
+         "PaintRed", "PaintWhite", "PaintBlack", "PaintBlue", "Paint")  # paint: M_Master_Paint (street fixtures)
 
 
 def log(msg):
