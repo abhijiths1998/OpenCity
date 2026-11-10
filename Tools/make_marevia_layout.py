@@ -1595,6 +1595,123 @@ def sink_junctions(h, g):
     print(f"junction surfaces: {sunk} m2 of land lowered to the junction height")
 
 
+TERRACE_STEP = 3.0                                  # m between olive terraces (bench to bench)
+TERRACE_AREA = (X(60), 1760.0, X(520), 2120.0)      # Le Colline west: Villa Salvi and the lookout (STORY.md)
+
+
+def terraces(h, best, landmarks):
+    """Olive terraces (INFRA_DESIGN.md Phase 3): on the Le Colline slopes west of the river, the
+    land is stepped into benches TERRACE_STEP m apart that keep a tenth of the slope, away from
+    roads (12 m past their edge), the river, Villa Salvi and the lookout, and only where the slope
+    is 10 to 45%. Returns dry-stone wall runs along each riser, in retaining_walls' format ("cut"
+    walls facing downhill, the points 1.5 m in front of the contour: at 0.8 m the soil of the step
+    showed at the wall foot)."""
+    x0, y0, x1, y1 = TERRACE_AREA
+    r0, r1, c0, c1 = int(y0 - Y_MIN), int(y1 - Y_MIN), int(x0), int(x1)
+    sub = h[r0:r1 + 1, c0:c1 + 1]
+    hs = box_blur(box_blur(sub, 4), 4)                  # contours of the land's shape, not its noise
+    gy, gx = np.gradient(hs)
+    slope = np.hypot(gx, gy)
+    ys = np.arange(r0, r1 + 1)[:, None] + Y_MIN
+    xs = np.arange(c0, c1 + 1)[None, :].astype(np.float32)
+    rx = np.array([river_x(float(y)) for y in ys[:, 0]])[:, None]
+    rhw = np.array([river_half_width(float(y)) for y in ys[:, 0]])[:, None]
+    mask = (best[r0:r1 + 1, c0:c1 + 1] > 12.0) & (slope > 0.10) & (slope < 0.45) & (sub > 5.0)
+    mask &= np.abs(xs - rx) > rhw + 25.0
+    for name, _, (lx, ly), (fw, fd), _, _ in landmarks:
+        if x0 - 60 < lx < x1 + 60 and y0 - 60 < ly < y1 + 60:
+            mask &= ~((np.abs(xs - lx) < fw / 2 + 20) & (np.abs(ys - ly) < fd / 2 + 20))
+    w = box_blur(mask.astype(np.float32), 8)
+    w = np.clip((w - 0.35) * 2.5, 0.0, 1.0)
+    w = w * w * (3 - 2 * w)
+    level = np.floor(hs / TERRACE_STEP)
+    bench = level * TERRACE_STEP + (hs - level * TERRACE_STEP) * 0.1
+    sub += (bench - hs) * w
+    h[r0:r1 + 1, c0:c1 + 1] = sub
+
+    # Walls: marching squares on the 2 m grid of the smoothed land at every step level, where the
+    # terraces are fully formed (w > 0.97).
+    G = 2
+    hg, wg = hs[::G, ::G], w[::G, ::G]
+    segs = []
+    lv = np.floor(hg / TERRACE_STEP)
+    for i in range(hg.shape[0] - 1):
+        for j in range(hg.shape[1] - 1):
+            c = (hg[i, j], hg[i, j + 1], hg[i + 1, j + 1], hg[i + 1, j])
+            l = (lv[i, j], lv[i, j + 1], lv[i + 1, j + 1], lv[i + 1, j])
+            if min(l) == max(l) or min(wg[i, j], wg[i, j + 1], wg[i + 1, j + 1], wg[i + 1, j]) < 0.97:
+                continue
+            corners = ((j, i), (j + 1, i), (j + 1, i + 1), (j, i + 1))
+            for k in range(int(min(l)) + 1, int(max(l)) + 1):
+                L = k * TERRACE_STEP
+                pts = []
+                for e in range(4):
+                    a, b = e, (e + 1) % 4
+                    if (c[a] >= L) != (c[b] >= L):
+                        t = (L - c[a]) / (c[b] - c[a])
+                        pts.append((corners[a][0] + (corners[b][0] - corners[a][0]) * t,
+                                    corners[a][1] + (corners[b][1] - corners[a][1]) * t))
+                for q in range(0, len(pts) - 1, 2):
+                    segs.append((k, pts[q], pts[q + 1]))
+    # Chain the cell segments into polylines per level, then 4 m panels in runs of up to 4.
+    def key(p):
+        return (round(p[0] * 4), round(p[1] * 4))
+    by_end = {}
+    for idx, (k, a, b) in enumerate(segs):
+        by_end.setdefault((k, key(a)), []).append(idx)
+        by_end.setdefault((k, key(b)), []).append(idx)
+    used = [False] * len(segs)
+    lines = []
+    for idx in range(len(segs)):
+        if used[idx]:
+            continue
+        used[idx] = True
+        k, a, b = segs[idx]
+        line = [a, b]
+        for forward in (True, False):
+            while True:
+                end = line[-1] if forward else line[0]
+                nxt = next((m for m in by_end.get((k, key(end)), ()) if not used[m]), None)
+                if nxt is None:
+                    break
+                used[nxt] = True
+                _, p, q = segs[nxt]
+                o = q if key(p) == key(end) else p
+                if forward:
+                    line.append(o)
+                else:
+                    line.insert(0, o)
+        lines.append((k, line))
+    runs = []
+    for k, line in lines:
+        pts = [(float(c0 + x * G), float(r0 + Y_MIN + y * G)) for x, y in line]  # back to layout metres
+        acc, out = 0.0, [pts[0]]
+        for a, b in zip(pts, pts[1:]):
+            acc += math.dist(a, b)
+            if acc >= WALL_STEP:
+                out.append(b)
+                acc = 0.0
+        if len(out) < 2:
+            continue
+        L = k * TERRACE_STEP
+        for s0 in range(0, len(out) - 1, 4):
+            chunk = out[s0:s0 + 5]
+            if len(chunk) < 2:
+                continue
+            mx, my = chunk[len(chunk) // 2]
+            ii = min(max(int(round((my - y0) / 1.0)), 0), hs.shape[0] - 1)
+            jj = min(max(int(round(mx - x0)), 0), hs.shape[1] - 1)
+            ux, uy = float(gx[ii, jj]), float(gy[ii, jj])
+            n = math.hypot(ux, uy) or 1.0
+            ux, uy = ux / n, uy / n                         # uphill
+            runs.append({"material": "Stone", "type": "cut", "outward": [round(ux, 4), round(uy, 4)], "terrace": True,
+                         "points": [[round(x - ux * 1.5, 2), round(y - uy * 1.5, 2), round(L + 0.4, 2),
+                                     round(L - 0.9 * TERRACE_STEP - 0.5, 2)] for x, y in chunk]})
+    wall_m = sum(WALL_STEP * (len(r["points"]) - 1) for r in runs)
+    print(f"terraces: {int((w > 0.97).sum())} m2 of benches, {len(runs)} dry-stone wall runs, {wall_m:.0f} m")
+    return runs
+
+
 def box_blur(a, r):
     """Mean over a (2r+1)^2 window (separable cumulative sums, edges clamped)."""
     out = a
@@ -1864,6 +1981,32 @@ def rect_mask(cx, cy, w, d, yaw, grow=0.0):
     px, py = xx - cx, (yy + Y_MIN) - cy
     u, v = px * c + py * sn, -px * sn + py * c
     return y0, y1, x0, x1, (np.abs(u) <= hw) & (np.abs(v) <= hd)
+
+
+def drop_walls_in_buildings(runs, buildings, grow=2.0):
+    """Split wall runs where they would pass through a building footprint (+ grow m)."""
+    def inside(x, y):
+        for b in buildings:
+            if abs(x - b["pos"][0]) > 40 or abs(y - b["pos"][1]) > 40:
+                continue
+            c, s = math.cos(math.radians(b["yaw"])), math.sin(math.radians(b["yaw"]))
+            u, v = (x - b["pos"][0]) * c + (y - b["pos"][1]) * s, -(x - b["pos"][0]) * s + (y - b["pos"][1]) * c
+            if abs(u) <= b["size"][0] / 2 + grow and abs(v) <= b["size"][1] / 2 + grow:
+                return True
+        return False
+    out = []
+    for r in runs:
+        cur = []
+        for p in r["points"]:
+            if inside(p[0], p[1]):
+                if len(cur) >= 2:
+                    out.append(dict(r, points=cur))
+                cur = []
+            else:
+                cur.append(p)
+        if len(cur) >= 2:
+            out.append(dict(r, points=cur))
+    return out
 
 
 def junction_arms(g, n, segs):
@@ -2258,6 +2401,7 @@ def main():
     relax_slopes(terrain, best)
     clamp_iters = clamp_slopes(terrain, best)
     sink_junctions(terrain, g)
+    terrace_walls = terraces(terrain, best, landmarks)
     for n in g.nodes:  # the road surface sits 20 cm above the flattened ground
         n[2] = round(max(float(terrain[int(round(n[1] - Y_MIN)), int(round(n[0]))]) + 0.2, 1.0), 2)
 
@@ -2267,6 +2411,7 @@ def main():
     t0 = time.time()
     buildings = place_buildings(terrain, best, g, random.Random(SEED + 7), landmarks)
     buildings += landmark_buildings(terrain, landmarks)
+    walls += drop_walls_in_buildings(terrace_walls, buildings)
     sight_triangles(g, buildings, junctions)
     bt = time.time() - t0
 
