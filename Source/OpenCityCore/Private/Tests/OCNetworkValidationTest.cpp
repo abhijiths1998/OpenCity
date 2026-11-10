@@ -150,6 +150,29 @@ bool FOCRoadValidatorTest::RunTest(const FString& Parameters)
 	FOCNetworkValidator::ValidateRoads(H, FOCNetworkValidator::FOptions(), HR);
 	TestTrue(TEXT("Hairpin apex: ~6 m radius flagged"), HR.Num(TEXT("radius")) >= 1);
 	TestTrue(TEXT("Stacked legs: 5 m gap for 10 m of height flagged"), HR.Num(TEXT("clearance")) >= 1);
+	TestEqual(TEXT("Hairpin: no crossings"), HR.Num(TEXT("crossing")), 0);
+
+	// Two streets crossing in plan with no junction node (an error); a bridge 6 m above a street is fine.
+	FOCRoadGraph X;
+	const TCHAR* Crossing = TEXT(R"({"roads": {
+		"profiles": {"quartiere": {"lane_cm": 300, "shoulder_right_cm": 50, "max_grade_pct": 8, "min_radius_m": 51, "design_speed_max_kmh": 50}},
+		"nodes": [[0,0,0],[100,0,0],[50,-50,0],[50,50,0],[200,-50,6],[200,50,6],[150,0,0],[250,0,0]],
+		"segments": [
+			{"a":0,"b":1,"kind":"street","lanes_per_dir":1,"width":9,"speed_kmh":50,"profile":"quartiere"},
+			{"a":2,"b":3,"kind":"street","lanes_per_dir":1,"width":9,"speed_kmh":50,"profile":"quartiere"},
+			{"a":4,"b":5,"kind":"street","lanes_per_dir":1,"width":9,"speed_kmh":50,"profile":"quartiere","bridge":"Ponte"},
+			{"a":6,"b":7,"kind":"street","lanes_per_dir":1,"width":9,"speed_kmh":50,"profile":"quartiere"}
+		]}})");
+	TestTrue(TEXT("Crossing layout parses"), X.LoadFromLayoutJson(Crossing, Error));
+	FOCNetworkReport XR;
+	FOCNetworkValidator::ValidateRoads(X, FOCNetworkValidator::FOptions(), XR);
+	TestEqual(TEXT("Crossing: the two streets cross with no junction; the bridge 6 m up does not count"), XR.Num(TEXT("crossing")), 1);
+	if (XR.Num(TEXT("crossing")) == 1)
+	{
+		const FOCNetworkIssue* I = XR.Issues.FindByPredicate([](const FOCNetworkIssue& Issue) { return Issue.Check == TEXT("crossing"); });
+		TestTrue(TEXT("Crossing is an error"), I->bError);
+		TestEqual(TEXT("Crossing location"), I->Location, FVector(5000.0, 0.0, 0.0), 1.0);
+	}
 	TestTrue(TEXT("Radius of three collinear points is huge"), FOCNetworkValidator::PlanRadiusCm(FVector(0), FVector(100, 0, 0), FVector(200, 0, 0)) > 1e9);
 	TestEqual(TEXT("Radius of a quarter circle"), FOCNetworkValidator::PlanRadiusCm(FVector(100, 0, 0), FVector(0, 100, 0), FVector(-100, 0, 0)), 100.0, 0.01);
 	return true;

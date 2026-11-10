@@ -17,6 +17,7 @@ namespace OCValidate
 	const FName Tram(TEXT("tram"));
 	const FName Junction(TEXT("junction"));
 	const FName Clearance(TEXT("clearance"));
+	const FName Crossing(TEXT("crossing"));
 	const FName RailGeometry(TEXT("rail_geometry"));
 	const FName RailGrade(TEXT("rail_gradient"));
 	const FName RailPower(TEXT("rail_power"));
@@ -269,6 +270,76 @@ void FOCNetworkValidator::ValidateRoads(const FOCRoadGraph& Roads, const FOption
 							}
 						}
 					}
+				}
+			}
+		}
+	}
+
+	// Roads that cross in plan without sharing a node: no junction in the lane graph, two road
+	// meshes on top of each other, and walls or kerbs running across the other road (a tour drive
+	// got stuck on the viale's kerb where an alley ran through it). The layout generator turns
+	// such crossings into junctions (split_crossings); only a bridge with headroom may cross.
+	{
+		TMap<FIntPoint, TArray<int32>> Grid;  // 50 m cells covered by each segment's bounding box
+		const double CellCm = 5000.0;
+		for (int32 s = 0; s < Segs.Num(); ++s)
+		{
+			const FVector& PA = Nodes[Segs[s].A].Location;
+			const FVector& PB = Nodes[Segs[s].B].Location;
+			const int32 X0 = FMath::FloorToInt32(FMath::Min(PA.X, PB.X) / CellCm), X1 = FMath::FloorToInt32(FMath::Max(PA.X, PB.X) / CellCm);
+			const int32 Y0 = FMath::FloorToInt32(FMath::Min(PA.Y, PB.Y) / CellCm), Y1 = FMath::FloorToInt32(FMath::Max(PA.Y, PB.Y) / CellCm);
+			for (int32 x = X0; x <= X1; ++x)
+			{
+				for (int32 y = Y0; y <= Y1; ++y)
+				{
+					Grid.FindOrAdd(FIntPoint(x, y)).Add(s);
+				}
+			}
+		}
+		auto Side = [](const FVector& O, const FVector& A, const FVector& B)
+		{
+			return (A.X - O.X) * (B.Y - O.Y) - (A.Y - O.Y) * (B.X - O.X);
+		};
+		TSet<uint64> Seen;
+		for (const TPair<FIntPoint, TArray<int32>>& Cell : Grid)
+		{
+			const TArray<int32>& L = Cell.Value;
+			for (int32 i = 0; i < L.Num(); ++i)
+			{
+				for (int32 j = i + 1; j < L.Num(); ++j)
+				{
+					const int32 p = FMath::Min(L[i], L[j]), q = FMath::Max(L[i], L[j]);
+					bool bSeen = false;
+					Seen.Add((uint64(p) << 32) | uint64(q), &bSeen);
+					if (bSeen)
+					{
+						continue;
+					}
+					const FOCRoadSegment& SP = Segs[p];
+					const FOCRoadSegment& SQ = Segs[q];
+					if (SP.A == SQ.A || SP.A == SQ.B || SP.B == SQ.A || SP.B == SQ.B)
+					{
+						continue;
+					}
+					const FVector& A = Nodes[SP.A].Location;
+					const FVector& B = Nodes[SP.B].Location;
+					const FVector& C = Nodes[SQ.A].Location;
+					const FVector& D = Nodes[SQ.B].Location;
+					const double D1 = Side(C, D, A), D2 = Side(C, D, B), D3 = Side(A, B, C), D4 = Side(A, B, D);
+					if (!(((D1 > 0) != (D2 > 0)) && ((D3 > 0) != (D4 > 0))) || D1 == D2 || D3 == D4)
+					{
+						continue;
+					}
+					const double T = D1 / (D1 - D2), U = D3 / (D3 - D4);
+					const FVector At = FMath::Lerp(A, B, T);
+					const double Dz = FMath::Abs(FMath::Lerp(A.Z, B.Z, T) - FMath::Lerp(C.Z, D.Z, U));
+					if ((!SP.Bridge.IsNone() || !SQ.Bridge.IsNone()) && Dz >= Options.BridgeClearanceCm)
+					{
+						continue;
+					}
+					Add(Out, Crossing, true, p, INDEX_NONE, At,
+						FString::Printf(TEXT("segments %d (%s) and %d (%s) cross with no junction, %.1f m apart in height"),
+							p, *SP.Profile.ToString(), q, *SQ.Profile.ToString(), Dz / 100.0));
 				}
 			}
 		}
