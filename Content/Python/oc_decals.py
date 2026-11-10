@@ -27,7 +27,10 @@ MI_ROOT = "/Game/Environment/Materials/Decals"
 MEL = unreal.MaterialEditingLibrary
 TOOLS = unreal.AssetToolsHelpers.get_asset_tools()
 
-# Per set: (opacity from colour?, strength, roughness override or -1 to use the map)
+# Per set: (opacity from colour?, strength, roughness override or -1 to use the map[, colour key, gain]).
+# Opacity from colour = how far the colour is below the key, times the gain: the wall leaks sit on
+# white (key 0.92), the tyre tracks on light grey (0.48 to 0.60 in linear colour, as the shader
+# sees it), which at the old fixed key showed the whole decal rectangle as a pale patch.
 SETS = {
     "ManholeCover001": (0.0, 1.0, -1.0),
     "ManholeCover004": (0.0, 1.0, -1.0),
@@ -35,7 +38,7 @@ SETS = {
     "ChewingGum001": (0.0, 1.0, -1.0),
     "ManholeCover009": (0.0, 1.0, -1.0),   # gutter gullies (Phase 4)
     "ManholeCover010": (0.0, 1.0, -1.0),   # covers set in cobbles (Phase 4)
-    "TireTracks001": (1.0, 0.55, 0.6),
+    "TireTracks001": (1.0, 0.55, 0.6, 0.42, 4.0),   # linear: background 0.48-0.60, tracks 0.07-0.32
     "Leaking012A": (1.0, 0.8, -1.0),
     "Leaking013A": (1.0, 0.8, -1.0),
     "Leaking016A": (1.0, 0.8, -1.0),
@@ -45,7 +48,7 @@ SETS = {
 DECAL_HLSL = r"""
 float4 c = Texture2DSample(BC, BCSampler, UV);
 float lum = dot(c.rgb, float3(0.3, 0.59, 0.11));
-float op = FromColor > 0.5 ? saturate((0.92 - lum) * 2.5) : Texture2DSample(OP, OPSampler, UV).r;
+float op = FromColor > 0.5 ? saturate((ColorKey - lum) * ColorGain) : Texture2DSample(OP, OPSampler, UV).r;
 Opacity = op * Strength;
 float2 nxy = Texture2DSample(NM, NMSampler, UV).rg * 2.0 - 1.0;
 Normal = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
@@ -113,7 +116,9 @@ def build_master(defaults):
               ("UV", MEL.create_material_expression(mat, unreal.MaterialExpressionTextureCoordinate, -1100, 300)),
               ("FromColor", scalar(mat, "OpacityFromColor", 0.0, -1100, 380)),
               ("Strength", scalar(mat, "Strength", 1.0, -1100, 460)),
-              ("RoughOverride", scalar(mat, "RoughnessOverride", -1.0, -1100, 540))]
+              ("RoughOverride", scalar(mat, "RoughnessOverride", -1.0, -1100, 540)),
+              ("ColorKey", scalar(mat, "ColorKey", 0.92, -1100, 620)),
+              ("ColorGain", scalar(mat, "ColorGain", 2.5, -1100, 700))]
     e = MEL.create_material_expression(mat, unreal.MaterialExpressionCustom, -300, 0)
     e.set_editor_property("code", DECAL_HLSL)
     e.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
@@ -148,14 +153,16 @@ def main():
         raise RuntimeError("no decals downloaded: python3 -I Tools/fetch_ambientcg.py")
     master = build_master(sets.get("ManholeCover001", next(iter(sets.values()))))
     for aid, maps in sets.items():
-        from_color, strength, rough = SETS[aid]
+        from_color, strength, rough, *key = SETS[aid]
+        key = key or [0.92, 2.5]
         mi = L.get_or_create(f"MI_Decal_{aid}", MI_ROOT, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew(), TAG)
         MEL.set_material_instance_parent(mi, master)
         MEL.clear_all_material_instance_parameters(mi)
         for param, role in (("Color", "Color"), ("Normal", "NormalDX"), ("Roughness", "Roughness"), ("Opacity", "Opacity")):
             if role in maps:
                 MEL.set_material_instance_texture_parameter_value(mi, param, maps[role])
-        for k, v in (("OpacityFromColor", from_color), ("Strength", strength), ("RoughnessOverride", rough)):
+        for k, v in (("OpacityFromColor", from_color), ("Strength", strength), ("RoughnessOverride", rough),
+                     ("ColorKey", key[0]), ("ColorGain", key[1])):
             MEL.set_material_instance_scalar_parameter_value(mi, k, v)
         MEL.update_material_instance(mi)
         L.save(mi)

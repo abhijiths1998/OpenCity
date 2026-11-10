@@ -1259,7 +1259,9 @@ int32 UOCWorldBuilderLibrary::BuildRoadDecals(UWorld* World, const FString& Layo
 			{
 				const double D = End == 0 ? 1100.0 : Len - 1100.0;
 				const double Side = End == 0 ? -1.0 : 1.0;  // the lane heading into that junction
-				Put(Tyres, At(D, Side * Lane), Yaw + 90.0, FVector(30.0, 100.0, 380.0), 15.0);
+				// The decal's long (Z) axis along the lane: at Yaw + 90 the 7.6 m marks lay across the
+				// road like a pale band before every stop line.
+				Put(Tyres, At(D, Side * Lane), Yaw, FVector(30.0, 100.0, 380.0), 15.0);
 			}
 		}
 		for (double D = R.FRandRange(2000.f, 9000.f); !bStone && D < Len - 1000.0; D += R.FRandRange(12000.f, 18000.f) / WearK)
