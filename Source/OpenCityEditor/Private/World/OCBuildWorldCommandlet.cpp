@@ -75,7 +75,14 @@ namespace OCWorldBuild
 			OCEd::Log(Tag, FString::Printf(TEXT("HLOD: %s, cell 25600 cm, range 800000 cm"), *Base->GetName()));
 		}
 
-		void Unstream(AActor* A) { A->SetIsSpatiallyLoaded(false); }
+		/** Always loaded. Some classes (the sun, info actors) are never spatially loaded and refuse the change. */
+		void Unstream(AActor* A)
+		{
+			if (A->CanChangeIsSpatiallyLoadedFlag())
+			{
+				A->SetIsSpatiallyLoaded(false);
+			}
+		}
 
 		/** Movable sun, sky atmosphere, haze, real-time sky light, clouds (High+) and the post-process look (ART_BIBLE.md). */
 		void SetupLighting()

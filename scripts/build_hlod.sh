@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build World Partition HLODs for a map with the engine's HLOD builder commandlet.
 # Needs the GPU (landscape HLODs and approximated meshes bake textures).
-# The HLOD layers and ranges are set by Content/Python/oc_m3_world.py (setup_hlod).
+# The HLOD layers and ranges are set by the world build (UOCBuildWorldCommandlet, SetupHlod).
 #
 # Usage: scripts/build_hlod.sh [Map] [--delete]   default L_Marevia; --delete removes all HLOD actors
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
