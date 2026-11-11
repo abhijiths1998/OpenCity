@@ -33,7 +33,13 @@ int32 UOCBuildArtCommandlet::Main(const FString& Params)
 		else if (Step == TEXT("weather")) { OCArt::BuildWeather(); }
 		else if (Step == TEXT("physmat")) { OCArt::BuildPhysicalMaterials(); }
 		else if (Step == TEXT("props")) { bOk = OCArt::ImportProps(); }
-		else if (Step == TEXT("kit")) { bOk = OCArt::ImportKit(); }
+		else if (Step == TEXT("kit"))
+		{
+			FString Dest = TEXT("/Game/Environment/Meshes/Kit"), Only;
+			FParse::Value(*Params, TEXT("kitdest="), Dest);
+			FParse::Value(*Params, TEXT("only="), Only, false);
+			bOk = OCArt::BuildKit(Dest, Only);
+		}
 		else if (Step == TEXT("stats")) { OCArt::MaterialStats(); }
 		else
 		{

@@ -10,6 +10,6 @@ public class OpenCityEditor : ModuleRules
 		bUseUnity = false;
 
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
-		PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "OpenCityCore", "OpenCity", "Landscape", "ImageCore", "RHI", "MeshDescription", "StaticMeshDescription", "AssetRegistry", "Json", "DataLayerEditor", "GameplayTags", "MaterialEditor", "AssetTools", "EditorScriptingUtilities", "LevelEditor", "WorldPartitionEditor", "PhysicsCore", "EnhancedInput", "BlueprintEditorLibrary", "ChaosVehicles", "Projects", "InputCore" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "OpenCityCore", "OpenCity", "Landscape", "ImageCore", "RHI", "MeshDescription", "StaticMeshDescription", "AssetRegistry", "Json", "DataLayerEditor", "GameplayTags", "MaterialEditor", "AssetTools", "EditorScriptingUtilities", "LevelEditor", "WorldPartitionEditor", "PhysicsCore", "EnhancedInput", "BlueprintEditorLibrary", "ChaosVehicles", "Projects", "InputCore", "GeometryCore", "DynamicMesh", "GeometryAlgorithms", "MeshDescription" });
 	}
 }

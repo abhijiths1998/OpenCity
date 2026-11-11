@@ -10,8 +10,8 @@ The pipeline runs in ten steps. **Step 1 (audit → AUDIT.md), Step 2 (art bible
 | 2 — Art bible | `ART_BIBLE.md` | Done |
 | 3 — World metrics | `WORLD_METRICS.md` | Done |
 | 4 — Blockout | grey-box district via road splines + PCG | Done: 3 × 3 km layout generator, road graph, blockout boxes kept as hidden collision |
-| 5 — Modular kits + trim sheets | per-district `SM_*` kit, trim sheets | Done (one Marevia kit, tiling PBR materials instead of a trim sheet): `Tools/blender/KIT_SPEC.md`, `BuildKitBuildings` with per-building colour, shop, balcony and roof variation |
-| 6 — Blender kitbash pipeline | headless Blender scripts + UE import script | Done: `Tools/blender/make_kit.py` (26 pieces, bevels, UCX), `render_previews.py`, `OCArtImport.cpp (kit)`; portable Blender 4.2 LTS |
+| 5 — Modular kits + trim sheets | per-district `SM_*` kit, trim sheets | Done (one Marevia kit, tiling PBR materials instead of a trim sheet): `Tools/kit/KIT_SPEC.md`, `BuildKitBuildings` with per-building colour, shop, balcony and roof variation |
+| 6 — Kit generator | procedural kit pieces + previews | Done: C++ generator (`Source/OpenCityEditor/Private/Kit/`, 45 pieces, bevels via `FMeshBevel`, recesses via `FMeshBoolean`, simple collision) writing `SM_Kit_*` directly (`OCBuildArt -steps=kit`); previews `OCKitPreview`. Replaced the Blender scripts and the FBX import on 2026-11-11 |
 | 7 — Roads, ground, landscape | splines, ground layers, auto-material | Done: `M_Master_Road` (asphalt, setts, pier concrete, worn markings), `M_Master_Landscape` auto-material with distance blend and side-projected rock. Open: decals (cracks, oil, puddles) |
 | 8 — Set dressing | three layers per street | Partly: street lights, trees, bins, hydrants (`BuildStreetProps`), doorstep pots, shop crates, cafe tables, roof clutter. Open: hero focal points per block, laundry, posters, parked cars |
 | 9 — Lighting + atmosphere | sky, sun, fog, exposure, LUT, night | Done except the LUT: `UOCWorldStateSubsystem` day/night, exposure range, haze, clouds on High+, lit windows, pooled sodium street lights |
@@ -118,15 +118,15 @@ The script will:
 
 Paths are case-sensitive on Linux, so file names must match exactly.
 
-### Blender export
+### Mesh rules (generated or imported)
 
 | Rule | Value |
 |---|---|
-| Units | Metric, 1 unit = 1 m in Blender, exports as cm in Unreal |
-| Forward and up | X forward, Z up, checked with a test cube |
+| Units | Metric: 1 m = 100 uu (the kit generator works in metres and writes cm) |
+| Forward and up | X along the facade, Z up, outside face toward -Y (`Tools/kit/KIT_SPEC.md`) |
 | Pivot | Base centre for props, grid-aligned corner for modular pieces |
 | Modular grid | 1 m, with 3 m floor height |
-| Collision | `UCX_<Mesh>` for custom collision |
+| Collision | Simple boxes or hulls per piece (the kit spec's collision list); `UCX_<Mesh>` for imported meshes |
 | LODs | Nanite meshes need no LOD chain. All others get at least 3 |
 | UVs | Channel 0 for textures, channel 1 only when needed |
 | Naming | `SM_` static, `SK_` skeletal |

@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # Rebuild all final-art assets from clean (ART_PIPELINE.md):
-#   1. fetch CC0 textures and models (skips files already downloaded, MD5-checked)
-#   2. merge each model into one mesh (Blender) and build the modular building kit (Blender)
-#   3. import textures and build the masters and instances, then props, then the kit (Unreal)
+#   1. fetch CC0 textures, models and decals (Rust octool; skips files already downloaded, MD5-checked)
+#   2. merge each model into one mesh (octool combine-gltf) and make the colour-grade LUT
+#   3. import textures, build the masters and instances, props, and generate the modular kit (C++ commandlets)
 # Then run scripts/build_world.sh and scripts/build_hlod.sh to put it all in the map.
 # Usage: scripts/build_art.sh [--skip-fetch]
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 oc_require_engine
-BLENDER="${OC_BLENDER:-$HOME/Applications/blender-4.2/blender}"
-[[ -x "$BLENDER" ]] || { echo "error: Blender 4.2 LTS not found at $BLENDER (see CLAUDE.md)" >&2; exit 1; }
 cd "$PROJECT_ROOT"
 
 if [[ "${1:-}" != "--skip-fetch" ]]; then
@@ -25,8 +23,6 @@ for slug in street_lamp_01 metal_trash_can fire_hydrant island_tree_01 island_tr
             boulder_01 namaqualand_boulder_03; do
   scripts/octool.sh combine-gltf SourceArt/Downloads/Models/$slug/*.gltf "SourceArt/Downloads/Props/SM_Prop_$slug.glb" ${KEEP[$slug]:+"${KEEP[$slug]}"} | grep -E "COMBINED|Error"
 done
-
-"$BLENDER" -b --factory-startup -P Tools/blender/make_kit.py | grep -vE "^(Blender|Read|Info)" | tail -5
 
 scripts/run_commandlet.sh OCGenerate -what=lut
 scripts/run_commandlet.sh OCBuildArt -steps=decals   # before the masters: walls use a leak scan as grime

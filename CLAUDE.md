@@ -105,7 +105,7 @@ Full rules are in `ART_PIPELINE.md`.
 
 ```text
 Config/  Source/  scripts/  Tools/
-SourceArt/         manifest.json, LICENSES.csv, Blender files
+SourceArt/         manifest.json, LICENSES.csv, world layout, kit previews
 Content/
   Core/            Shared data assets, input, game modes
   Characters/  Vehicles/  Weapons/
@@ -120,8 +120,8 @@ Content/
 - Build after every C++ change, and fix all errors and warnings before calling a step done.
 - Run tests for any logic touched.
 - Small commits after each working step. Commit before long or risky editor sessions, because this machine has had hard GPU freezes.
-- Blender: the system package is broken; use the portable LTS build at `~/Applications/blender-4.2/blender` (headless: `-b -P script.py`). Lightmap UVs are not needed (fully dynamic lighting).
-- No Python anywhere in the project (decided 2026-11-11): tools are C++ (or Rust, C, Go). Repeatable asset and world work runs as C++ commandlets in `OpenCityEditor` (`UnrealEditor-Cmd ... -run=OC...`, built by UBT). Offline tools are Rust (`Tools/octool`, `scripts/octool.sh`). The Blender kit scripts in `Tools/blender/` are the last Python and are being ported; never add new Python. The project no longer enables PythonScriptPlugin; the engine still mounts it as a Niagara dependency, which is engine code, not ours. If a step must be done by hand, give a short checklist with exact menu paths.
+- The modular kit is generated in C++ (`OCBuildArt -steps=kit`, contract in `Tools/kit/KIT_SPEC.md`); no Blender in the pipeline. Lightmap UVs are not needed (fully dynamic lighting).
+- No Python anywhere in the project (decided 2026-11-11): tools are C++ (or Rust, C, Go). Repeatable asset and world work runs as C++ commandlets in `OpenCityEditor` (`UnrealEditor-Cmd ... -run=OC...`, built by UBT). Offline tools are Rust (`Tools/octool`, `scripts/octool.sh`). Never add Python. The project no longer enables PythonScriptPlugin; the engine still mounts it as a Niagara dependency, which is engine code, not ours. If a step must be done by hand, give a short checklist with exact menu paths.
 - Say plainly when something could not be tested headless, and what the user needs to check in the editor.
 - Report real measurements only. Never present a Target as a result.
 

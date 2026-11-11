@@ -5,10 +5,8 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture.h"
 #include "Engine/Texture2D.h"
-#include "Factories/FbxImportUI.h"
 #include "Factories/MaterialInstanceConstantFactoryNew.h"
 #include "MaterialEditingLibrary.h"
-#include "Factories/FbxStaticMeshImportData.h"
 #include "HAL/FileManager.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Misc/Paths.h"
@@ -218,107 +216,6 @@ namespace OCArt
 			OCEd::Log(PropTag, FString::Printf(TEXT("%s: %s"), *Target, *Size(Mesh)));
 		}
 		return bOk;
-	}
-
-	bool ImportKit()
-	{
-		const TCHAR* KitTag = TEXT("oc_kit");
-		const FString Src = OCEd::ProjectDir() / TEXT("SourceArt/Kit/FBX");
-		const TCHAR* Dest = TEXT("/Game/Environment/Meshes/Kit");
-		// Pieces placed with collision on (BuildRetainingWalls, BuildStreetFixtures): complex as simple.
-		const TCHAR* Solid[] = { TEXT("RetainingWall_"), TEXT("WallCoping_"), TEXT("Sign_"), TEXT("Prop_Bollard"), TEXT("Prop_LedPole"), TEXT("Prop_ConvexMirror"),
-			TEXT("Prop_RecyclingBin"), TEXT("Prop_Fountain"), TEXT("Prop_TrafficLight") };
-		// Paint slots use M_Master_Paint (street fixtures).
-		const TCHAR* SlotNames[] = { TEXT("Wall"), TEXT("Trim"), TEXT("Wood"), TEXT("Glass"), TEXT("Metal"), TEXT("Roof"), TEXT("Concrete"),
-			TEXT("PaintRed"), TEXT("PaintWhite"), TEXT("PaintBlack"), TEXT("PaintBlue"), TEXT("Paint") };
-		TArray<FString> Files;
-		IFileManager::Get().FindFiles(Files, *(Src / TEXT("*.fbx")), true, false);
-		Files.Sort();
-		if (Files.IsEmpty())
-		{
-			UE_LOG(LogOpenCity, Error, TEXT("no FBX in %s: build the kit first"), *Src);
-			return false;
-		}
-		TMap<FString, UMaterialInterface*> Mis;
-		for (const TCHAR* S : SlotNames)
-		{
-			UMaterialInterface* Mi = OCEd::Load<UMaterialInterface>(FString(TEXT("/Game/Environment/Materials/MI_Kit_")) + S);
-			if (!Mi)
-			{
-				UE_LOG(LogOpenCity, Error, TEXT("missing kit material MI_Kit_%s: run the materials step first"), S);
-				return false;
-			}
-			Mis.Add(S, Mi);
-		}
-		int32 Done = 0;
-		for (const FString& F : Files)
-		{
-			const FString Name = TEXT("SM_Kit_") + FPaths::GetBaseFilename(F);
-			UFbxImportUI* Ui = NewObject<UFbxImportUI>();
-			Ui->bImportMesh = true;
-			Ui->bImportAsSkeletal = false;
-			Ui->bImportMaterials = false;
-			Ui->bImportTextures = false;
-			Ui->bImportAnimations = false;
-			Ui->bCreatePhysicsAsset = false;
-			Ui->MeshTypeToImport = FBXIT_StaticMesh;
-			Ui->bAutomatedImportShouldDetectType = false;
-			UFbxStaticMeshImportData* Sm = Ui->StaticMeshImportData;
-			Sm->bCombineMeshes = true;
-			Sm->bAutoGenerateCollision = false;
-			Sm->bGenerateLightmapUVs = false;
-			Sm->bRemoveDegenerates = true;
-			Sm->NormalImportMethod = FBXNIM_ImportNormals;
-			OCEd::ImportFile(Src / F, Dest, Name, Ui);
-			UStaticMesh* Mesh = OCEd::Load<UStaticMesh>(FString(Dest) / Name);
-			if (!Mesh)
-			{
-				OCEd::Log(KitTag, TEXT("FAILED to import ") + F);
-				continue;
-			}
-			EnableNanite(Mesh, false);
-			TArray<FString> Unknown;
-			const TArray<FStaticMaterial>& Slots = Mesh->GetStaticMaterials();
-			for (int32 i = 0; i < Slots.Num(); ++i)
-			{
-				// Blender may append .001; FBX may add _ suffixes.
-				const FString Slot = Slots[i].MaterialSlotName.ToString();
-				int32 Cut = Slot.Len();
-				for (int32 c = 0; c < Slot.Len(); ++c)
-				{
-					if (Slot[c] == TEXT('.') || Slot[c] == TEXT('_')) { Cut = c; break; }
-				}
-				const FString Base = Slot.Left(Cut);
-				if (UMaterialInterface** Mi = Mis.Find(Base))
-				{
-					Mesh->SetMaterial(i, *Mi);
-				}
-				else
-				{
-					Unknown.Add(Slot);
-				}
-			}
-			for (const TCHAR* S : Solid)
-			{
-				if (Name.StartsWith(FString(TEXT("SM_Kit_")) + S, ESearchCase::CaseSensitive))
-				{
-					// The UCX_ boxes don't survive the 5.8 FBX import (0 simple shapes), and Chaos vehicles only
-					// collide with simple shapes: walls, coping and street fixtures use their render mesh as
-					// collision, so cars stop at parapets instead of driving through them.
-					UBodySetup* Body = Mesh->GetBodySetup();
-					Body->Modify();
-					Body->CollisionTraceFlag = CTF_UseComplexAsSimple;
-					Body->PostEditChange();
-					break;
-				}
-			}
-			OCEd::Save(Mesh);
-			++Done;
-			OCEd::Log(KitTag, FString::Printf(TEXT("%s: %s, origin %s%s"), *Name, *Size(Mesh), *Mesh->GetBounds().Origin.ToString(),
-				Unknown.IsEmpty() ? TEXT("") : *(TEXT("; unknown slots ") + FString::Join(Unknown, TEXT(", ")))));
-		}
-		OCEd::Log(KitTag, FString::Printf(TEXT("imported %d of %d kit pieces into %s"), Done, Files.Num(), Dest));
-		return Done == Files.Num();
 	}
 
 	bool ImportTextureFolder(const FString& Src, const FString& Dest, const FString& ParentPath)

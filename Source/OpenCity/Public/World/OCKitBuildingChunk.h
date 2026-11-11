@@ -11,7 +11,7 @@ class UStaticMesh;
 
 /**
  * One World Partition chunk of kit-built buildings: an instanced mesh per kit piece
- * (Tools/blender/KIT_SPEC.md), assembled at edit time by UOCWorldBuilderLibrary::BuildKitBuildings.
+ * (Tools/kit/KIT_SPEC.md), assembled at edit time by UOCWorldBuilderLibrary::BuildKitBuildings.
  * Visual only: building collision is the hidden one-box-per-building blockout (AOCBlockoutActor).
  *
  * Per-instance custom data (8 floats, read by M_Master_Surface / M_Master_KitGlass):

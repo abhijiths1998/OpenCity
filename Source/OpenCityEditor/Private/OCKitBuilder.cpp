@@ -1,4 +1,4 @@
-// Assembles Marevia's buildings from the modular kit (Tools/blender/KIT_SPEC.md):
+// Assembles Marevia's buildings from the modular kit (Tools/kit/KIT_SPEC.md):
 // UOCWorldBuilderLibrary::BuildKitBuildings.
 //
 // Each building record in the layout (footprint on the 2 m grid, storeys of 3.2 m, district style)
@@ -199,7 +199,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 	}
 	if (!Pieces.Meshes.Contains(FName(TEXT("Wall_400"))))
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildKitBuildings: no kit in %s (run OCArtImport.cpp (kit))"), *KitFolder);
+		UE_LOG(LogOpenCity, Error, TEXT("BuildKitBuildings: no kit in %s (run scripts/run_commandlet.sh OCBuildArt -steps=kit)"), *KitFolder);
 		return 0;
 	}
 
@@ -685,7 +685,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 	UStaticMesh* Cable = Kit(TEXT("Prop_Cable"));
 	if (!Lantern || !LedPole || !SignZTL || !Bin)
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetFixtures: fixtures not imported (Tools/blender/make_kit.py, OCArtImport.cpp (kit))"));
+		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetFixtures: fixtures missing (run scripts/run_commandlet.sh OCBuildArt -steps=kit)"));
 		return 0;
 	}
 	const TArray<FOCRoadNode>& Nodes = Roads.GetNodes();
@@ -1085,7 +1085,7 @@ int32 UOCWorldBuilderLibrary::BuildRetainingWalls(UWorld* World, const FString& 
 	UStaticMesh* Coping = Kit(TEXT("WallCoping_400"));
 	if (!Panels[0] || !Panels[1] || !Coping)
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildRetainingWalls: wall pieces not imported (Tools/blender/make_kit.py, OCArtImport.cpp (kit))"));
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRetainingWalls: wall pieces missing (run scripts/run_commandlet.sh OCBuildArt -steps=kit)"));
 		return 0;
 	}
 	constexpr double PanelW = 400.0, PanelH = 200.0, Thick = 50.0;

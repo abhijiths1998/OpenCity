@@ -76,7 +76,7 @@ public:
 	static int32 BuildBuildings(UWorld* World, const FString& LayoutJsonPath, UStaticMesh* Mesh, UMaterialInterface* Material, float ChunkSizeCm);
 
 	/**
-	 * Buildings from the modular kit (Tools/blender/KIT_SPEC.md, meshes SM_Kit_* in KitFolder) for every
+	 * Buildings from the modular kit (Tools/kit/KIT_SPEC.md, meshes SM_Kit_* in KitFolder) for every
 	 * building in the layout: plinth, street-facing ground floor (shops, a door, barred windows),
 	 * shuttered upper floors and balconies, corner quoins, cornice, hip or flat roof with clutter.
 	 * One AOCKitBuildingChunk per ChunkSizeCm square (folder "Buildings/Kit"), visual only.
@@ -107,7 +107,7 @@ public:
 
 	/**
 	 * Street fixtures from the road data (INFRA_DESIGN.md Phase 5), kit pieces from
-	 * Tools/blender/make_kit.py: wall lanterns along centro storico streets, galvanised LED poles on
+	 * the kit generator (OCBuildArt -steps=kit): wall lanterns along centro storico streets, galvanised LED poles on
 	 * post-war streets and the coast road (BuildStreetProps keeps the cast-iron lamps for the rest),
 	 * Codice della Strada signs at ZTL gates (ZTL + 30), urban entries (50), blind T-junctions (STOP +
 	 * convex mirror opposite) and minor roads meeting a viale (give way), recycling bins on post-war

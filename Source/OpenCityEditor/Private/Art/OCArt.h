@@ -24,8 +24,8 @@ namespace OCArt
 	/** Props from the merged glTF files in SourceArt/Downloads/Props into /Game/Environment/Props, with MI_Prop_* materials. */
 	bool ImportProps();
 
-	/** Kit pieces from SourceArt/Kit/FBX into /Game/Environment/Meshes/Kit, with the MI_Kit_* materials. */
-	bool ImportKit();
+	/** Generate the modular kit (Kit/OCKitPieces.cpp) straight into SM_Kit_* meshes in Dest. Only: comma-separated piece names. */
+	bool BuildKit(const FString& Dest = TEXT("/Game/Environment/Meshes/Kit"), const FString& Only = FString());
 
 	/** MATSTAT lines: pixel shader instructions of each master against ART_PIPELINE.md budgets. */
 	void MaterialStats();

@@ -16,7 +16,7 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `o
 
 | Asset | Source | URL | Author | License | Where used | Date |
 |---|---|---|---|---|---|---|
-| Marevia building kit (26 pieces, `SM_Kit_*`) | Own work: `Tools/blender/make_kit.py` (Blender 4.2) | n/a | OpenCity | Project-owned | All buildings (`BuildKitBuildings`) | 2026-11-09 |
+| Marevia building kit (26 pieces, `SM_Kit_*`) | Own work: kit generator (C++, `Source/OpenCityEditor/Private/Kit/`, `OCBuildArt -steps=kit`) | n/a | OpenCity | Project-owned | All buildings (`BuildKitBuildings`) | 2026-11-09 |
 | `plastered_wall` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/plastered_wall | Poly Haven | CC0 | Kit: building walls (MI_Kit_Wall) | 2026-11-09 |
 | `white_stucco` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/white_stucco | Poly Haven | CC0 | Kit: Lungomare and Le Colline walls (alternate plaster) | 2026-11-09 |
 | `old_sandstone_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/old_sandstone_02 | Poly Haven | CC0 | Kit: stone trims, sills, cornices, quoins, plinths (MI_Kit_Trim) | 2026-11-09 |
@@ -49,7 +49,8 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `o
 | `ChewingGum001` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ChewingGum001 | ambientCG | CC0 | Pavement clutter | 2026-11-09 |
 | `ManholeCover009` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ManholeCover009 | ambientCG | CC0 | Gutter gullies along kerbs (BuildRoadDecals, INFRA_DESIGN Phase 4) | 2026-11-10 |
 | `ManholeCover010` (decal, Color/NormalDX/Roughness/Opacity, 1K) | ambientCG | https://ambientcg.com/view?id=ManholeCover010 | ambientCG | CC0 | Manhole set in cobbles on sampietrini and porfido paving (BuildRoadDecals, Phase 4) | 2026-11-10 |
-| Phase 5 street kit (`Prop_TrafficLight`, `Prop_CableLamp`, `Prop_Cable`) | Own work: `Tools/blender/make_kit.py` (Blender 4.2) | n/a | OpenCity | Project-owned | Signal heads at signalized junctions, cable-hung lamps in the centro storico (`BuildStreetFixtures`) | 2026-11-10 |
+| Phase 5 street kit (`Prop_TrafficLight`, `Prop_CableLamp`, `Prop_Cable`) | Own work: kit generator (C++, `Source/OpenCityEditor/Private/Kit/`, `OCBuildArt -steps=kit`) | n/a | OpenCity | Project-owned | Signal heads at signalized junctions, cable-hung lamps in the centro storico (`BuildStreetFixtures`) | 2026-11-10 |
+| Roboto Regular font (glyph outlines only) | Shipped with Unreal Engine (`Engine/Content/Slate/Fonts/Roboto-Regular.ttf`) | https://fonts.google.com/specimen/Roboto | Google | Apache-2.0 | Lettering on the kit road signs (STOP, speed limits, ZTL), extruded by the kit generator | 2026-11-11 |
 | `metal_trash_can` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/metal_trash_can | Poly Haven | CC0 | Bins at junctions | 2026-11-09 |
 | `fire_hydrant` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/fire_hydrant | Poly Haven | CC0 | Street clutter | 2026-11-09 |
 | `island_tree_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/island_tree_01 | Poly Haven | CC0 | Boulevard and seafront trees | 2026-11-09 |
