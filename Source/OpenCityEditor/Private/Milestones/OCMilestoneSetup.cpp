@@ -29,6 +29,7 @@
 #include "OCEditorHelpers.h"
 #include "OCLog.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "StaticMeshAttributes.h"
 #include "Player/OCCharacter.h"
 #include "Player/OCCharacterAnimInstance.h"
 #include "Player/OCInputConfig.h"
@@ -257,59 +258,137 @@ namespace OCMilestone
 			return Mesh;
 		}
 
-		/** SM_SportsCar with its windows in their own slot, so they get the rain-aware M_Master_CarGlass.
-		 *  The template's SM_SportsCar stays untouched. */
-		UStaticMesh* ImportCoupeBody()
+		/** SM_SportsCar_Body: a copy of the template's SM_SportsCar whose windows, UV islands of the body-paint slot
+		 *  that the paint texture colours dark, sit in their own Glass slot, so they get the rain-aware
+		 *  M_Master_CarGlass (M4b). No geometry is added or moved; the template stays untouched (formerly
+		 *  Tools/blender/split_car_glass.py, which did the same through an FBX round trip). The islands are found
+		 *  by their UV centre, checked against a render: the windshield, both side windows and the rear window. */
+		UStaticMesh* MakeCoupeBody()
 		{
-			const FString Fbx = OCEd::ProjectDir() / TEXT("SourceArt/Vehicles/SportsCar/SM_SportsCar_Body.fbx");
-			if (!FPaths::FileExists(Fbx))
-			{
-				UE_LOG(LogOpenCity, Fatal, TEXT("missing %s"), *Fbx);
-			}
-			UFbxImportUI* Ui = NewObject<UFbxImportUI>();
-			Ui->bImportMesh = true;
-			Ui->bImportAsSkeletal = false;
-			Ui->bImportMaterials = false;
-			Ui->bImportTextures = false;
-			Ui->bImportAnimations = false;
-			Ui->bCreatePhysicsAsset = false;
-			Ui->MeshTypeToImport = FBXIT_StaticMesh;
-			Ui->bAutomatedImportShouldDetectType = false;
-			Ui->StaticMeshImportData->bCombineMeshes = true;
-			Ui->StaticMeshImportData->bAutoGenerateCollision = false;
-			Ui->StaticMeshImportData->bGenerateLightmapUVs = false;
-			Ui->StaticMeshImportData->NormalImportMethod = FBXNIM_ImportNormals;
-			OCEd::ImportFile(Fbx, FString(VehDir) / TEXT("SportsCar"), TEXT("SM_SportsCar_Body"), Ui);
-			UStaticMesh* Mesh = OCEd::Load<UStaticMesh>(FString(VehDir) / TEXT("SportsCar/SM_SportsCar_Body"));
+			const FString Src = FString(VehDir) / TEXT("SportsCar/SM_SportsCar");
+			const FString Dst = FString(VehDir) / TEXT("SportsCar/SM_SportsCar_Body");
+			UStaticMesh* Template = CastChecked<UStaticMesh>(OCEd::Require(Src));
+			UStaticMesh* Mesh = OCEd::Load<UStaticMesh>(Dst);
 			if (!Mesh)
 			{
-				UE_LOG(LogOpenCity, Fatal, TEXT("coupe body import failed"));
+				Mesh = Cast<UStaticMesh>(UEditorAssetLibrary::DuplicateAsset(Src, Dst));
+			}
+			else
+			{
+				// Rebuild in place (the coupe data references it): the template's mesh, LODs and slots.
+				Mesh->Modify();
+				Mesh->SetNumSourceModels(Template->GetNumSourceModels());
+				for (int32 Lod = 0; Lod < Template->GetNumSourceModels(); ++Lod)
+				{
+					Mesh->GetSourceModel(Lod).BuildSettings = Template->GetSourceModel(Lod).BuildSettings;
+					Mesh->GetSourceModel(Lod).ReductionSettings = Template->GetSourceModel(Lod).ReductionSettings;
+					*Mesh->CreateMeshDescription(Lod) = *Template->GetMeshDescription(Lod);
+					Mesh->CommitMeshDescription(Lod);
+				}
+				Mesh->SetStaticMaterials(Template->GetStaticMaterials());
+			}
+			if (!Mesh)
+			{
+				UE_LOG(LogOpenCity, Fatal, TEXT("could not copy %s"), *Src);
+			}
+			FMeshDescription* Md = Mesh->GetMeshDescription(0);
+			FStaticMeshAttributes Attr(*Md);
+			TPolygonGroupAttributesRef<FName> SlotNames = Attr.GetPolygonGroupMaterialSlotNames();
+			TVertexInstanceAttributesConstRef<FVector2f> Uvs = Attr.GetVertexInstanceUVs();
+			FPolygonGroupID Body = INDEX_NONE;
+			for (const FPolygonGroupID G : Md->PolygonGroups().GetElementIDs())
+			{
+				if (SlotNames[G].ToString().StartsWith(TEXT("MI_SportsCarBody"), ESearchCase::CaseSensitive)) { Body = G; }
+			}
+			if (Body == INDEX_NONE)
+			{
+				UE_LOG(LogOpenCity, Fatal, TEXT("SM_SportsCar has no MI_SportsCarBody slot"));
+			}
+			// UV-space centres of the glass islands (Blender's V up; Unreal's V is 1 - v).
+			const TPair<const TCHAR*, FVector2D> GlassUv[] = { { TEXT("windshield"), FVector2D(0.155, 0.949) }, { TEXT("rear"), FVector2D(0.272, 0.946) },
+				{ TEXT("side_right"), FVector2D(0.034, 0.917) }, { TEXT("side_left"), FVector2D(0.072, 0.919) } };
+			constexpr double Tol = 0.02;
+			auto Key = [&Uvs](FVertexInstanceID V) { const FVector2f T = Uvs.Get(V, 0); return FIntPoint(FMath::RoundToInt(T.X * 1e5), FMath::RoundToInt(T.Y * 1e5)); };
+			// The vertex instance a triangle uses at a vertex.
+			auto InstanceAt = [Md](FTriangleID T, FVertexID V)
+			{
+				for (const FVertexInstanceID I : Md->GetTriangleVertexInstances(T)) { if (Md->GetVertexInstanceVertex(I) == V) { return I; } }
+				return FVertexInstanceID(INDEX_NONE);
+			};
+			// Triangles of the body slot grouped by UV island: neighbours across an edge whose two UVs match.
+			TSet<FTriangleID> Seen;
+			TArray<TArray<FTriangleID>> Islands;
+			for (const FTriangleID T0 : Md->GetPolygonGroupTriangles(Body))
+			{
+				if (Seen.Contains(T0)) { continue; }
+				TArray<FTriangleID>& Comp = Islands.AddDefaulted_GetRef();
+				TArray<FTriangleID> Stack = { T0 };
+				Seen.Add(T0);
+				while (!Stack.IsEmpty())
+				{
+					const FTriangleID T = Stack.Pop();
+					Comp.Add(T);
+					for (const FEdgeID E : Md->GetTriangleEdges(T))
+					{
+						const FVertexID A = Md->GetEdgeVertex(E, 0), B = Md->GetEdgeVertex(E, 1);
+						for (const FTriangleID N : Md->GetEdgeConnectedTriangleIDs(E))
+						{
+							if (Seen.Contains(N) || Md->GetTrianglePolygonGroup(N) != Body) { continue; }
+							const TSet<FIntPoint> Mine = { Key(InstanceAt(T, A)), Key(InstanceAt(T, B)) };
+							const TSet<FIntPoint> Theirs = { Key(InstanceAt(N, A)), Key(InstanceAt(N, B)) };
+							if (Mine.Num() == Theirs.Num() && Mine.Includes(Theirs))
+							{
+								Seen.Add(N);
+								Stack.Add(N);
+							}
+						}
+					}
+				}
+			}
+			const FPolygonGroupID Glass = Md->CreatePolygonGroup();
+			SlotNames[Glass] = TEXT("Glass");
+			TMap<FString, int32> Found;
+			for (const TArray<FTriangleID>& Comp : Islands)
+			{
+				FBox2D Box(ForceInit);
+				for (const FTriangleID T : Comp)
+				{
+					for (const FVertexInstanceID I : Md->GetTriangleVertexInstances(T)) { const FVector2f Uv = Uvs.Get(I, 0); Box += FVector2D(Uv.X, 1.0 - Uv.Y); }
+				}
+				const FVector2D C = Box.GetCenter();
+				for (const auto& G : GlassUv)
+				{
+					if (FMath::Abs(C.X - G.Value.X) < Tol && FMath::Abs(C.Y - G.Value.Y) < Tol)
+					{
+						Found.Add(G.Key, Comp.Num());
+						for (const FTriangleID T : Comp) { Md->SetPolygonPolygonGroup(Md->GetTrianglePolygon(T), Glass); }
+					}
+				}
+			}
+			if (Found.Num() != UE_ARRAY_COUNT(GlassUv))
+			{
+				UE_LOG(LogOpenCity, Fatal, TEXT("coupe body: found %d of 4 glass islands"), Found.Num());
 			}
 			Mesh->Modify();
+			Mesh->GetStaticMaterials().Add(FStaticMaterial(CastChecked<UMaterialInterface>(OCEd::Require(TEXT("/Game/Materials/M_Master_CarGlass"))), TEXT("Glass"), TEXT("Glass")));
+			Mesh->CommitMeshDescription(0);
 			Mesh->GetNaniteSettings().bEnabled = true;
-			Mesh->PostEditChange();
-			const TPair<const TCHAR*, FString> BySlot[] = {
-				{ TEXT("M_SportsCarChasis"), FString(VehDir) / TEXT("SportsCar/Materials/M_SportsCarChasis") },
-				{ TEXT("MI_SportsCarBody"), FString(VehDir) / TEXT("Materials/MI_CarPaint_SportsCar") },   // M_Master_CarPaint
-				{ TEXT("Glass"), TEXT("/Game/Materials/M_Master_CarGlass") } };
+			// Body paint: M_Master_CarPaint's instance; the chassis keeps the template material.
 			const TArray<FStaticMaterial>& Slots = Mesh->GetStaticMaterials();
 			for (int32 i = 0; i < Slots.Num(); ++i)
 			{
-				const FString Slot = Slots[i].MaterialSlotName.ToString();
-				UMaterialInterface* Mat = nullptr;
-				for (const auto& B : BySlot)
+				if (Slots[i].MaterialSlotName.ToString().StartsWith(TEXT("MI_SportsCarBody"), ESearchCase::CaseSensitive))
 				{
-					if (Slot.StartsWith(B.Key, ESearchCase::CaseSensitive)) { Mat = OCEd::Load<UMaterialInterface>(B.Value); break; }
+					Mesh->SetMaterial(i, CastChecked<UMaterialInterface>(OCEd::Require(FString(VehDir) / TEXT("Materials/MI_CarPaint_SportsCar"))));
 				}
-				if (!Mat)
-				{
-					UE_LOG(LogOpenCity, Fatal, TEXT("coupe body: no material for slot %s (build the art materials first)"), *Slot);
-				}
-				Mesh->SetMaterial(i, Mat);
 			}
+			Mesh->PostEditChange();
 			OCEd::Save(Mesh);
+			TArray<FString> Parts;
+			for (const TPair<FString, int32>& F : Found) { Parts.Add(FString::Printf(TEXT("%s %d"), *F.Key, F.Value)); }
 			const FVector E = Mesh->GetBounds().BoxExtent;
-			OCEd::Log(TEXT("oc_m2"), FString::Printf(TEXT("coupe body %s: extent %.1f x %.1f x %.1f cm (template 235.4 x 114.1 x 61.7)"), *Mesh->GetPathName(), E.X, E.Y, E.Z));
+			OCEd::Log(TEXT("oc_m2"), FString::Printf(TEXT("coupe body %s: glass islands (triangles) %s; extent %.1f x %.1f x %.1f cm"), *Mesh->GetPathName(),
+				*FString::Join(Parts, TEXT(", ")), E.X, E.Y, E.Z));
 			return Mesh;
 		}
 
@@ -615,7 +694,7 @@ namespace OCMilestone
 		UOCVehicleData* CoupeData = VehicleData(TEXT("DA_Vehicle_Coupe"), TEXT("Strada Coupe"));
 		CoupeData->Mesh = CastChecked<USkeletalMesh>(OCEd::Require(FString(VehDir) / TEXT("SportsCar/SKM_SportsCar")));
 		CoupeData->AnimClass = AnimClass(FString(VehDir) / TEXT("SportsCar/ABP_SportsCar"));
-		CoupeData->VisualParts = { Part(ImportCoupeBody()->GetPathName()), Part(FString(VehDir) / TEXT("SportsCar/SM_SportsCar_Glass")) };
+		CoupeData->VisualParts = { Part(MakeCoupeBody()->GetPathName()), Part(FString(VehDir) / TEXT("SportsCar/SM_SportsCar_Glass")) };
 		CoupeData->VisualParts.Append(WheelParts(FString(VehDir) / TEXT("SportsCar/SM_SportsCar_Wheel"),
 			{ TEXT("Phys_Wheel_FL"), TEXT("Phys_Wheel_FR"), TEXT("Phys_Wheel_BL"), TEXT("Phys_Wheel_BR") }, 0.0, -90.0));
 		CoupeData->Mass = 1400.0f;

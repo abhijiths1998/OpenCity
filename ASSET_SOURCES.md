@@ -82,7 +82,7 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `o
 | Asset | License | Where used | Notes |
 |---|---|---|---|
 | Vehicle template | Epic EULA (template content, for use in Unreal projects) | `AOCVehicle` visual parts | Placeholder until Blender replacements |
-| `SM_SportsCar_Body` (from the template's `SM_SportsCar`) | Epic EULA, as above | Coupe body | Same geometry; windows moved to their own `Glass` slot by `Tools/blender/split_car_glass.py` (source FBXs in `SourceArt/Vehicles/SportsCar/`) |
+| `SM_SportsCar_Body` (from the template's `SM_SportsCar`) | Epic EULA, as above | Coupe body | Same geometry; windows moved to their own `Glass` slot in the editor by `OCMilestone -steps=m2` (`MakeCoupeBody`, copied from the template, no export) |
 
 ---
 
