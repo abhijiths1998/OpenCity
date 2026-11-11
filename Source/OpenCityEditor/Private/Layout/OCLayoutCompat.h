@@ -21,6 +21,8 @@ namespace OCLayout
 		double Random();
 		/** random.uniform(a, b) = a + (b - a) * random(). */
 		double Uniform(double A, double B) { return A + (B - A) * Random(); }
+		/** random._randbelow(n) (getrandbits rejection), as random.choice uses it. */
+		int32 RandBelow(int32 N);
 
 	private:
 		uint32 Mt[624];
@@ -82,6 +84,8 @@ namespace OCLayout
 
 		/** json.dumps(value, indent=1). */
 		FString Write() const;
+		/** json.dumps(value, separators=(",", ":")). */
+		FString WriteCompact() const;
 		static FJsonPtr Parse(const FString& Text, FString& OutError);
 		/** Every difference between two trees (numbers within Tolerance count as equal), up to MaxReport. */
 		static int32 Compare(const FJsonPtr& A, const FJsonPtr& B, double Tolerance, int32 MaxReport, TArray<FString>& OutReport,
@@ -89,5 +93,6 @@ namespace OCLayout
 
 	private:
 		void WriteTo(FString& Out, int32 Indent) const;
+		void WriteCompactTo(FString& Out) const;
 	};
 }

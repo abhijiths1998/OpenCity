@@ -535,3 +535,45 @@ namespace OCLayout
 		}
 	}
 }
+
+int32 OCLayout::FPyRandom::RandBelow(int32 N)
+{
+	check(N > 0);
+	const int32 K = FMath::FloorLog2(uint32(N)) + 1;   // n.bit_length()
+	uint32 R = NextU32() >> (32 - K);
+	while (R >= uint32(N))
+	{
+		R = NextU32() >> (32 - K);
+	}
+	return int32(R);
+}
+
+void OCLayout::FJson::WriteCompactTo(FString& Out) const
+{
+	if (Kind != EKind::Array && Kind != EKind::Object)
+	{
+		WriteTo(Out, 0);
+		return;
+	}
+	const bool bObj = Kind == EKind::Object;
+	Out += bObj ? TEXT("{") : TEXT("[");
+	for (int32 i = 0; i < Items.Num(); ++i)
+	{
+		if (i > 0) { Out += TEXT(","); }
+		if (bObj)
+		{
+			MakeString(Keys[i])->WriteTo(Out, 0);
+			Out += TEXT(":");
+		}
+		Items[i]->WriteCompactTo(Out);
+	}
+	Out += bObj ? TEXT("}") : TEXT("]");
+}
+
+FString OCLayout::FJson::WriteCompact() const
+{
+	FString Out;
+	Out.Reserve(1024 * 1024);
+	WriteCompactTo(Out);
+	return Out;
+}
