@@ -78,7 +78,7 @@ CC0 originals are not committed. `SourceArt/manifest.json` lists them and `octoo
 
 **Normal map gotcha:** Poly Haven and ambientCG offer OpenGL and DirectX normals. Unreal expects DirectX. Download the DirectX variant where offered. Otherwise the import script flips the green channel.
 
-**Packing:** sources supply separate AO, roughness and metal maps. `Tools/pack_orm.py` packs them offline, and missing maps default to AO white and metal black.
+**Packing:** sources supply separate AO, roughness and metal maps. The fetched Poly Haven sets already come packed (their `arm` map is used as ORM, `octool fetch-textures`), so no packing tool is needed; a set without one would need its maps packed before import (AO white and metal black when missing).
 
 ### Resolution limits
 
