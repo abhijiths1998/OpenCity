@@ -2,7 +2,7 @@
 
 **Goal:** Roads as splines (PCG/spline meshes) with intersections, curbs, sidewalks, manholes, drains, lane markings as decals. Ground layers: asphalt with patches/cracks/tire marks/puddles, dirt at edges, leaves and trash near curbs, oil stains near parking. Landscape material with auto-material by slope/height (grass, dirt, rock, sand near beach), macro variation and distance blending. Foliage by PCG rules.
 
-**Prerequisites:** WORLD_METRICS.md (lane 350 cm, sidewalk 250–400 cm, curb 15 cm), `oc_import_textures.py` (done), road textures from `AUDIT.md`.
+**Prerequisites:** WORLD_METRICS.md (lane 350 cm, sidewalk 250–400 cm, curb 15 cm), `the OCImportTextures commandlet` (done), road textures from `AUDIT.md`.
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## Done by hand (editor)
 
-1. Import road textures (asphalt, concrete slabs) via `oc_import_textures.py`.
+1. Import road textures (asphalt, concrete slabs) via `the OCImportTextures commandlet`.
 2. Build `M_Master_Road` + `MI_*` instances.
 3. Replace dev materials on road chunks.
 4. Add decal lane markings (pooled DBuffer decals).

@@ -2,7 +2,7 @@
 
 **Goal:** For each district, define a modular building kit and trim sheet. Buildings assembled by Blueprint/PCG from kit pieces with per-instance variation. Ground floors most detailed; upper floors simpler; rooftops always dressed. No two neighbouring buildings identical.
 
-**Prerequisites:** `oc_import_textures.py` (done), master materials (M4a, not yet built), your texture downloads from `AUDIT.md` section 8.
+**Prerequisites:** `the OCImportTextures commandlet` (done), master materials (M4a, not yet built), your texture downloads from `AUDIT.md` section 8.
 
 ---
 
@@ -36,7 +36,7 @@ One 2K texture set covering strips: frames, panels, cornices, signage boards. Pa
 
 1. Download kit textures (trim sheet + district wall/roof textures) into `SourceArt/Downloads/`.
 2. Add rows to `SourceArt/LICENSES.csv` and `ASSET_SOURCES.md`.
-3. Run `oc_import_textures.py` for each texture set.
+3. Run `the OCImportTextures commandlet` for each texture set.
 4. Build master materials (`M_Master_Building`, `M_Master_Opaque`) via `MaterialEditingLibrary` Python.
 5. Import kit meshes (Blender pipeline, Step 6) or place kit pieces by hand in a test map.
 6. Commit to git (with LFS) after each working step.

@@ -1,5 +1,5 @@
-// Milestone assets and test maps (formerly oc_m0_create_test_maps.py, oc_m1_setup.py, oc_m2_setup.py,
-// oc_m1_verify.py and oc_m2_verify.py).
+// Milestone assets and test maps (formerly OCMilestone -steps=m0, OCMilestone -steps=m1, OCMilestone -steps=m2,
+// OCMilestone -steps=verify-m1 and OCMilestone -steps=verify-m2).
 #include "Milestones/OCMilestoneCommon.h"
 #include "OCMilestoneCommandlet.h"
 

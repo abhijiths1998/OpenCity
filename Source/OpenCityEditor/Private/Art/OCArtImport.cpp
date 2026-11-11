@@ -1,4 +1,4 @@
-// Mesh and texture imports (formerly oc_import_props.py, oc_import_kit.py and oc_import_textures.py).
+// Mesh and texture imports (formerly OCArtImport.cpp (props), OCArtImport.cpp (kit) and the OCImportTextures commandlet).
 #include "Art/OCArt.h"
 
 #include "EditorAssetLibrary.h"

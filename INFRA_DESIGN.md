@@ -4,7 +4,7 @@ Status: **Phase 1 approved (2026-11-10, the user delegated the phase decisions);
 
 Marevia is a fictional town on a fictional Italian coast. All names are original: towns, streets, the motorway operator, rail and bus companies, utilities, fuel brands, beach clubs and police. The layout follows `STORY.md`. This document adds infrastructure to it and does not replace any district.
 
-The network plan image is `SourceArt/Infra/network_plan.png`, made by `python3 -I Tools/render_network_plan.py`.
+The network plan image is `SourceArt/Infra/network_plan.png`, made by `scripts/run_commandlet.sh OCGenerate -what=plan`.
 
 ---
 
@@ -217,7 +217,7 @@ Speeds are clamped to each profile's maximum: urban 50, Zona 30 in the ZTL. `ped
 | Regenerate the layout | `scripts/make_layout.sh` |
 | Rebuild the world | `scripts/build_world.sh` (writes all three assets) |
 | Rewrite the assets only, when geometry didn't change | `scripts/run_commandlet.sh OCValidateNetworks -import` |
-| Draw the plan | `python3 -I Tools/render_network_plan.py` |
+| Draw the plan | `scripts/run_commandlet.sh OCGenerate -what=plan` |
 
 Proposed infrastructure waits in `SourceArt/Infra/proposed_networks.json` until you approve it.
 

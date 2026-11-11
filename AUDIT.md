@@ -1,50 +1,50 @@
 # OpenCity: world-building audit
 
-Scanned 2026-11-09 by `Content/Python/oc_audit.py` (headless). Sections 1-6 are generated; everything after them comes from `AUDIT_NOTES.md`.
+Scanned 2026-11-11 by the `OCAudit` commandlet (headless). Sections 1-6 are generated; everything after them comes from `AUDIT_NOTES.md`.
 
 ## 1. Summary
 
 | Assets | Count | With problems |
 |---|---|---|
-| Static and skeletal meshes | 90 | 86 |
-| Textures | 39 | 27 |
-| Materials and instances | 43 | 35 |
-| Maps | 5 | 5 |
+| Static and skeletal meshes | 181 | 148 |
+| Textures | 209 | 141 |
+| Materials and instances | 111 | 36 |
+| Maps | 5 | 4 |
 
-- Master materials in `/Game/Materials`: 8 of 8.
-- Materials built from a master: 0 (instances `MI_*`: 14).
-- Textures following the T_ naming with a role suffix: 15 of 39.
+- Master materials in `/Game/Materials`: 16 of 8.
+- Materials built from a master: 59 (instances `MI_*`: 73).
+- Textures following the T_ naming with a role suffix: 71 of 209.
 
 ## 2. Meshes
 
 - `/Game/Dev/Meshes/SM_Dev_NaniteSphere`
   - code-generated: dev/test content; blockout only, needs a BLOCKOUT_ name or final-art replacement
+- `/Game/Environment/Meshes/Kit/` (29 assets)
+  - no simple collision (no UCX_/primitives) and not complex-as-simple
 - `/Game/Vehicles/Bike/SKM_BikeChassis/SkeletalMeshes/SKM_BikeChassis`
-  - code-generated: motorbike chassis generated as glTF by Tools/make_bike_chassis.py; blockout only
+  - code-generated: motorbike chassis generated as glTF (bike chassis generator); blockout only
 - `/Game/Vehicles/OffroadCar/SM_Offroad_Body`
   - no Nanite and only one LOD
 - `/Game/Vehicles/OffroadCar/SM_Offroad_Tire`
   - no Nanite and only one LOD
 - `/Game/Vehicles/SportsCar/SM_SportsCar`
   - no simple collision (no UCX_/primitives) and not complex-as-simple
+- `/Game/Vehicles/SportsCar/SM_SportsCar_Body`
+  - no simple collision (no UCX_/primitives) and not complex-as-simple
 - `/Game/Vehicles/SportsCar/SM_SportsCar_Wheel`
   - no simple collision (no UCX_/primitives) and not complex-as-simple
 - `/Game/Vehicles/SportsCar/SM_SportsCar_Glass`
   - no simple collision (no UCX_/primitives) and not complex-as-simple
   - no Nanite and only one LOD
-- `/Game/World/Roads/` (79 assets)
+- `/Game/World/Roads/` (111 assets)
   - code-generated: road chunks built in C++ from the road graph (OCWorldBuilderLibrary); blockout only, needs a BLOCKOUT_ name or final-art replacement
-  - no simple collision (no UCX_/primitives) and not complex-as-simple
 
 ## 3. Textures
 
-- `/Game/Characters/Mannequins/Textures/Manny/` (5 assets)
+- `/Game/Characters/Mannequins/Textures/Manny/` (6 assets)
   - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
-- `/Game/Characters/Mannequins/Textures/Manny/T_Manny_02_BN`
-  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
-  - 4096x4096: above the 2K in-game cap
 - `/Game/Characters/Mannequins/Textures/Manny/T_Manny_02_N`
-  - normal map not using Normalmap compression (TC_DEFAULT)
+  - normal map not using Normalmap compression (TC_Default)
 - `/Game/Characters/Mannequins/Textures/Quinn/T_Quinn_01_D`
   - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
 - `/Game/Characters/Mannequins/Textures/Quinn/T_Quinn_01_MRA`
@@ -54,9 +54,225 @@ Scanned 2026-11-09 by `Content/Python/oc_audit.py` (headless). Sections 1-6 are 
 - `/Game/Characters/Mannequins/Textures/Quinn/T_Quinn_02_MRA`
   - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
 - `/Game/Characters/Mannequins/Textures/Shared/T_UE_Logo_M`
-  - mask/ORM not using Masks compression (TC_GRAYSCALE)
+  - mask/ORM not using Masks compression (TC_Grayscale)
+- `/Game/Environment/Props/Barrel_01/Barrel_01_1k/Textures/Barrel_01_explosive_nor_gl`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_Barrel_01/SM_Prop_Barrel_01/Textures/Barrel_01_explosive_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_Barrel_01/SM_Prop_Barrel_01/Textures/Barrel_01_explosive_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_Barrel_01/SM_Prop_Barrel_01/Textures/Barrel_01_explosive_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_boulder_01/SM_Prop_boulder_01/Textures/boulder_01_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_boulder_01/SM_Prop_boulder_01/Textures/boulder_01_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_boulder_01/SM_Prop_boulder_01/Textures/boulder_01_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_ceramic_pot/SM_Prop_ceramic_pot/Textures/ceramic_pot_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_ceramic_pot/SM_Prop_ceramic_pot/Textures/ceramic_pot_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_ceramic_pot/SM_Prop_ceramic_pot/Textures/ceramic_pot_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_fern_02/SM_Prop_fern_02/Textures/fern_02_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_fern_02/SM_Prop_fern_02/Textures/fern_02_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_fern_02/SM_Prop_fern_02/Textures/fern_02_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_fire_hydrant/SM_Prop_fire_hydrant/Textures/fire_hydrant_aged_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_fire_hydrant/SM_Prop_fire_hydrant/Textures/fire_hydrant_aged_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_fire_hydrant/SM_Prop_fire_hydrant/Textures/fire_hydrant_aged_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_island_tree_01/SM_Prop_island_tree_01/Textures/` (9 assets)
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_island_tree_02/SM_Prop_island_tree_02/Textures/` (9 assets)
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_metal_trash_can/SM_Prop_metal_trash_can/Textures/metal_trash_can_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_metal_trash_can/SM_Prop_metal_trash_can/Textures/metal_trash_can_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_metal_trash_can/SM_Prop_metal_trash_can/Textures/metal_trash_can_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_namaqualand_boulder_03/SM_Prop_namaqualand_boulder_03/Textures/namaqualand_boulder_03_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_namaqualand_boulder_03/SM_Prop_namaqualand_boulder_03/Textures/namaqualand_boulder_03_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_namaqualand_boulder_03/SM_Prop_namaqualand_boulder_03/Textures/namaqualand_boulder_03_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_outdoor_table_chair_set_01/SM_Prop_outdoor_table_chair_set_01/Textures/` (6 assets)
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_plastic_crate_01/SM_Prop_plastic_crate_01/Textures/plastic_crate_01_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_plastic_crate_01/SM_Prop_plastic_crate_01/Textures/plastic_crate_01_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_plastic_crate_01/SM_Prop_plastic_crate_01/Textures/plastic_crate_01_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_street_lamp_01/SM_Prop_street_lamp_01/Textures/` (9 assets)
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_wooden_crate_01/SM_Prop_wooden_crate_01/Textures/wooden_crate_01_arm_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_wooden_crate_01/SM_Prop_wooden_crate_01/Textures/wooden_crate_01_diff_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/SM_Prop_wooden_crate_01/SM_Prop_wooden_crate_01/Textures/wooden_crate_01_nor_gl_1k`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/ceramic_pot/ceramic_pot_1k/Textures/ceramic_pot_nor_gl`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/fern_02/fern_02_1k/Textures/fern_02_rough`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/fire_hydrant/fire_hydrant_1k/Textures/fire_hydrant_nor_gl`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/island_tree_01/island_tree_01_1k/Textures/island_tree_01_rough`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/island_tree_02/island_tree_02_1k/Textures/island_tree_02_rough`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/metal_trash_can/metal_trash_can_1k/Textures/metal_trash_can_rust_nor_gl1`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/modular_electricity_poles/modular_electricity_poles_1k/Textures/modular_electricity_poles_rough`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/modular_street_seating/modular_street_seating_1k/Textures/modular_street_seating_timber_rough`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/outdoor_table_chair_set_01/outdoor_table_chair_set_01_1k/Textures/outdoor_table_chair_set_01_table_nor_gl`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/plastic_crate_01/plastic_crate_01_1k/Textures/plastic_crate_01_nor_gl`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/street_lamp_01/street_lamp_01_1k/Textures/street_lamp_01_nor_gl2`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/street_lamp_02/street_lamp_02_1k/Textures/street_lamp_02_nor_gl2`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Props/wooden_crate_01/wooden_crate_01_1k/Textures/wooden_crate_01_nor_gl`
+  - name lacks the T_ prefix
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/AsphaltDamage001/T_AsphaltDamage001_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/AsphaltDamage001/T_AsphaltDamage001_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/AsphaltDamage001/T_AsphaltDamage001_Opacity`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/AsphaltDamage001/T_AsphaltDamage001_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ChewingGum001/T_ChewingGum001_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ChewingGum001/T_ChewingGum001_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ChewingGum001/T_ChewingGum001_Opacity`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ChewingGum001/T_ChewingGum001_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking012A/T_Leaking012A_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking012A/T_Leaking012A_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking012A/T_Leaking012A_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking013A/T_Leaking013A_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking013A/T_Leaking013A_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking013A/T_Leaking013A_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking016A/T_Leaking016A_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking016A/T_Leaking016A_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking016A/T_Leaking016A_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking019A/T_Leaking019A_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking019A/T_Leaking019A_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/Leaking019A/T_Leaking019A_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover001/T_ManholeCover001_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover001/T_ManholeCover001_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover001/T_ManholeCover001_Opacity`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover001/T_ManholeCover001_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover004/T_ManholeCover004_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover004/T_ManholeCover004_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover004/T_ManholeCover004_Opacity`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover004/T_ManholeCover004_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover009/T_ManholeCover009_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover009/T_ManholeCover009_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover009/T_ManholeCover009_Opacity`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover009/T_ManholeCover009_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover010/T_ManholeCover010_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover010/T_ManholeCover010_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover010/T_ManholeCover010_Opacity`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/ManholeCover010/T_ManholeCover010_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/TireTracks001/T_TireTracks001_Color`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/TireTracks001/T_TireTracks001_NormalDX`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/Decals/TireTracks001/T_TireTracks001_Roughness`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+- `/Game/Environment/Textures/LUT/T_LUT_Marevia`
+  - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
+  - no mipmaps
 - `/Game/Vehicles/OffroadCar/Materials/Textures/T_Vehicle_Light_M`
-  - mask/ORM not using Masks compression (TC_DEFAULT)
+  - mask/ORM not using Masks compression (TC_Default)
   - sRGB is True, should be False
 - `/Game/Vehicles/OffroadCar/Materials/Textures/` (8 assets)
   - no known suffix (_BC _N _ORM _E _M): role unknown, settings not checkable
@@ -156,6 +372,11 @@ Scanned 2026-11-09 by `Content/Python/oc_audit.py` (headless). Sections 1-6 are 
   - no textures: flat or procedural colour
   - no normal input
   - constant roughness (looks plastic)
+- `/Game/Materials/M_PP_Rain`
+  - not built from an approved master (base: /Game/Materials/M_PP_Rain)
+  - no textures: flat or procedural colour
+  - no normal input
+  - constant roughness (looks plastic)
 - `/Game/Vehicles/Bike/SKM_BikeChassis/Materials/M_BikeChassis_Hidden`
   - not built from an approved master (base: /InterchangeAssets/gltf/M_Default)
 - `/Game/Vehicles/OffroadCar/Materials/MI_OffroadCar_Wheel`
@@ -194,6 +415,8 @@ Scanned 2026-11-09 by `Content/Python/oc_audit.py` (headless). Sections 1-6 are 
 
 - `/Game/Dev/Materials/` (5 assets)
   - large-surface material with no macro/variation/distance-blend parameter
+- `/Game/Environment/Materials/MI_Water`
+  - large-surface material with no macro/variation/distance-blend parameter
 
 ## 6. Lighting and post-process (per map)
 
@@ -201,9 +424,6 @@ Scanned 2026-11-09 by `Content/Python/oc_audit.py` (headless). Sections 1-6 are 
   - no Post Process Volume: default exposure, no grading LUT
   - no Volumetric Cloud (ART_PIPELINE asks for cheap clouds on High+)
 - `/Game/Maps/Dev/L_DevPlayground`
-  - no Post Process Volume: default exposure, no grading LUT
-  - no Volumetric Cloud (ART_PIPELINE asks for cheap clouds on High+)
-- `/Game/Maps/Marevia/L_Marevia`
   - no Post Process Volume: default exposure, no grading LUT
   - no Volumetric Cloud (ART_PIPELINE asks for cheap clouds on High+)
 - `/Game/Maps/Test/L_PerfBaseline`
@@ -249,7 +469,7 @@ Still open from the drive tests: the autopilot stops at the west end of the Pass
 
 **P1: art pipeline, M4a (needs your downloads, section 9)**
 
-7. Import the first tiling sets with `oc_import_textures.py` and build `MI_*` instances from the 8 masters (plaster, painted concrete, asphalt, sidewalk slabs, clay roof tiles, cobble setts, sand, rock, grass).
+7. Import the first tiling sets with `the OCImportTextures commandlet` and build `MI_*` instances from the 8 masters (plaster, painted concrete, asphalt, sidewalk slabs, clay roof tiles, cobble setts, sand, rock, grass).
 8. Replace `M_Dev_*` on roads, sidewalks, terrain and water with those instances. Keep `M_Dev_Building` on the blockout cubes until the kit exists.
 9. Landscape auto-material (slope and height: grass, dirt, rock, beach sand) with macro variation and distance blending.
 10. `MPC_World`, the day/night loop and the first colour-grade LUT (the remaining M4a acceptance items).
@@ -263,7 +483,7 @@ Low priority: engine template content (mannequin and vehicle textures) doesn't f
 
 ## 9. Downloads
 
-Every slug below was checked against the Poly Haven API on 2026-11-09. Download at **2K** for tiling sets and **1K** for props. Put them in `SourceArt/Downloads/<slug>/` and add a row to `ASSET_SOURCES.md` and `SourceArt/LICENSES.csv`. `Tools/fetch_assets.py` can fetch the textures itself from `SourceArt/manifest.json`.
+Every slug below was checked against the Poly Haven API on 2026-11-09. Download at **2K** for tiling sets and **1K** for props. Put them in `SourceArt/Downloads/<slug>/` and add a row to `ASSET_SOURCES.md` and `SourceArt/LICENSES.csv`. `octool fetch-textures` can fetch the textures itself from `SourceArt/manifest.json`.
 
 **Tiling textures (Poly Haven, CC0): `https://polyhaven.com/a/<slug>`**
 

@@ -1,5 +1,5 @@
-// Weather presets, physical materials and material statistics (formerly oc_weather.py,
-// oc_physical_materials.py and oc_material_stats.py).
+// Weather presets, physical materials and material statistics (formerly OCArtData.cpp (weather),
+// OCArtData.cpp (physical materials) and OCBuildArt -steps=stats).
 #include "Art/OCArt.h"
 
 #include "Factories/PhysicalMaterialFactoryNew.h"

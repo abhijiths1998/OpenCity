@@ -11,17 +11,16 @@ PLUGINS="${1:-Water,MassGameplay,MassAI,MassCrowd,ZoneGraph,CommonUI}"
 LOG_DIR="$PROJECT_ROOT/Saved/Logs/PluginSmoke"
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/plugin-smoke-$(oc_timestamp).log"
-PROBE="$PROJECT_ROOT/Content/Python/oc_plugin_probe.py"
 
 set +e
 env "${OC_ENV[@]}" "$UE_EDITOR_CMD" "$UPROJECT" -EnablePlugins="$PLUGINS" \
-  -run=pythonscript -script="$PROBE $PLUGINS" \
+  -run=OCPluginProbe -plugins="$PLUGINS" \
   -unattended -nopause -nosplash -nosound -stdout -FullStdOutLogOutput > "$LOG" 2>&1
 EXIT=$?
 set -e
 
 grep -E "OCPROBE|LogPluginManager: (Error|Warning)|failed to load|Unable to load" "$LOG" || true
-if [[ $EXIT -ne 0 ]] || grep -qE "OCPROBE FAIL|LogPluginManager: Error|LogPython: Error" "$LOG"; then
+if [[ $EXIT -ne 0 ]] || grep -qE "OCPROBE FAIL|LogPluginManager: Error" "$LOG"; then
   echo "PLUGIN SMOKE FAILED (exit $EXIT). Log: $LOG" >&2
   exit 1
 fi

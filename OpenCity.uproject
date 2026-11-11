@@ -26,7 +26,6 @@
 	"Plugins": [
 		{ "Name": "EnhancedInput", "Enabled": true },
 		{ "Name": "ChaosVehiclesPlugin", "Enabled": true },
-		{ "Name": "PythonScriptPlugin", "Enabled": true },
 		{ "Name": "EditorScriptingUtilities", "Enabled": true },
 		{ "Name": "PCG", "Enabled": true },
 		{ "Name": "GameplayAbilities", "Enabled": true },

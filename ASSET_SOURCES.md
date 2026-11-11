@@ -8,7 +8,7 @@
 - Fab free and monthly-free assets, Megascans you own (check license each time)
 - Your own Blender kitbash pieces
 
-CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `Tools/fetch_assets.py` re-downloads them, saving LFS quota.
+CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `octool fetch-textures` re-downloads them, saving LFS quota.
 
 ---
 
@@ -61,8 +61,8 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `T
 | `Barrel_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/Barrel_01 | Poly Haven | CC0 | Port clutter | 2026-11-09 |
 | `outdoor_table_chair_set_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/outdoor_table_chair_set_01 | Poly Haven | CC0 | Cafe tables on Lungomare | 2026-11-09 |
 | `modular_electricity_poles` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/modular_electricity_poles | Poly Haven | CC0 | Power poles in Le Fornaci and the hills | 2026-11-09 |
-| `boulder_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/boulder_01 | Poly Haven | CC0 | Distant scenery: east-coast hills, scaled up (oc_m3_water.py) | 2026-11-09 |
-| `namaqualand_boulder_03` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/namaqualand_boulder_03 | Poly Haven | CC0 | Distant scenery: peaks north of Monte Ferrale, scaled up (oc_m3_water.py) | 2026-11-09 |
+| `boulder_01` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/boulder_01 | Poly Haven | CC0 | Distant scenery: east-coast hills, scaled up (OCWorldWater.cpp) | 2026-11-09 |
+| `namaqualand_boulder_03` (model, glTF, 1K textures) | Poly Haven | https://polyhaven.com/a/namaqualand_boulder_03 | Poly Haven | CC0 | Distant scenery: peaks north of Monte Ferrale, scaled up (OCWorldWater.cpp) | 2026-11-09 |
 
 *(Rows are added when you download each texture/model/HDRI from the AUDIT.md download list.)*
 
@@ -91,7 +91,7 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `T
 1. Download the asset into `SourceArt/Downloads/` (not committed).
 2. Add a row above (name, source URL, author, license, where used, date).
 3. Add a matching row to `SourceArt/LICENSES.csv` (name, source URL, author, license, where used).
-4. Run the import script (`oc_import_textures.py` for textures; the Blender UE import script for meshes — Step 6).
+4. Run the import script (`the OCImportTextures commandlet` for textures; the Blender UE import script for meshes — Step 6).
 5. Run the asset validator.
 6. Check in the test map under day and night.
 7. Commit to git (with LFS).

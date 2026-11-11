@@ -1,4 +1,4 @@
-// M3 story layer of the Marevia map (formerly oc_m3_story.py): bridges, the story landmarks, area
+// M3 story layer of the Marevia map (formerly OCWorldStory.cpp): bridges, the story landmarks, area
 // gates, volumes and the progression data. Everything comes from SourceArt/World/marevia_layout.json
 // and STORY.md:
 //   Bridges    decks with parapets. The two moving bridges (Ponte Mobile lifts, Ponte Girevole swings)

@@ -9,7 +9,7 @@ class UInputMappingContext;
 
 /**
  * Input actions and mapping contexts for the on-foot player.
- * Asset: /Game/Core/Input/DA_OCInputConfig (built by Content/Python/oc_m1_setup.py).
+ * Asset: /Game/Core/Input/DA_OCInputConfig (built by OCMilestone -steps=m1).
  */
 UCLASS(BlueprintType)
 class OPENCITY_API UOCInputConfig : public UPrimaryDataAsset

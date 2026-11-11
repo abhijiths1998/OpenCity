@@ -20,10 +20,10 @@
 
 ## UE import script spec
 
-`Content/Python/oc_import_kit.py` (to be written):
+`OCArtImport.cpp (kit)` (to be written):
 
 ```bash
-scripts/run_python.sh Content/Python/oc_import_kit.py \
+scripts/run_commandlet.sh OCBuildArt -steps=kit \
     --src SourceArt/Blender/Import/CittaAlta \
     --dest /Game/Environment/Meshes/Kit/CittaAlta \
     --parent /Game/Materials/M_Master_Building
@@ -52,7 +52,7 @@ scripts/run_python.sh Content/Python/oc_import_kit.py \
 
 1. `sudo pacman -Syu` to fix `openjph 0.33` and restore Blender.
 2. Write `Tools/blender/kit_piece.py` per district kit piece.
-3. Write `Content/Python/oc_import_kit.py`.
+3. Write `OCArtImport.cpp (kit)`.
 4. Import all kit pieces; run the asset validator.
 5. Place kit pieces in a test map, day and night.
 6. Commit to git (with LFS).

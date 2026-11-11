@@ -1,4 +1,4 @@
-// The Marevia world build (formerly Content/Python/oc_m3_world.py). Layout metres (x east, y north)
+// The Marevia world build (formerly the world build (OCBuildWorld)). Layout metres (x east, y north)
 // -> Unreal cm (X east, Y south): see FOCRoadGraph::LayoutToWorld.
 #include "OCBuildWorldCommandlet.h"
 

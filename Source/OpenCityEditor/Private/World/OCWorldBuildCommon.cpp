@@ -1,5 +1,5 @@
 // Shared pieces of the world build: layout access, assets, shapes, the post-process look and the
-// network data assets (formerly oc_look.py and oc_networks.py).
+// network data assets (formerly ApplyLook (OCWorldBuildCommon.cpp) and WriteNetworkAssets (OCWorldBuildCommon.cpp)).
 #include "World/OCWorldBuild.h"
 
 #include "Components/StaticMeshComponent.h"

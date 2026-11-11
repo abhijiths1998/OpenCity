@@ -1,4 +1,4 @@
-// Map checks and small map updates (formerly oc_m3_verify.py, oc_validate_networks.py, oc_m4b_look.py).
+// Map checks and small map updates (formerly OCVerifyMarevia, OCValidateNetworks, OCApplyLook).
 #include "OCWorldCommandlets.h"
 
 #include "Editor.h"

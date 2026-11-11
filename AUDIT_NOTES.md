@@ -34,7 +34,7 @@ Still open from the drive tests: the autopilot stops at the west end of the Pass
 
 **P1: art pipeline, M4a (needs your downloads, section 9)**
 
-7. Import the first tiling sets with `oc_import_textures.py` and build `MI_*` instances from the 8 masters (plaster, painted concrete, asphalt, sidewalk slabs, clay roof tiles, cobble setts, sand, rock, grass).
+7. Import the first tiling sets with `the OCImportTextures commandlet` and build `MI_*` instances from the 8 masters (plaster, painted concrete, asphalt, sidewalk slabs, clay roof tiles, cobble setts, sand, rock, grass).
 8. Replace `M_Dev_*` on roads, sidewalks, terrain and water with those instances. Keep `M_Dev_Building` on the blockout cubes until the kit exists.
 9. Landscape auto-material (slope and height: grass, dirt, rock, beach sand) with macro variation and distance blending.
 10. `MPC_World`, the day/night loop and the first colour-grade LUT (the remaining M4a acceptance items).
@@ -48,7 +48,7 @@ Low priority: engine template content (mannequin and vehicle textures) doesn't f
 
 ## 9. Downloads
 
-Every slug below was checked against the Poly Haven API on 2026-11-09. Download at **2K** for tiling sets and **1K** for props. Put them in `SourceArt/Downloads/<slug>/` and add a row to `ASSET_SOURCES.md` and `SourceArt/LICENSES.csv`. `Tools/fetch_assets.py` can fetch the textures itself from `SourceArt/manifest.json`.
+Every slug below was checked against the Poly Haven API on 2026-11-09. Download at **2K** for tiling sets and **1K** for props. Put them in `SourceArt/Downloads/<slug>/` and add a row to `ASSET_SOURCES.md` and `SourceArt/LICENSES.csv`. `octool fetch-textures` can fetch the textures itself from `SourceArt/manifest.json`.
 
 **Tiling textures (Poly Haven, CC0): `https://polyhaven.com/a/<slug>`**
 

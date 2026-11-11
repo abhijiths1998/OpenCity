@@ -21,7 +21,6 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md`, `STORY.md` and `INFRA_D
 | Play a map as the game (no editor UI) | `scripts/play.sh [Map]` (default L_Marevia) |
 | Run headless tests | `scripts/test.sh [filter]` |
 | Run a C++ editor commandlet (`UOC<Name>Commandlet`) | `scripts/run_commandlet.sh <Name> [args]` (`OC_RENDER=1` for a GPU renderer; logs in `Saved/Logs/Commandlets`) |
-| Run editor Python (legacy, being removed) | `scripts/run_python.sh <script> [args]` |
 | Package Linux Shipping | `scripts/package.sh` |
 | Generate clangd database | `scripts/gen_clangd.sh` |
 | Visual QA screenshots (bookmarks x hours) | `scripts/qa_shots.sh [hours=13,19.4,22.5] [quality] [only=District,...]` (`OC_QA_WEATHER=Rain`, `OC_QA_VIEWMODE=shadercomplexity`) |
@@ -29,18 +28,22 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md`, `STORY.md` and `INFRA_D
 | Plugin load check | `scripts/plugin_smoke.sh [Plugin,...]` |
 | Stability gate (60 min) | `scripts/stability/stress_gate.sh [minutes]` |
 | Freeze capture (sudo) | `sudo scripts/stability/install_freeze_capture.sh [--remove]` |
-| Recreate M0 test maps | `scripts/run_python.sh Content/Python/oc_m0_create_test_maps.py` |
-| Rebuild M1 / M2 assets and maps | `scripts/run_python.sh Content/Python/oc_m1_setup.py` (then `oc_m2_setup.py`) |
-| Verify M1 / M2 assets after reload | `scripts/run_python.sh Content/Python/oc_m1_verify.py` (and `oc_m2_verify.py`) |
+| Recreate M0 test maps | `scripts/run_commandlet.sh OCMilestone -steps=m0` |
+| Rebuild M1 / M2 assets and maps | `scripts/run_commandlet.sh OCMilestone -steps=m1` (then `OCMilestone -steps=m2`) |
+| Verify M1 / M2 assets after reload | `scripts/run_commandlet.sh OCMilestone -steps=verify-m1` (and `OCMilestone -steps=verify-m2`) |
 | Regenerate the Marevia layout (roads, districts, water, landmarks, gates, terrain, walls, buildings, heightmap, preview) | `scripts/make_layout.sh [out_dir] [-compare=<dir>]` → `SourceArt/World/` (C++ commandlet `UOCLayoutCommandlet`, about 10 s) |
 | Rebuild the Marevia world map from SourceArt/World | `scripts/build_world.sh [--regen]` (deletes and recreates the map; needs the GPU, about 80 s with warm shaders) |
 | Build World Partition HLODs (after every world rebuild; needs the GPU) | `scripts/build_hlod.sh [Map] [--delete]` |
 | Check the Marevia map against the M3 acceptance list | `scripts/run_commandlet.sh OCVerifyMarevia [-requirehlod]` (`-requirehlod` also requires built HLODs) |
 | Apply the post-process look to L_Marevia without a rebuild | `scripts/run_commandlet.sh OCApplyLook` |
 | Validate road/rail/water networks (`-import` rewrites the data assets from the layout first) | `scripts/run_commandlet.sh OCValidateNetworks [-import]` → `Saved/Validation/networks.md` |
-| Draw the network plan (built + proposed) | `python3 -I Tools/render_network_plan.py` → `SourceArt/Infra/network_plan.png` |
-| Material instruction counts vs ART_PIPELINE budgets | `OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_material_stats.py` (MATSTAT lines) |
-| Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |
+| Draw the network plan (built + proposed) | `scripts/run_commandlet.sh OCGenerate -what=plan` → `SourceArt/Infra/network_plan.png` |
+| Material instruction counts vs ART_PIPELINE budgets | `OC_RENDER=1 scripts/run_commandlet.sh OCBuildArt -steps=stats` (MATSTAT lines) |
+| Regenerate the bike chassis | `scripts/run_commandlet.sh OCGenerate -what=bike`, then `OCMilestone -steps=m2` |
+| Rebuild all final art (fetch, kit, LUT, textures, masters, instances, props) | `scripts/build_art.sh [--skip-fetch]`; single steps: `scripts/run_commandlet.sh OCBuildArt -steps=decals,materials,weather,physmat,props,kit` (`OC_RENDER=1` for `materials` and `stats`) |
+| Fetch the CC0 textures, decals, models in `SourceArt/manifest.json` (+ ledger rows) | `scripts/octool.sh fetch-textures [--dry-run]` / `fetch-decals` / `fetch-models` (Rust, `Tools/octool`) |
+| Import a T_<Asset>_<BC\|N\|ORM\|E\|M> texture folder with instances | `scripts/run_commandlet.sh OCImportTextures -src=<dir> -dest=/Game/... -parent=/Game/Materials/<Master>` |
+| Asset audit (writes AUDIT.md) / QA camera bookmarks / blockout check | `scripts/run_commandlet.sh OCAudit` / `OCQABookmarks` / `OCVerifyBlockout` |
 
 Underlying tools:
 
@@ -110,7 +113,6 @@ Content/
   FX/  Audio/  UI/  Missions/
   Maps/            City, Test
   Materials/       Master materials and functions
-  Python/          Editor scripts
 ```
 
 ## Workflow rules
@@ -119,7 +121,7 @@ Content/
 - Run tests for any logic touched.
 - Small commits after each working step. Commit before long or risky editor sessions, because this machine has had hard GPU freezes.
 - Blender: the system package is broken; use the portable LTS build at `~/Applications/blender-4.2/blender` (headless: `-b -P script.py`). Lightmap UVs are not needed (fully dynamic lighting).
-- No Python anywhere in the project (decided 2026-11-11): tools are C++ (or Rust, C, Go). Repeatable asset and world work runs as C++ commandlets in `OpenCityEditor` (`UnrealEditor-Cmd ... -run=OC...`, built by UBT). The remaining `Content/Python` and `Tools/*.py` scripts are being ported one by one and deleted; never add new ones. If a step must be done by hand, give a short checklist with exact menu paths.
+- No Python anywhere in the project (decided 2026-11-11): tools are C++ (or Rust, C, Go). Repeatable asset and world work runs as C++ commandlets in `OpenCityEditor` (`UnrealEditor-Cmd ... -run=OC...`, built by UBT). Offline tools are Rust (`Tools/octool`, `scripts/octool.sh`). The Blender kit scripts in `Tools/blender/` are the last Python and are being ported; never add new Python. The project no longer enables PythonScriptPlugin; the engine still mounts it as a Niagara dependency, which is engine code, not ours. If a step must be done by hand, give a short checklist with exact menu paths.
 - Say plainly when something could not be tested headless, and what the user needs to check in the editor.
 - Report real measurements only. Never present a Target as a result.
 

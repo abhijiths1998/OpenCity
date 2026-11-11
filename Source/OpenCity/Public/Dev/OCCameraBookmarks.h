@@ -33,7 +33,7 @@ struct FOCCameraBookmark
 /**
  * Camera bookmarks for the visual-QA loop: `oc.dev.qa` (scripts/qa_shots.sh) visits each one at
  * noon, sunset and night, takes a screenshot and logs frame time. Generated per district by
- * Content/Python/oc_qa_bookmarks.py (DA_QABookmarks).
+ * the OCQABookmarks commandlet (DA_QABookmarks).
  */
 UCLASS(BlueprintType)
 class OPENCITY_API UOCCameraBookmarks : public UPrimaryDataAsset

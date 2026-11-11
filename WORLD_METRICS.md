@@ -70,7 +70,7 @@ No 4K/8K textures in-game. Tiling textures for large surfaces; hero textures reu
 - City blocks generated from the road graph stay within 80–150 m.
 - Streetlights placed every 25–30 m; boulevard trees every 8–12 m.
 
-### Texture import (`oc_import_textures.py`, planned)
+### Texture import (`the OCImportTextures commandlet`, planned)
 - Hero textures capped at 2K (512 px/m basis), props at 1K, tiling reused heavily.
 - Import naming follows CLAUDE.md: `T_<name>_BC / _N / _ORM / _E / _M`.
 - Compression: Normalmap for `_N`, Masks for `_ORM`, sRGB on `_BC`/`_E`.

@@ -1,4 +1,4 @@
-// Editor tools (formerly oc_qa_bookmarks.py, oc_plugin_probe.py, oc_verify_blockout.py and oc_audit.py).
+// Editor tools (formerly the OCQABookmarks commandlet, the OCPluginProbe commandlet, the OCVerifyBlockout commandlet and the OCAudit commandlet).
 #include "OCToolCommandlets.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -234,9 +234,10 @@ int32 UOCVerifyBlockoutCommandlet::Main(const FString& Params)
 	Check(TEXT("building chunks exist"), NewLabel + OldLabel > 0, FString::FromInt(NewLabel + OldLabel));
 	OCEd::Log(BlockTag, FString::Printf(TEXT("building chunks: %d BLOCKOUT_*, %d old-style"), NewLabel, OldLabel));
 
-	// Instanced mesh and per-instance transforms of the loaded blockout actors.
+	// Instanced mesh and per-instance transforms of every blockout actor, loaded one by one (a commandlet streams
+	// nothing in, so the loaded-actor view alone sees none).
 	int32 Actors = 0, Total = 0, OffGrid = 0, OffStorey = 0;
-	for (TActorIterator<AOCBlockoutActor> It(World); It; ++It)
+	auto CheckActor = [&](AOCBlockoutActor* It)
 	{
 		++Actors;
 		TArray<UInstancedStaticMeshComponent*> Comps;
@@ -260,6 +261,16 @@ int32 UOCVerifyBlockoutCommandlet::Main(const FString& Params)
 				if (FMath::Abs(PyMod(S.Z, StoreyCm)) > 0.5) { ++OffStorey; }
 			}
 		}
+	};
+	if (UWorldPartition* Wp = World->GetWorldPartition())
+	{
+		FWorldPartitionHelpers::FForEachActorWithLoadingParams P;
+		P.ActorClasses = { AOCBlockoutActor::StaticClass() };
+		FWorldPartitionHelpers::ForEachActorWithLoading(Wp, [&](const FWorldPartitionActorDescInstance* D)
+		{
+			if (AOCBlockoutActor* A = Cast<AOCBlockoutActor>(D->GetActor())) { CheckActor(A); }
+			return true;
+		}, P);
 	}
 	Check(TEXT("blockout actors in world"), Actors > 0, FString::FromInt(Actors));
 	Check(TEXT("blockout instances"), Total > 0, FString::FromInt(Total));

@@ -34,3 +34,4 @@ __pycache__/
 
 # Cooker output that changes every cook
 Build/*/FileOpenOrder/
+Tools/octool/target/

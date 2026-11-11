@@ -12,9 +12,9 @@ BLENDER="${OC_BLENDER:-$HOME/Applications/blender-4.2/blender}"
 cd "$PROJECT_ROOT"
 
 if [[ "${1:-}" != "--skip-fetch" ]]; then
-  python3 -I Tools/fetch_assets.py
-  python3 -I Tools/fetch_models.py
-  python3 -I Tools/fetch_ambientcg.py
+  scripts/octool.sh fetch-textures
+  scripts/octool.sh fetch-models
+  scripts/octool.sh fetch-decals
 fi
 
 # Props: one mesh each; packs with several variants keep one (object-name regex).
@@ -30,7 +30,7 @@ done
 
 "$BLENDER" -b --factory-startup -P Tools/blender/make_kit.py | grep -vE "^(Blender|Read|Info)" | tail -5
 
-python3 -I Tools/make_lut.py
+scripts/run_commandlet.sh OCGenerate -what=lut
 scripts/run_commandlet.sh OCBuildArt -steps=decals   # before the masters: walls use a leak scan as grime
 # The water normals are copied from the engine's DatasmithContent plugin, which this project doesn't
 # mount; enable it for this one step (see ImportWaterNormals in OCArtMaterials.cpp).

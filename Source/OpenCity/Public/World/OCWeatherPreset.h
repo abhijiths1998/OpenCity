@@ -5,7 +5,7 @@
 #include "OCWeatherPreset.generated.h"
 
 /**
- * One weather state (DA_Weather_Clear / Cloudy / Rain, made by Content/Python/oc_weather.py).
+ * One weather state (DA_Weather_Clear / Cloudy / Rain, made by OCArtData.cpp (weather)).
  * UOCWorldStateSubsystem blends between presets; materials read RainAmount and Wetness from MPC_World.
  */
 UCLASS(BlueprintType)

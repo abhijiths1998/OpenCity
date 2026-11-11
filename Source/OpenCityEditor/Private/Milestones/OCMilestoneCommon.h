@@ -1,6 +1,6 @@
 #pragma once
 
-// Shared pieces of the milestone setup (formerly oc_lib.py's level, input and Blueprint helpers).
+// Shared pieces of the milestone setup (formerly OCEditorHelpers's level, input and Blueprint helpers).
 
 #include "CoreMinimal.h"
 

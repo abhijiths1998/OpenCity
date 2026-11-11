@@ -1,8 +1,8 @@
 #pragma once
 
 // The final-art pipeline (UOCBuildArtCommandlet, scripts/build_art.sh). Formerly
-// Content/Python/oc_decals.py, oc_art_materials.py, oc_weather.py, oc_physical_materials.py,
-// oc_import_props.py, oc_import_kit.py, oc_material_stats.py and oc_import_textures.py.
+// OCArtMaterials.cpp (decals), OCArtMaterials.cpp, OCArtData.cpp (weather), OCArtData.cpp (physical materials),
+// OCArtImport.cpp (props), OCArtImport.cpp (kit), OCBuildArt -steps=stats and the OCImportTextures commandlet.
 
 #include "CoreMinimal.h"
 

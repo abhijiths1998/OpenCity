@@ -100,7 +100,7 @@ struct OPENCITY_API FOCMotorbikeHandling
 /**
  * Everything that makes one vehicle model: art, Chaos physics setup, camera, damage, seating.
  * AOCVehicle copies the physics setup into its movement component at spawn, so tuning lives
- * here and not in Blueprints. Assets: /Game/Vehicles/Data/DA_Vehicle_* (oc_m2_setup.py).
+ * here and not in Blueprints. Assets: /Game/Vehicles/Data/DA_Vehicle_* (OCMilestone -steps=m2).
  */
 UCLASS(BlueprintType)
 class OPENCITY_API UOCVehicleData : public UPrimaryDataAsset

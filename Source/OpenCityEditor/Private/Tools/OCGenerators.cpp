@@ -1,5 +1,5 @@
-// Source-art generators (formerly Tools/make_lut.py, Tools/make_bike_chassis.py and
-// Tools/render_network_plan.py). The LUT and the chassis reproduce the Python output byte for byte.
+// Source-art generators (formerly OCGenerate -what=lut, OCGenerate -what=bike and
+// OCGenerate -what=plan). The LUT and the chassis reproduce the Python output byte for byte.
 #include "OCGenerateCommandlet.h"
 
 #include "ImageCore.h"

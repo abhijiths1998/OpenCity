@@ -1,7 +1,7 @@
 # Marevia building kit: piece contract
 
 This file is the interface between the Blender kit generator (`Tools/blender/make_kit.py`), the
-UE import (`Content/Python/oc_import_kit.py`) and the building assembler
+UE import (`OCArtImport.cpp (kit)`) and the building assembler
 (`UOCWorldBuilderLibrary::BuildKitBuildings`). Change it only together with all three.
 
 ## Units, axes, pivot

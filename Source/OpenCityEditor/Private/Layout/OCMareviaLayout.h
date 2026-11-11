@@ -8,7 +8,7 @@
 // Coordinates: metres, x = east (0..3024), y = north (-300..2724; the coast is near y = 60). The sea is
 // south (y < coast) and west of the cliffs. Heights are metres above sea level.
 //
-// Ported from Tools/make_marevia_layout.py (Python/NumPy) and kept bit-compatible with it: the same
+// Ported from Tools/the layout generator (Python/NumPy) and kept bit-compatible with it: the same
 // random streams (OCLayoutCompat.h), the same float32/float64 split as NumPy's arrays, the same rounding
 // and the same iteration orders, so the port reproduces the committed city.
 

@@ -5,7 +5,7 @@
 
 class UStaticMesh;
 
-/** What the asset audit (Content/Python/oc_audit.py) needs to know about a static mesh. */
+/** What the asset audit (the OCAudit commandlet) needs to know about a static mesh. */
 USTRUCT(BlueprintType)
 struct FOCMeshAuditInfo
 {

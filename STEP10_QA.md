@@ -10,7 +10,7 @@
 
 ## Screenshot script spec
 
-`Content/Python/oc_visual_qa.py` (to be written):
+An `OCVisualQA` commandlet (C++, to be written):
 
 1. Load `DA_CameraBookmarks`.
 2. For each bookmark: `oc.dev.viewfrom X Y Z Pitch Yaw [FOV]` (cm; freezes player until `off`).
@@ -40,7 +40,7 @@ Run headless or from editor (GPU needed for rendering).
 ## Done by hand (editor)
 
 1. Create `DA_CameraBookmarks` (≥3 per district).
-2. Write `oc_visual_qa.py`.
+2. Write the `OCVisualQA` commandlet.
 3. Run at noon, sunset, night; capture screenshots to `Screenshots/<date>/`.
 4. Review each screenshot against the checklist; fix issues.
 5. Report frame time and VRAM per viewpoint.

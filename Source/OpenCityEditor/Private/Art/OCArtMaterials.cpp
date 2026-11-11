@@ -1,4 +1,4 @@
-// Final-art textures and materials (formerly oc_art_materials.py and oc_decals.py).
+// Final-art textures and materials (formerly OCArtMaterials.cpp and OCArtMaterials.cpp (decals)).
 // 1. Imports every set in SourceArt/Downloads/<slug>/T_<slug>_{BC,N,ORM}.* into /Game/Environment/Textures/<slug>/
 //    (BC sRGB, N BC5 normal map, ORM linear masks; World texture groups; capped at 2048).
 // 2. M_Master_Surface: one opaque master for kit pieces, props, roads and ground. A Custom HLSL node samples

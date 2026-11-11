@@ -1,8 +1,8 @@
 #pragma once
 
 // The Marevia world build (UOCBuildWorldCommandlet, scripts/build_world.sh), split by topic.
-// Formerly Content/Python/oc_m3_world.py, oc_m3_story.py, oc_m3_water.py, oc_networks.py,
-// oc_look.py and oc_dev_materials.py.
+// Formerly the world build (OCBuildWorld), OCWorldStory.cpp, OCWorldWater.cpp, WriteNetworkAssets (OCWorldBuildCommon.cpp),
+// ApplyLook (OCWorldBuildCommon.cpp) and OCDevMaterials.cpp.
 
 #include "CoreMinimal.h"
 #include "Layout/OCLayoutCompat.h"

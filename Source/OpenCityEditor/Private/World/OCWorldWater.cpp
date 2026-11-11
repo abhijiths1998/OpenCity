@@ -1,4 +1,4 @@
-// M3 water surfaces and distant scenery for the Marevia map (formerly oc_m3_water.py). Water is a
+// M3 water surfaces and distant scenery for the Marevia map (formerly OCWorldWater.cpp). Water is a
 // custom surface, not the Water plugin (ARCHITECTURE.md section 7, "Water"):
 //   Water_SeaSurface        one plane at sea level reaching to the horizon; the landscape cuts the
 //                           coastline, the Darsena and the estuary out of it (not spatially loaded)

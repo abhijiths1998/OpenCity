@@ -30,7 +30,7 @@ The map is 2016 × 3024 m (2 km × 2.8 km playable plus mountain band), seed 197
 - Chunk actors labeled **`BLOCKOUT_Buildings_<x>_<y>`** (hard rule 1: blockout clearly named)
 - Header doc updated in `OCWorldBuilderLibrary.h`
 
-New script: `Content/Python/oc_verify_blockout.py` — headless (no GPU rendering) validator that loads `L_Marevia` and checks:
+New script: `the OCVerifyBlockout commandlet` — headless (no GPU rendering) validator that loads `L_Marevia` and checks:
 - blockout chunk labels are `BLOCKOUT_*`
 - instanced mesh is the engine cube (no final-art geometry)
 - instance centres on the 100 cm grid
@@ -38,7 +38,7 @@ New script: `Content/Python/oc_verify_blockout.py` — headless (no GPU renderin
 - road chunks exist
 - scale-reference mannequin and car present in test maps
 
-Run: `scripts/run_python.sh Content/Python/oc_verify_blockout.py`
+Run: `scripts/run_commandlet.sh OCVerifyBlockout`
 
 ---
 
@@ -84,4 +84,4 @@ None for pure blockout — it uses engine cubes and dev materials. The blockout 
 
 ## Next step on approval
 
-With the blockout validated, move to **Step 5 — Modular kits and trim sheets** (per-district `SM_*` kit: wall straight/corner/inner corner, window variants, door/shopfront, balcony, cornice, roof edge, roof props, drainpipes, signage boards; trim sheets + vertex-painted wear). That step needs `oc_import_textures.py` (done) and the master materials (M4a), plus your texture downloads from `AUDIT.md` section 8.
+With the blockout validated, move to **Step 5 — Modular kits and trim sheets** (per-district `SM_*` kit: wall straight/corner/inner corner, window variants, door/shopfront, balcony, cornice, roof edge, roof props, drainpipes, signage boards; trim sheets + vertex-painted wear). That step needs `the OCImportTextures commandlet` (done) and the master materials (M4a), plus your texture downloads from `AUDIT.md` section 8.

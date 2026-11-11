@@ -199,11 +199,11 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 	}
 	if (!Pieces.Meshes.Contains(FName(TEXT("Wall_400"))))
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildKitBuildings: no kit in %s (run Content/Python/oc_import_kit.py)"), *KitFolder);
+		UE_LOG(LogOpenCity, Error, TEXT("BuildKitBuildings: no kit in %s (run OCArtImport.cpp (kit))"), *KitFolder);
 		return 0;
 	}
 
-	// Optional doorstep and shopfront clutter (Content/Python/oc_import_props.py).
+	// Optional doorstep and shopfront clutter (OCArtImport.cpp (props)).
 	auto LoadProp = [](const TCHAR* Name) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/Environment/Props/%s/%s.%s"), Name, Name, Name)); };
 	UStaticMesh* Pot = LoadProp(TEXT("SM_Prop_ceramic_pot"));
 	UStaticMesh* Fern = LoadProp(TEXT("SM_Prop_fern_02"));
@@ -520,7 +520,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& Lay
 	UStaticMesh* Bin = LoadProp(TEXT("SM_Prop_metal_trash_can"));
 	if (!Lamp)
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetProps: props not imported (Content/Python/oc_import_props.py)"));
+		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetProps: props not imported (OCArtImport.cpp (props))"));
 		return 0;
 	}
 
@@ -685,7 +685,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 	UStaticMesh* Cable = Kit(TEXT("Prop_Cable"));
 	if (!Lantern || !LedPole || !SignZTL || !Bin)
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetFixtures: fixtures not imported (Tools/blender/make_kit.py, oc_import_kit.py)"));
+		UE_LOG(LogOpenCity, Error, TEXT("BuildStreetFixtures: fixtures not imported (Tools/blender/make_kit.py, OCArtImport.cpp (kit))"));
 		return 0;
 	}
 	const TArray<FOCRoadNode>& Nodes = Roads.GetNodes();
@@ -1085,7 +1085,7 @@ int32 UOCWorldBuilderLibrary::BuildRetainingWalls(UWorld* World, const FString& 
 	UStaticMesh* Coping = Kit(TEXT("WallCoping_400"));
 	if (!Panels[0] || !Panels[1] || !Coping)
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildRetainingWalls: wall pieces not imported (Tools/blender/make_kit.py, oc_import_kit.py)"));
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRetainingWalls: wall pieces not imported (Tools/blender/make_kit.py, OCArtImport.cpp (kit))"));
 		return 0;
 	}
 	constexpr double PanelW = 400.0, PanelH = 200.0, Thick = 50.0;
@@ -1196,7 +1196,7 @@ int32 UOCWorldBuilderLibrary::BuildRoadDecals(UWorld* World, const FString& Layo
 	UMaterialInterface* CobbleManhole = Mat(TEXT("ManholeCover010"));
 	if (!Manholes[0])
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildRoadDecals: decals not imported (Content/Python/oc_decals.py)"));
+		UE_LOG(LogOpenCity, Error, TEXT("BuildRoadDecals: decals not imported (OCArtMaterials.cpp (decals))"));
 		return 0;
 	}
 

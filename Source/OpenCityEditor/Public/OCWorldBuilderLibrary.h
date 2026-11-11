@@ -87,7 +87,7 @@ public:
 		const FString& KitFolder, float ChunkSizeCm, int32 Seed);
 
 	/**
-	 * Street dressing from the road graph (props imported by oc_import_props.py): street lights every
+	 * Street dressing from the road graph (props imported by OCArtImport.cpp (props)): street lights every
 	 * 28 m at the kerb, trees every 10 m on avenues and the coast road, bins near junctions, hydrants.
 	 * Junctions, bridges and alleys stay clear. One AOCKitBuildingChunk per ChunkSizeCm square
 	 * (folder "Props"); lamps, bins and hydrants collide. Returns the number of props.
@@ -119,7 +119,7 @@ public:
 		float SidewalkWidthCm, float ChunkSizeCm, int32 Seed);
 
 	/**
-	 * Road decals (oc_decals.py instances): manholes about every 70 m in a lane, tyre marks on 40% of
+	 * Road decals (OCArtMaterials.cpp (decals) instances): manholes about every 70 m in a lane, tyre marks on 40% of
 	 * junction approaches, broken asphalt about every 150 m, chewing gum on pavements. Bridges and
 	 * the mountain roads' junction stubs are skipped. One AOCKitBuildingChunk per ChunkSizeCm square
 	 * (folder "Decals"). Returns the number of decals.

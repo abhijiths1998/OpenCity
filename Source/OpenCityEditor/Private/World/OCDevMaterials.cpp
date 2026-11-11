@@ -1,5 +1,5 @@
 // Grey-box debug materials, generated so they can be rebuilt from clean (the world build falls back to
-// them when the final-art masters are missing). Formerly Content/Python/oc_dev_materials.py.
+// them when the final-art masters are missing). Formerly OCDevMaterials.cpp.
 //   M_Dev_Terrain   colour by height (sand, green hills, grey rock) with soft variation
 //   M_Dev_Road      asphalt with lane markings from the road meshes' UVs
 //   M_Dev_Sidewalk  60 cm paving slabs
