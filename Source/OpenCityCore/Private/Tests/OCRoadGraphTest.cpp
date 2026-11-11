@@ -127,7 +127,7 @@ bool FOCRoadGraphMareviaTest::RunTest(const FString& Parameters)
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *File))
 	{
-		AddError(FString::Printf(TEXT("Missing %s: run python3 -I Tools/make_marevia_layout.py"), *File));
+		AddError(FString::Printf(TEXT("Missing %s: run scripts/make_layout.sh"), *File));
 		return false;
 	}
 	FOCRoadGraph G;

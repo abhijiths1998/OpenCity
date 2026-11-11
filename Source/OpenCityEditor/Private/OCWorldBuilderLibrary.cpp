@@ -765,7 +765,7 @@ int32 UOCWorldBuilderLibrary::BuildBuildings(UWorld* World, const FString& Layou
 	if (!World || !Mesh || !FFileHelper::LoadFileToString(Text, *LayoutJsonPath)
 		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Root) || !Root->TryGetArrayField(TEXT("buildings"), Buildings))
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("BuildBuildings: no buildings in %s (run Tools/make_marevia_layout.py)"), *LayoutJsonPath);
+		UE_LOG(LogOpenCity, Error, TEXT("BuildBuildings: no buildings in %s (run scripts/make_layout.sh)"), *LayoutJsonPath);
 		return 0;
 	}
 

@@ -31,7 +31,7 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md`, `STORY.md` and `INFRA_D
 | Recreate M0 test maps | `scripts/run_python.sh Content/Python/oc_m0_create_test_maps.py` |
 | Rebuild M1 / M2 assets and maps | `scripts/run_python.sh Content/Python/oc_m1_setup.py` (then `oc_m2_setup.py`) |
 | Verify M1 / M2 assets after reload | `scripts/run_python.sh Content/Python/oc_m1_verify.py` (and `oc_m2_verify.py`) |
-| Regenerate the Marevia layout (roads, districts, water, landmarks, gates, heightmap, preview) | `python3 -I Tools/make_marevia_layout.py` → `SourceArt/World/` |
+| Regenerate the Marevia layout (roads, districts, water, landmarks, gates, terrain, walls, buildings, heightmap, preview) | `scripts/make_layout.sh [out_dir] [-compare=<dir>]` → `SourceArt/World/` (C++ commandlet `UOCLayoutCommandlet`, about 10 s) |
 | Rebuild the Marevia world map from SourceArt/World | `scripts/build_world.sh [--regen]` (deletes and recreates the map; needs the GPU, about 80 s with warm shaders) |
 | Build World Partition HLODs (after every world rebuild; needs the GPU) | `scripts/build_hlod.sh [Map] [--delete]` |
 | Check the Marevia map against the M3 acceptance list | `scripts/run_python.sh Content/Python/oc_m3_verify.py` (`OC_VERIFY_HLOD=1` also requires built HLODs) |
@@ -118,7 +118,7 @@ Content/
 - Run tests for any logic touched.
 - Small commits after each working step. Commit before long or risky editor sessions, because this machine has had hard GPU freezes.
 - Blender: the system package is broken; use the portable LTS build at `~/Applications/blender-4.2/blender` (headless: `-b -P script.py`). Lightmap UVs are not needed (fully dynamic lighting).
-- Use Editor Python for repeatable asset work. If a step must be done by hand, give a short checklist with exact menu paths.
+- No Python anywhere in the project (decided 2026-11-11): tools are C++ (or Rust, C, Go). Repeatable asset and world work runs as C++ commandlets in `OpenCityEditor` (`UnrealEditor-Cmd ... -run=OC...`, built by UBT). The remaining `Content/Python` and `Tools/*.py` scripts are being ported one by one and deleted; never add new ones. If a step must be done by hand, give a short checklist with exact menu paths.
 - Say plainly when something could not be tested headless, and what the user needs to check in the editor.
 - Report real measurements only. Never present a Target as a result.
 

@@ -895,7 +895,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 	}
 	int32 CentroCorners = 0, Signals = 0;
 	// The through road at a junction: the most nearly straight pair of arms of the highest rank, then
-	// the widest (as junction_arms in Tools/make_marevia_layout.py); every other arm is minor.
+	// the widest (as the layout generator's junction arms, Source/OpenCityEditor/Private/Layout/OCMareviaPlace.cpp); every other arm is minor.
 	auto Rank = [](const FOCRoadSegment& S)
 	{
 		return S.Kind == TEXT("pier") ? 0 : S.Kind == TEXT("alley") ? 1 : S.Kind == TEXT("street") ? 2 : 3;

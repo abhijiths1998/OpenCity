@@ -97,7 +97,7 @@ public:
 		float SidewalkWidthCm, float ChunkSizeCm, int32 Seed);
 
 	/**
-	 * Retaining walls from the layout's "retaining_walls" runs (Tools/make_marevia_layout.py): kit
+	 * Retaining walls from the layout's "retaining_walls" runs (the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/)): kit
 	 * panels (SM_Kit_RetainingWall_Stone_400 / _Concrete_400, 4 x 2 m) stacked from the top down to
 	 * below the bottom height, capped with SM_Kit_WallCoping_400. Cut walls face the road; fill walls
 	 * face away from it and stand 0.8 m above it as a parapet. Walls collide. Returns the panel count.

@@ -4,7 +4,7 @@
 
 /**
  * Rail and water networks (INFRA_DESIGN.md, "Data model"). Like the road graph they are data from
- * Tools/make_marevia_layout.py ("rail" and "water_network" sections of marevia_layout.json); meshes,
+ * the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/) ("rail" and "water_network" sections of marevia_layout.json); meshes,
  * props, lanes and validation are generated from them. Positions are Unreal world space (cm).
  */
 

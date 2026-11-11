@@ -4,7 +4,7 @@
 
 /**
  * Marevia's road network: nodes (junctions/bends) and segments between them, loaded from
- * SourceArt/World/marevia_layout.json (Tools/make_marevia_layout.py). Pure logic, unit-tested.
+ * SourceArt/World/marevia_layout.json (the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/)). Pure logic, unit-tested.
  *
  * Positions are Unreal world space (cm). The layout file is in metres with x east, y north;
  * Unreal maps that to X = east, Y = south (Y = -north) so the top-down view keeps north up.
@@ -16,7 +16,7 @@ struct OPENCITYCORE_API FOCRoadNode
 
 /**
  * Cross-section and design limits of one road class (INFRA_DESIGN.md; source of truth:
- * SourceArt/Infra/road_profiles.json, embedded in the layout by Tools/make_marevia_layout.py).
+ * SourceArt/Infra/road_profiles.json, embedded in the layout by the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/)).
  * Widths in cm. DMType is the Italian D.M. 5/11/2001 type (A, B, C1, C2, D, E, F, F1, F2) or
  * NAME_None for streets the decree doesn't classify (centro storico lanes, piers, gravel tracks).
  */

@@ -1,5 +1,5 @@
 {
- "_comment": "Infrastructure proposed in INFRA_DESIGN.md and NOT yet in the layout (awaiting approval). Layout metres: x east, y north. Tools/render_network_plan.py draws these dashed over the built networks; on approval they move into Tools/make_marevia_layout.py as data.",
+ "_comment": "Infrastructure proposed in INFRA_DESIGN.md and NOT yet in the layout (awaiting approval). Layout metres: x east, y north. Tools/render_network_plan.py draws these dashed over the built networks; on approval they move into the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/) as data.",
  "autostrada": {
   "name": "Autostrada A-Marevia (Autostrade del Levante Marino, original operator)",
   "profile": "autostrada",

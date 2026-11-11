@@ -27,7 +27,7 @@ The brief's question round was skipped on request, so these are defaults:
 
 | Area | What exists | Verdict |
 |---|---|---|
-| Layout generator (`Tools/make_marevia_layout.py`) | Roads, districts, water, landmarks, terrain, buildings | **Keep.** It is the single source of truth, extended in Phase 2. |
+| Layout generator (`the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/)`) | Roads, districts, water, landmarks, terrain, buildings | **Keep.** It is the single source of truth, extended in Phase 2. |
 | Road graph and lanes (`FOCRoadGraph`, `FOCLaneGraph`) | Nodes and segments; lanes on the right, so right-hand traffic | **Keep.** Extended with profiles, metadata, junctions and one-way support (Phase 2, done). |
 | Road meshes (`OCWorldBuilderLibrary`) | Strips per kind; kerbs and 2.5 m sidewalks on avenues and streets; 40 cm skirts | **Rebuild** in Phase 3/4 to the profile cross-sections: footpaths, parking strips, medians, gutters, travertine kerbs. |
 | Road widths | avenue 14 m, street 9 m, alley 5.5 m, coast 8 m, pass 7 m, pier 10 m | **Mostly keep.** They already match the profiles (section 4). The 5.5 m local streets outside the centre are under the DM F minimum of 6.5 m and are flagged. |
@@ -187,7 +187,7 @@ Shading stays cheap: colour by depth, a murky green-brown river, shoreline foam,
 
 ## 9. Data model (Phase 2: done)
 
-One source of truth. `Tools/make_marevia_layout.py` writes the networks into `SourceArt/World/marevia_layout.json`. `Content/Python/oc_networks.py` writes three data assets:
+One source of truth. `the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/)` writes the networks into `SourceArt/World/marevia_layout.json`. `Content/Python/oc_networks.py` writes three data assets:
 
 | Asset | C++ | Contents |
 |---|---|---|
@@ -214,7 +214,7 @@ Speeds are clamped to each profile's maximum: urban 50, Zona 30 in the ZTL. `ped
 
 | Task | Command |
 |---|---|
-| Regenerate the layout | `python3 -I Tools/make_marevia_layout.py` |
+| Regenerate the layout | `scripts/make_layout.sh` |
 | Rebuild the world | `scripts/build_world.sh` (writes all three assets) |
 | Rewrite the assets only, when geometry didn't change | `scripts/run_python.sh Content/Python/oc_validate_networks.py --import` |
 | Draw the plan | `python3 -I Tools/render_network_plan.py` |

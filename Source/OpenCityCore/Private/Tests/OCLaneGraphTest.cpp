@@ -159,7 +159,7 @@ bool FOCLaneGraphMareviaTest::RunTest(const FString& Parameters)
 	FString Text;
 	if (!FFileHelper::LoadFileToString(Text, *(FPaths::ProjectDir() / TEXT("SourceArt/World/marevia_layout.json"))))
 	{
-		AddError(TEXT("Missing SourceArt/World/marevia_layout.json: run python3 -I Tools/make_marevia_layout.py"));
+		AddError(TEXT("Missing SourceArt/World/marevia_layout.json: run scripts/make_layout.sh"));
 		return false;
 	}
 	FOCRoadGraph Roads;

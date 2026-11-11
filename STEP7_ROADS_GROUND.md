@@ -24,7 +24,7 @@
 
 ## WORLD_METRICS enforcement
 
-- Lane 350 cm, sidewalk 250–400 cm, curb 15 cm (already in `make_marevia_layout.py` SIDEWALK_W=2.5m; check lane widths against 350 cm).
+- Lane 350 cm, sidewalk 250–400 cm, curb 15 cm (already in the layout generator's SidewalkW = 2.5 m; check lane widths against 350 cm).
 - Streetlights every 25–30 m; trees every 8–12 m on boulevards.
 
 ## Done by hand (editor)
