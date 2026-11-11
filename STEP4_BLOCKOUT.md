@@ -2,7 +2,7 @@
 
 **Goal (from the pipeline):** Build the 2×2 km district as a grey-box blockout using road splines and simple volumes, driven by PCG. **Validate gameplay before art:** driving at 120 km/h feels right, sightlines to landmarks, chase routes, alleys, shortcuts, vertical variety (hills, flyovers, rooftops). Show top-down map screenshots and 5 ground-level screenshots per district for approval.
 
-**Status:** The blockout already exists from M3 (`oc_m3_world.py` + `OCWorldBuilderLibrary`). This step **re-aligns it to `WORLD_METRICS.md`** and adds validation. No final art: hard rule 1 — code-generated geometry is blockout only, clearly named `BLOCKOUT_*`.
+**Status:** The blockout already exists from M3 (`UOCBuildWorldCommandlet` + `OCWorldBuilderLibrary`). This step **re-aligns it to `WORLD_METRICS.md`** and adds validation. No final art: hard rule 1 — code-generated geometry is blockout only, clearly named `BLOCKOUT_*`.
 
 ---
 
@@ -14,7 +14,7 @@
 | Road graph + road chunks | `marevia_layout.json` roads → `BuildRoadMeshes` | Nanite road meshes, `M_Dev_Road` / `M_Dev_Sidewalk`, UV-driven markings, 15 cm curbs |
 | Buildings | `marevia_layout.json` buildings → `BuildBuildings` | Instanced `/Engine/BasicShapes/Cube`, `M_Dev_Building`, **now snapped to 100 cm grid / 320 cm storeys / `BLOCKOUT_*` labels** |
 | Lighting & sky | `L.daylight()` (oc_lib) | Sun, SkyAtmosphere, SkyLight real-time capture, HeightFog, PlayerStart |
-| Story layer | `oc_m3_story.py` | Bridges (PonteMobile lift, Molo swing), 20 landmarks, gates, locked-area volumes, deep-water volumes, `DA_MareviaRoads`, `DA_AreaUnlocks` |
+| Story layer | `OCWorldStory.cpp` | Bridges (PonteMobile lift, Molo swing), 20 landmarks, gates, locked-area volumes, deep-water volumes, `DA_MareviaRoads`, `DA_AreaUnlocks` |
 
 The map is 2016 × 3024 m (2 km × 2.8 km playable plus mountain band), seed 1974, 3810 buildings, 448 road nodes, 719 road segments.
 
@@ -47,7 +47,7 @@ Run: `scripts/run_python.sh Content/Python/oc_verify_blockout.py`
 These need the editor (GPU) — I can't run them here because the headless editor launch was blocked. Do them when editor access is approved.
 
 1. **Open the blockout map:** `File → Open Level → /Game/Maps/Marevia/L_Marevia`
-2. **Confirm blockout naming:** Outliner → search `BLOCKOUT_` → all building chunks and road chunks should appear. Any building chunk without `BLOCKOUT_` prefix means `oc_m3_world.py` wasn't re-run after the C++ change.
+2. **Confirm blockout naming:** Outliner → search `BLOCKOUT_` → all building chunks and road chunks should appear. Any building chunk without `BLOCKOUT_` prefix means the world build wasn't re-run after the C++ change.
 3. **Confirm grid snap:** select a `BLOCKOUT_Buildings_*` actor → Details → Transform → Location X/Y should end in `00` (100 cm grid); Scale Z should be a multiple of `3.2` (320 cm storeys).
 4. **Confirm no final art:** search for `SM_` building kits or `MI_*` materials on buildings — should be none. Buildings are still engine cubes with `M_Dev_Building`.
 5. **Play the map:** `File → Play Selected Viewport` (or `scripts/play.sh L_Marevia`). Drive at 120 km/h (`oc.dev.drive ...`) — check lane feel, sightlines to the 5 landmarks (Faro, radio mast, Eremo, Diga, Campanile), chase routes, alleys, shortcuts, hill verticality.

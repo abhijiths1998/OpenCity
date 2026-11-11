@@ -29,7 +29,7 @@ struct OPENCITYCORE_API FOCNetworkReport
 
 /**
  * Data-level checks for the road, rail and water networks (INFRA_DESIGN.md, "Validation").
- * Pure logic, unit-tested; run on the shipped assets by Content/Python/oc_validate_networks.py.
+ * Pure logic, unit-tested; run on the shipped assets by the OCValidateNetworks commandlet.
  */
 class OPENCITYCORE_API FOCNetworkValidator
 {

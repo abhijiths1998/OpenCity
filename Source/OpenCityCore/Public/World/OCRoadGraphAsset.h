@@ -7,7 +7,7 @@
 #include "OCRoadGraphAsset.generated.h"
 
 /**
- * The cooked road network: the layout's road graph, imported by Content/Python/oc_m3_world.py
+ * The cooked road network: the layout's road graph, imported by the world build (UOCBuildWorldCommandlet)
  * from SourceArt/World/marevia_layout.json (SourceArt is not packaged). Parsed on first use.
  */
 UCLASS(BlueprintType)

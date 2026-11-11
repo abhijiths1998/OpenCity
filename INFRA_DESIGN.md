@@ -187,7 +187,7 @@ Shading stays cheap: colour by depth, a murky green-brown river, shoreline foam,
 
 ## 9. Data model (Phase 2: done)
 
-One source of truth. `the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/)` writes the networks into `SourceArt/World/marevia_layout.json`. `Content/Python/oc_networks.py` writes three data assets:
+One source of truth. `the layout generator (scripts/make_layout.sh, Source/OpenCityEditor/Private/Layout/)` writes the networks into `SourceArt/World/marevia_layout.json`. The world build (`WriteNetworkAssets` in `OCWorldBuildCommon.cpp`) writes three data assets:
 
 | Asset | C++ | Contents |
 |---|---|---|
@@ -216,14 +216,14 @@ Speeds are clamped to each profile's maximum: urban 50, Zona 30 in the ZTL. `ped
 |---|---|
 | Regenerate the layout | `scripts/make_layout.sh` |
 | Rebuild the world | `scripts/build_world.sh` (writes all three assets) |
-| Rewrite the assets only, when geometry didn't change | `scripts/run_python.sh Content/Python/oc_validate_networks.py --import` |
+| Rewrite the assets only, when geometry didn't change | `scripts/run_commandlet.sh OCValidateNetworks -import` |
 | Draw the plan | `python3 -I Tools/render_network_plan.py` |
 
 Proposed infrastructure waits in `SourceArt/Infra/proposed_networks.json` until you approve it.
 
 ## 10. Validation (Phase 13 data checks: done; geometry and visual checks come later)
 
-`scripts/run_python.sh Content/Python/oc_validate_networks.py` runs `FOCNetworkValidator`, which is C++ with 4 unit tests. It writes `Saved/Validation/networks.md` and fails on errors.
+`scripts/run_commandlet.sh OCValidateNetworks` runs `FOCNetworkValidator`, which is C++ with 4 unit tests. It writes `Saved/Validation/networks.md` and fails on errors.
 
 **Checks:**
 - **Roads:** profile, width against the profile, lanes, gradient, curve radius at through-nodes, clearance between stacked roads, roads crossing in plan without a junction (only a bridge with 5 m of headroom may), speed, connectivity from the start, one-way traps, ZTL boundaries without gates, tram branches, junction types.

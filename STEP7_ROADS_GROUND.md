@@ -8,7 +8,7 @@
 
 ## Current state
 
-`oc_m3_world.py` + `OCWorldBuilderLibrary::BuildRoadMeshes` already build road chunks from `marevia_layout.json`:
+`UOCBuildWorldCommandlet` + `OCWorldBuilderLibrary::BuildRoadMeshes` already build road chunks from `marevia_layout.json`:
 - Road strips, junction discs, sidewalks, curbs (15 cm)
 - UV0 = (lateral m, along m), UV1 = (half width m, marked lanes per direction) drive markings
 - Nanite static mesh chunks, `M_Dev_Road` / `M_Dev_Sidewalk`

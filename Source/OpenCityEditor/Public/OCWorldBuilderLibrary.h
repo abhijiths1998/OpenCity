@@ -14,7 +14,7 @@ class UMaterialInterface;
 class UWorld;
 
 /**
- * Editor-only world building helpers for scripts (Content/Python/oc_m3_world.py).
+ * Editor-only world building helpers for scripts (the world build (UOCBuildWorldCommandlet)).
  * Wraps engine steps that Python can't do on its own, following what the editor's
  * New Landscape tool does.
  */

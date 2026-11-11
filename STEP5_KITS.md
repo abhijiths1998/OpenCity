@@ -30,7 +30,7 @@ One 2K texture set covering strips: frames, panels, cornices, signage boards. Pa
 
 - Blueprint/PCG assembles kit pieces per block with per-instance variation: color tint, wear amount, window lights, signage, balcony clutter.
 - Ground floors most detailed (shops, shutters, signs, lights); upper floors simpler; rooftops always dressed (water tanks, AC units, dishes).
-- Replace `oc_m3_world.py` `BuildBuildings` engine-cube instances with kit pieces as kits land. Keep blockout chunks `BLOCKOUT_*` until replaced.
+- Replace the world build's `BuildBuildings` engine-cube instances with kit pieces as kits land. Keep blockout chunks `BLOCKOUT_*` until replaced.
 
 ## Done by hand (editor)
 

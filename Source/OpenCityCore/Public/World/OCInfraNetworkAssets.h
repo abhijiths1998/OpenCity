@@ -8,7 +8,7 @@
 
 class UOCRoadGraphAsset;
 
-/** The cooked rail network ({"rail": {...}} from marevia_layout.json, written by oc_m3_story.py). */
+/** The cooked rail network ({"rail": {...}} from marevia_layout.json, written by OCWorldStory.cpp). */
 UCLASS(BlueprintType)
 class OPENCITYCORE_API UOCRailNetworkAsset : public UPrimaryDataAsset
 {
@@ -50,7 +50,7 @@ private:
 	mutable bool bParsed = false;
 };
 
-/** Network validation for editor scripts (Content/Python/oc_validate_networks.py). */
+/** Network validation for editor scripts (the OCValidateNetworks commandlet). */
 UCLASS()
 class OPENCITYCORE_API UOCNetworkValidationLibrary : public UBlueprintFunctionLibrary
 {

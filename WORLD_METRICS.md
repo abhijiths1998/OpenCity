@@ -1,6 +1,6 @@
 # OpenCity — WORLD_METRICS.md (M4a Step 3)
 
-**1 Unreal Unit (UU) = 1 cm.** All measurements below are in centimetres unless noted. These numbers are locked for the project and enforced in all world-building scripts (`oc_m3_world.py`, `OCWorldBuilderLibrary`, PCG, Blender kitbash import, and any kit/trim-sheet tooling).
+**1 Unreal Unit (UU) = 1 cm.** All measurements below are in centimetres unless noted. These numbers are locked for the project and enforced in all world-building scripts (`UOCBuildWorldCommandlet`, `OCWorldBuilderLibrary`, PCG, Blender kitbash import, and any kit/trim-sheet tooling).
 
 ---
 
@@ -64,7 +64,7 @@ No 4K/8K textures in-game. Tiling textures for large surfaces; hero textures reu
 
 ## Enforcement in scripts
 
-### `oc_m3_world.py` / `OCWorldBuilderLibrary` (C++)
+### `UOCBuildWorldCommandlet` / `OCWorldBuilderLibrary` (C++)
 - Building blockouts and final kit pieces are placed on the 100/200/400 cm grid with bottom-corner pivots.
 - Road lanes are 350 cm wide; sidewalks 250–400 cm; curbs 15 cm.
 - City blocks generated from the road graph stay within 80–150 m.

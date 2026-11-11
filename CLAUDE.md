@@ -20,7 +20,8 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md`, `STORY.md` and `INFRA_D
 | Launch editor | `scripts/run_editor.sh` (starts at Medium quality: Epic ran out of VRAM on Play in L_Marevia) |
 | Play a map as the game (no editor UI) | `scripts/play.sh [Map]` (default L_Marevia) |
 | Run headless tests | `scripts/test.sh [filter]` |
-| Run editor Python | `scripts/run_python.sh <script> [args]` |
+| Run a C++ editor commandlet (`UOC<Name>Commandlet`) | `scripts/run_commandlet.sh <Name> [args]` (`OC_RENDER=1` for a GPU renderer; logs in `Saved/Logs/Commandlets`) |
+| Run editor Python (legacy, being removed) | `scripts/run_python.sh <script> [args]` |
 | Package Linux Shipping | `scripts/package.sh` |
 | Generate clangd database | `scripts/gen_clangd.sh` |
 | Visual QA screenshots (bookmarks x hours) | `scripts/qa_shots.sh [hours=13,19.4,22.5] [quality] [only=District,...]` (`OC_QA_WEATHER=Rain`, `OC_QA_VIEWMODE=shadercomplexity`) |
@@ -34,9 +35,9 @@ Read `ARCHITECTURE.md`, `ROADMAP.md`, `ART_PIPELINE.md`, `STORY.md` and `INFRA_D
 | Regenerate the Marevia layout (roads, districts, water, landmarks, gates, terrain, walls, buildings, heightmap, preview) | `scripts/make_layout.sh [out_dir] [-compare=<dir>]` → `SourceArt/World/` (C++ commandlet `UOCLayoutCommandlet`, about 10 s) |
 | Rebuild the Marevia world map from SourceArt/World | `scripts/build_world.sh [--regen]` (deletes and recreates the map; needs the GPU, about 80 s with warm shaders) |
 | Build World Partition HLODs (after every world rebuild; needs the GPU) | `scripts/build_hlod.sh [Map] [--delete]` |
-| Check the Marevia map against the M3 acceptance list | `scripts/run_python.sh Content/Python/oc_m3_verify.py` (`OC_VERIFY_HLOD=1` also requires built HLODs) |
-| Apply the post-process look (`oc_look.py`) to L_Marevia without a rebuild | `scripts/run_python.sh Content/Python/oc_m4b_look.py` |
-| Validate road/rail/water networks (`--import` rewrites the data assets from the layout first) | `scripts/run_python.sh Content/Python/oc_validate_networks.py [--import]` → `Saved/Validation/networks.md` |
+| Check the Marevia map against the M3 acceptance list | `scripts/run_commandlet.sh OCVerifyMarevia [-requirehlod]` (`-requirehlod` also requires built HLODs) |
+| Apply the post-process look to L_Marevia without a rebuild | `scripts/run_commandlet.sh OCApplyLook` |
+| Validate road/rail/water networks (`-import` rewrites the data assets from the layout first) | `scripts/run_commandlet.sh OCValidateNetworks [-import]` → `Saved/Validation/networks.md` |
 | Draw the network plan (built + proposed) | `python3 -I Tools/render_network_plan.py` → `SourceArt/Infra/network_plan.png` |
 | Material instruction counts vs ART_PIPELINE budgets | `OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_material_stats.py` (MATSTAT lines) |
 | Regenerate the bike chassis | `python3 -I Tools/make_bike_chassis.py`, then `oc_m2_setup.py` |

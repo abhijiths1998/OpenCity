@@ -310,12 +310,12 @@
   {
    "slug": "boulder_01",
    "res": "1k",
-   "notes": "Distant scenery: east-coast hills, scaled up (oc_m3_water.py)"
+   "notes": "Distant scenery: east-coast hills, scaled up (OCWorldWater.cpp)"
   },
   {
    "slug": "namaqualand_boulder_03",
    "res": "1k",
-   "notes": "Distant scenery: peaks north of Monte Ferrale, scaled up (oc_m3_water.py)"
+   "notes": "Distant scenery: peaks north of Monte Ferrale, scaled up (OCWorldWater.cpp)"
   }
  ],
  "ambientcg": [

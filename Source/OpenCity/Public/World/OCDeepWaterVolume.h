@@ -9,7 +9,7 @@ class UBoxComponent;
 /**
  * Water too deep to wade (no swimming in v1): the player is faded back to the nearest open road
  * on the bank; a vehicle that goes in is wrecked and left there. Placed per water body by
- * oc_m3_world.py with its top a little below the surface. Overlap events only; no Tick.
+ * the world build with its top a little below the surface. Overlap events only; no Tick.
  */
 UCLASS()
 class OPENCITY_API AOCDeepWaterVolume : public AActor
