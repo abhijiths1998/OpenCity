@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 md5 = "0.8.1"
+regex = "1.13.1"
 serde_json = "1.0.154"
 ureq = "3.5.1"
 zip = { version = "9.5.1", default-features = false, features = ["deflate"] }

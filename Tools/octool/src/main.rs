@@ -3,6 +3,7 @@
 //!   octool fetch-textures [--dry-run]   Poly Haven PBR textures ("assets") -> SourceArt/Downloads/<slug>/T_<slug>_<BC|N|ORM|E|M>.<ext>
 //!   octool fetch-decals                 ambientCG decal sets ("ambientcg")  -> SourceArt/Downloads/Decals/<id>/
 //!   octool fetch-models                 Poly Haven glTF models ("models"), MD5-checked -> SourceArt/Downloads/Models/<slug>/
+//!   octool combine-gltf <in> <out> [re] one mesh per prop (nodes fully matching re), pivot at the bottom centre, as GLB
 //!
 //! Everything is listed in SourceArt/manifest.json. Each asset on disk gets a row in SourceArt/LICENSES.csv.
 //! Downloads are git-ignored; re-run to fetch them again (files already present are skipped).
@@ -15,6 +16,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use serde_json::Value;
+
+mod gltf_combine;
 
 const USER_AGENT: &str = "OpenCity-asset-fetch";
 
@@ -286,7 +289,10 @@ fn main() -> ExitCode {
         Some("fetch-textures") => fetch_textures(&root, args.iter().any(|a| a == "--dry-run")),
         Some("fetch-decals") => fetch_decals(&root),
         Some("fetch-models") => fetch_models(&root),
-        _ => Err("usage: octool fetch-textures [--dry-run] | fetch-decals | fetch-models".into()),
+        Some("combine-gltf") if args.len() >= 3 => {
+            gltf_combine::combine(Path::new(&args[1]), Path::new(&args[2]), args.get(3).map(String::as_str)).map(|msg| println!("{msg}"))
+        }
+        _ => Err("usage: octool fetch-textures [--dry-run] | fetch-decals | fetch-models | combine-gltf <in.gltf> <out.glb> [keep-regex]".into()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
