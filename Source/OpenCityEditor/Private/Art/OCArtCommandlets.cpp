@@ -21,7 +21,7 @@ UOCBuildArtCommandlet::UOCBuildArtCommandlet() { InitArtCommandlet(this); }
 int32 UOCBuildArtCommandlet::Main(const FString& Params)
 {
 	FString StepList = TEXT("decals,materials,weather,physmat,props,kit");
-	FParse::Value(*Params, TEXT("steps="), StepList);
+	FParse::Value(*Params, TEXT("steps="), StepList, /*bShouldStopOnSeparator*/ false);
 	TArray<FString> Steps;
 	StepList.ParseIntoArray(Steps, TEXT(","));
 	for (const FString& Step : Steps)

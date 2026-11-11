@@ -47,7 +47,7 @@ namespace OCArt
 		 *  textures but no materials from these glTFs, so the props would render default grey. */
 		UMaterialInterface* MaterialFor(const FString& Slot, const FString& Folder, const TMap<FString, UTexture*>& Textures, bool bFoliage)
 		{
-			if (Slot.EndsWith(TEXT("_glass")) || Slot.EndsWith(TEXT("_bulb")))
+			if (Slot.EndsWith(TEXT("_glass"), ESearchCase::CaseSensitive) || Slot.EndsWith(TEXT("_bulb"), ESearchCase::CaseSensitive))
 			{
 				return OCEd::Load<UMaterialInterface>(TEXT("/Game/Materials/M_Master_LampGlow"));
 			}
@@ -81,7 +81,7 @@ namespace OCArt
 				OCEd::TextureSettings(Arm, false, TC_Masks, Arm->LODGroup, 0);
 				OCEd::Save(Arm);
 			}
-			const bool bLeafy = Slot.Contains(TEXT("leaves")) || Slot.Contains(TEXT("fern"));
+			const bool bLeafy = Slot.Contains(TEXT("leaves"), ESearchCase::CaseSensitive) || Slot.Contains(TEXT("fern"), ESearchCase::CaseSensitive);
 			// Plants: every slot (trunk, branches, leaves) on the foliage master, so the wind moves them together.
 			const TCHAR* Parent = bFoliage ? TEXT("/Game/Materials/M_Master_Foliage") : (bLeafy ? TEXT("/Game/Materials/M_Master_SurfaceTwoSided") : TEXT("/Game/Materials/M_Master_Surface"));
 			UMaterialInstanceConstant* Mi = OCEd::FreshInstance(TEXT("MI_Prop_") + Slot, Folder, CastChecked<UMaterialInterface>(OCEd::Require(Parent)), PropTag);
@@ -143,7 +143,7 @@ namespace OCArt
 		{
 			FString Trimmed = Old;
 			Trimmed.RemoveFromEnd(TEXT("/"));
-			if (!FPaths::GetCleanFilename(Trimmed).StartsWith(TEXT("SM_Prop_")) && UEditorAssetLibrary::DoesDirectoryExist(Trimmed))
+			if (!FPaths::GetCleanFilename(Trimmed).StartsWith(TEXT("SM_Prop_"), ESearchCase::CaseSensitive) && UEditorAssetLibrary::DoesDirectoryExist(Trimmed))
 			{
 				UEditorAssetLibrary::DeleteDirectory(Trimmed);
 			}
@@ -300,7 +300,7 @@ namespace OCArt
 			}
 			for (const TCHAR* S : Solid)
 			{
-				if (Name.StartsWith(FString(TEXT("SM_Kit_")) + S))
+				if (Name.StartsWith(FString(TEXT("SM_Kit_")) + S, ESearchCase::CaseSensitive))
 				{
 					// The UCX_ boxes don't survive the 5.8 FBX import (0 simple shapes), and Chaos vehicles only
 					// collide with simple shapes: walls, coping and street fixtures use their render mesh as
@@ -324,7 +324,7 @@ namespace OCArt
 	bool ImportTextureFolder(const FString& Src, const FString& Dest, const FString& ParentPath)
 	{
 		const TCHAR* TexTag = TEXT("oc_import_textures");
-		if (!Dest.StartsWith(TEXT("/Game/")))
+		if (!Dest.StartsWith(TEXT("/Game/"), ESearchCase::CaseSensitive))
 		{
 			UE_LOG(LogOpenCity, Error, TEXT("-dest must be a /Game/ path"));
 			return false;

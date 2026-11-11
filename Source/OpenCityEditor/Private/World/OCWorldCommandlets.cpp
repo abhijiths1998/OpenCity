@@ -190,7 +190,7 @@ int32 UOCVerifyMareviaCommandlet::Main(const FString& Params)
 	int32 HlodActors = 0;
 	for (const FDesc& D : Descs)
 	{
-		if (D.NativeClass.Contains(TEXT("WorldPartitionHLOD")))
+		if (D.NativeClass.Contains(TEXT("WorldPartitionHLOD"), ESearchCase::CaseSensitive))
 		{
 			++HlodActors;
 		}
@@ -236,7 +236,7 @@ int32 UOCVerifyMareviaCommandlet::Main(const FString& Params)
 		for (const FOCAreaUnlock& E : Unlocks->Areas)
 		{
 			const FString AreaTag = E.Area.GetTagName().ToString();
-			if (AreaTag.StartsWith(TEXT("Gate.")))
+			if (AreaTag.StartsWith(TEXT("Gate."), ESearchCase::CaseSensitive))
 			{
 				C.Check(FString::Printf(TEXT("unlock %s has layers"), *AreaTag), E.LayersWhileLocked.Num() > 0);
 			}
@@ -260,8 +260,8 @@ int32 UOCVerifyMareviaCommandlet::Main(const FString& Params)
 	}
 	C.Check(TEXT("road graph asset"), GraphNodes == Arr(Layout->Get(TEXT("roads")), TEXT("nodes")).Num(), FString::FromInt(GraphNodes));
 	const UOCProgressionSettings* Settings = GetDefault<UOCProgressionSettings>();
-	C.Check(TEXT("settings: unlock data"), Settings->UnlockData.ToString().Contains(TEXT("DA_AreaUnlocks")));
-	C.Check(TEXT("settings: road graph"), Settings->RoadGraph.ToString().Contains(TEXT("DA_MareviaRoads")));
+	C.Check(TEXT("settings: unlock data"), Settings->UnlockData.ToString().Contains(TEXT("DA_AreaUnlocks"), ESearchCase::CaseSensitive));
+	C.Check(TEXT("settings: road graph"), Settings->RoadGraph.ToString().Contains(TEXT("DA_MareviaRoads"), ESearchCase::CaseSensitive));
 
 	if (!C.Failures.IsEmpty())
 	{

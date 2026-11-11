@@ -324,7 +324,7 @@ namespace OCWorldBuild
 				{
 					Part(TEXT("Main"), FVector(0, 0, 0), FVector(W, D, H));
 					Part(TEXT("Canopy"), FVector(0, -D / 2 - 2.5, 4), FVector(W * 0.4, 5, 0.4), TEXT("Metal"), Cube, Z, 0);
-					Part(TEXT("Band"), FVector(0, 0, H - 3), FVector(W + 0.3, D + 0.3, 1.2), Name.Contains(TEXT("Police")) ? TEXT("Police") : TEXT("Glass"), Cube, Z, 0);
+					Part(TEXT("Band"), FVector(0, 0, H - 3), FVector(W + 0.3, D + 0.3, 1.2), Name.Contains(TEXT("Police"), ESearchCase::CaseSensitive) ? TEXT("Police") : TEXT("Glass"), Cube, Z, 0);
 				}
 				else if (Kind == TEXT("yard"))   // Beppe's garage: workshop and a walled yard
 				{

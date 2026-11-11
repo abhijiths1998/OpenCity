@@ -305,33 +305,43 @@ namespace OCEd
 
 	void SetScalar(UMaterialInstanceConstant* Mi, const FName& Name, float V)
 	{
-		if (!UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Mi, Name, V))
+		// The library setters always return false (5.8), so check the parameter exists by reading it back.
+		UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Mi, Name, V);
+		float Out = 0.0f;
+		if (!Mi->GetScalarParameterValue(FHashedMaterialParameterInfo(Name), Out))
 		{
-			UE_LOG(LogOpenCity, Error, TEXT("%s: no scalar parameter %s"), *Mi->GetName(), *Name.ToString());
+			UE_LOG(LogOpenCity, Warning, TEXT("%s: no scalar parameter %s"), *Mi->GetName(), *Name.ToString());
 		}
 	}
 
 	void SetVector(UMaterialInstanceConstant* Mi, const FName& Name, const FLinearColor& V)
 	{
-		if (!UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(Mi, Name, V))
+		UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(Mi, Name, V);
+		FLinearColor Out;
+		if (!Mi->GetVectorParameterValue(FHashedMaterialParameterInfo(Name), Out))
 		{
-			UE_LOG(LogOpenCity, Error, TEXT("%s: no vector parameter %s"), *Mi->GetName(), *Name.ToString());
+			UE_LOG(LogOpenCity, Warning, TEXT("%s: no vector parameter %s"), *Mi->GetName(), *Name.ToString());
 		}
 	}
 
 	void SetTexture(UMaterialInstanceConstant* Mi, const FName& Name, UTexture* V)
 	{
-		if (!UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Mi, Name, V))
+		UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Mi, Name, V);
+		UTexture* Out = nullptr;
+		if (!Mi->GetTextureParameterValue(FHashedMaterialParameterInfo(Name), Out))
 		{
-			UE_LOG(LogOpenCity, Error, TEXT("%s: no texture parameter %s"), *Mi->GetName(), *Name.ToString());
+			UE_LOG(LogOpenCity, Warning, TEXT("%s: no texture parameter %s"), *Mi->GetName(), *Name.ToString());
 		}
 	}
 
 	void SetSwitch(UMaterialInstanceConstant* Mi, const FName& Name, bool V)
 	{
-		if (!UMaterialEditingLibrary::SetMaterialInstanceStaticSwitchParameterValue(Mi, Name, V))
+		UMaterialEditingLibrary::SetMaterialInstanceStaticSwitchParameterValue(Mi, Name, V);
+		bool Out = false;
+		FGuid Id;
+		if (!Mi->GetStaticSwitchParameterValue(FHashedMaterialParameterInfo(Name), Out, Id))
 		{
-			UE_LOG(LogOpenCity, Error, TEXT("%s: no static switch %s"), *Mi->GetName(), *Name.ToString());
+			UE_LOG(LogOpenCity, Warning, TEXT("%s: no static switch %s"), *Mi->GetName(), *Name.ToString());
 		}
 	}
 

@@ -337,7 +337,7 @@ namespace OCArt
 			In.Add({ TEXT("WP"), Mt.WorldPos(-1100, -600) });
 			In.Add({ TEXT("VN"), E(Mt, UMaterialExpressionVertexNormalWS::StaticClass(), -1100, -500) });
 			In.Add({ TEXT("Cam"), E(Mt, UMaterialExpressionCameraPositionWS::StaticClass(), -1100, -400) });
-			const int32 Coords = Code.Contains(TEXT("R2")) ? 3 : 2;
+			const int32 Coords = Code.Contains(TEXT("R2"), ESearchCase::CaseSensitive) ? 3 : 2;
 			for (int32 i = 0; i < Coords; ++i)
 			{
 				In.Add({ FString::Printf(TEXT("R%d"), i), Coord(Mt, i, -1100, -300 + 100 * i) });
