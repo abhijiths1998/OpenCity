@@ -19,32 +19,23 @@ env "${OC_ENV[@]}" "$UE_EDITOR_CMD" "$UPROJECT" \
 EXIT=${PIPESTATUS[0]}
 set -e
 
-python3 - "$REPORT_DIR/index.json" "$EXIT" <<'PY'
-import json, sys
-path, ue_exit = sys.argv[1], int(sys.argv[2])
-try:
-    with open(path, encoding="utf-8-sig") as f:
-        r = json.load(f)
-except FileNotFoundError:
-    sys.exit(f"TESTS DID NOT RUN: no report at {path} (editor exit {ue_exit})")
-ok = r.get("succeeded", 0) + r.get("succeededWithWarnings", 0)
-failed, skipped = r.get("failed", 0), r.get("notRun", 0)
-warnings = set()
-for t in r.get("tests", []):
-    entries = [e.get("event", {}) for e in t.get("entries", [])]
-    if t.get("state") == "Fail":
-        print(f"  FAIL: {t.get('fullTestPath')}")
-        for ev in entries:
-            if ev.get("type") == "Error":
-                print(f"      Error: {ev.get('message')}")
-    for ev in entries:
-        if ev.get("type") == "Warning":
-            warnings.add(ev.get("message", ""))
-for w in sorted(warnings):
-    print(f"  warning (attached to tests): {w[:200]}")
-total = ok + failed + skipped
-print(f"TESTS: {ok} passed, {failed} failed, {skipped} not run (of {total})")
-if total == 0:
-    sys.exit("TESTS FAILED: no tests matched the filter")
-sys.exit(1 if failed else 0)
-PY
+INDEX="$REPORT_DIR/index.json"
+if [[ ! -f "$INDEX" ]]; then
+  echo "TESTS DID NOT RUN: no report at $INDEX (editor exit $EXIT)" >&2
+  exit 1
+fi
+# The report may start with a UTF-8 byte order mark; jq reads it after it is stripped.
+REPORT_JSON=$(sed '1s/^\xEF\xBB\xBF//' "$INDEX")
+jq -r '
+  .tests[]? | select(.state == "Fail") |
+  "  FAIL: \(.fullTestPath)", (.entries[]?.event | select(.type == "Error") | "      Error: \(.message)")
+' <<< "$REPORT_JSON"
+jq -r '[.tests[]?.entries[]?.event | select(.type == "Warning") | .message] | unique[] | "  warning (attached to tests): \(.[0:200])"' <<< "$REPORT_JSON"
+read -r OK FAILED SKIPPED < <(jq -r '"\((.succeeded // 0) + (.succeededWithWarnings // 0)) \(.failed // 0) \(.notRun // 0)"' <<< "$REPORT_JSON")
+TOTAL=$((OK + FAILED + SKIPPED))
+echo "TESTS: $OK passed, $FAILED failed, $SKIPPED not run (of $TOTAL)"
+if [[ $TOTAL -eq 0 ]]; then
+  echo "TESTS FAILED: no tests matched the filter" >&2
+  exit 1
+fi
+[[ $FAILED -eq 0 ]]

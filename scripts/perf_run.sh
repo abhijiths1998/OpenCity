@@ -80,31 +80,26 @@ wait "$GAME_PID" || true
 
 REPORT=$(find "$REPORT_DIR" -name "${MAP}_*.json" -newer "$MARKER" 2>/dev/null | sort | tail -1)
 rm -f "$MARKER"
-python3 - "$REPORT" "$VRAM_CSV" "$DESKTOP_MIB" "$PRESET" "$BUILD" <<'PY'
-import csv, json, sys
-report, vram_csv, desktop, preset, build = sys.argv[1:6]
-names = {"0": "Low", "1": "Medium", "2": "High", "3": "Ultra (Epic)"}
-fb, total, temp, clock = [], [], [], []
-with open(vram_csv) as f:
-    for row in csv.DictReader(f):
-        for key, dst in (("game_fb_mib", fb), ("total_used_mib", total), ("temp_c", temp), ("clock_mhz", clock)):
-            if row.get(key, "").strip().isdigit():
-                dst.append(int(row[key]))
-print(f"Build: {build}, preset: {names.get(preset, preset)}")
-print(f"VRAM before launch (desktop + other apps): {desktop} MiB")
-if fb:
-    print(f"VRAM game process: peak {max(fb)} MiB (budget 5000 MiB)")
-if total:
-    print(f"VRAM whole GPU: peak {max(total)} of 6144 MiB")
-if temp and clock:
-    print(f"GPU: temp {min(temp)}-{max(temp)} C, clock {min(clock)}-{max(clock)} MHz")
-if not report:
-    sys.exit("no new OCPerf JSON report: did the game crash, or does the map lack an OCPerfCameraPath?")
-r = json.load(open(report))
-print(f"Map {r['map']}, {r['resolution']}, RHI {r['rhi']}, GPU {r['gpu']}")
-print(f"Scalability: {r.get('scalability', 'n/a')}")
-for lap in r["laps"]:
-    print("  lap {lap}: {avg_fps:.1f} fps avg, {one_percent_low_fps:.1f} 1% low, p99 {p99_ms:.2f} ms"
-          " | game {game_ms:.2f} render {render_ms:.2f} gpu {gpu_ms:.2f} ms".format(**lap))
-print(f"Report: {report}\nSamples: {vram_csv}")
-PY
+case "$PRESET" in 0) PNAME=Low ;; 1) PNAME=Medium ;; 2) PNAME=High ;; 3) PNAME="Ultra (Epic)" ;; *) PNAME="$PRESET" ;; esac
+echo "Build: $BUILD, preset: $PNAME"
+echo "VRAM before launch (desktop + other apps): $DESKTOP_MIB MiB"
+# Columns: time_s, game_fb_mib, total_used_mib, temp_c, clock_mhz (empty when a sample failed).
+awk -F, 'NR > 1 {
+    if ($2 ~ /^[0-9]+$/) { fb = ($2 > fb ? $2 : fb); nfb++ }
+    if ($3 ~ /^[0-9]+$/) { tot = ($3 > tot ? $3 : tot); ntot++ }
+    if ($4 ~ /^[0-9]+$/) { tmax = ($4 > tmax ? $4 : tmax); tmin = (ntemp == 0 || $4 < tmin ? $4 : tmin); ntemp++ }
+    if ($5 ~ /^[0-9]+$/) { cmax = ($5 > cmax ? $5 : cmax); cmin = (nclk == 0 || $5 < cmin ? $5 : cmin); nclk++ }
+  }
+  END {
+    if (nfb) printf "VRAM game process: peak %d MiB (budget 5000 MiB)\n", fb
+    if (ntot) printf "VRAM whole GPU: peak %d of 6144 MiB\n", tot
+    if (ntemp && nclk) printf "GPU: temp %d-%d C, clock %d-%d MHz\n", tmin, tmax, cmin, cmax
+  }' "$VRAM_CSV"
+if [[ -z "$REPORT" ]]; then
+  echo "no new OCPerf JSON report: did the game crash, or does the map lack an OCPerfCameraPath?" >&2
+  exit 1
+fi
+jq -r '"Map \(.map), \(.resolution), RHI \(.rhi), GPU \(.gpu)", "Scalability: \(.scalability // "n/a")",
+  (.laps[] | "  lap \(.lap): \(.avg_fps * 10 | round / 10) fps avg, \(.one_percent_low_fps * 10 | round / 10) 1% low, p99 \(.p99_ms * 100 | round / 100) ms | game \(.game_ms * 100 | round / 100) render \(.render_ms * 100 | round / 100) gpu \(.gpu_ms * 100 | round / 100) ms")' "$REPORT"
+echo "Report: $REPORT"
+echo "Samples: $VRAM_CSV"
