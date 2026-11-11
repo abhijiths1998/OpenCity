@@ -7,11 +7,17 @@
 #include "Materials/MaterialExpressionCustom.h"
 #include "SceneTypes.h"
 #include "Materials/MaterialInterface.h"
+#include "Engine/EngineTypes.h"
+#include "Engine/TextureDefines.h"
 
 class AActor;
 class UFactory;
 class UMaterial;
 class UMaterialExpression;
+class UMaterialInstanceConstant;
+class UMaterialInterface;
+class UMaterialParameterCollection;
+class UTexture;
 
 namespace OCEd
 {
@@ -55,6 +61,10 @@ namespace OCEd
 		UMaterialExpression* Scalar(const FName& Name, float Default, int32 X, int32 Y);
 		UMaterialExpression* Vector(const FName& Name, const FLinearColor& Default, int32 X, int32 Y);
 		UMaterialExpression* InstanceData(int32 Index, float Default, int32 X, int32 Y);
+		/** A static switch feeding a Custom node a compile-time 1 or 0, so each instance compiles only its own paths. */
+		UMaterialExpression* StaticFlag(const FName& Name, bool bDefault, int32 X, int32 Y);
+		UMaterialExpression* TexObject(const FName& Name, EMaterialSamplerType Sampler, UTexture* Default, int32 X, int32 Y);
+		UMaterialExpression* Collection(UMaterialParameterCollection* Mpc, const FName& Name, int32 X, int32 Y);
 		/** A Custom HLSL node; inputs are (name, expression), extra outputs (name, type). */
 		UMaterialExpressionCustom* Custom(const FString& Code, const TArray<TPair<FString, UMaterialExpression*>>& Inputs, int32 X, int32 Y,
 			ECustomMaterialOutputType Out = CMOT_Float3, const TArray<TPair<FString, ECustomMaterialOutputType>>& Extra = {});
@@ -63,6 +73,20 @@ namespace OCEd
 		/** Recompile and save. */
 		void Finish(const TCHAR* Tag);
 	};
+
+	/** A material instance at Folder/Name with Parent and no parameter overrides (get or create). */
+	UMaterialInstanceConstant* FreshInstance(const FString& Name, const FString& Folder, UMaterialInterface* Parent, const TCHAR* Tag);
+	void SetScalar(UMaterialInstanceConstant* Mi, const FName& Name, float V);
+	void SetVector(UMaterialInstanceConstant* Mi, const FName& Name, const FLinearColor& V);
+	void SetTexture(UMaterialInstanceConstant* Mi, const FName& Name, UTexture* V);
+	void SetSwitch(UMaterialInstanceConstant* Mi, const FName& Name, bool V);
+	/** Update and save an instance. */
+	void FinishInstance(UMaterialInstanceConstant* Mi);
+
+	/** Import one file (AssetImportTask, automated, replacing); returns the imported objects. */
+	TArray<UObject*> ImportFile(const FString& File, const FString& DestPath, const FString& DestName = FString(), UObject* Options = nullptr);
+	/** Texture settings as the art scripts set them (then PostEditChange). MaxSize 0 keeps the current one. */
+	void TextureSettings(UTexture* T, bool bSrgb, TextureCompressionSettings Compression, TextureGroup LodGroup, int32 MaxSize);
 
 	/** Project paths. */
 	FString ProjectDir();

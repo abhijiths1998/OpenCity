@@ -249,3 +249,131 @@ void OCEd::Usage(UMaterial* M, EMaterialUsage U)
 	bool bRecompile = false;
 	UMaterialEditingLibrary::SetMaterialUsage(M, U, bRecompile);
 }
+
+// ---- Material graph extras, instances, imports ----------------------------------------------------
+
+#include "AssetImportTask.h"
+#include "Engine/Texture.h"
+#include "Factories/MaterialInstanceConstantFactoryNew.h"
+#include "Materials/MaterialExpressionCollectionParameter.h"
+#include "Materials/MaterialExpressionStaticSwitchParameter.h"
+#include "Materials/MaterialExpressionTextureObjectParameter.h"
+#include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialParameterCollection.h"
+
+namespace OCEd
+{
+	UMaterialExpression* FMat::StaticFlag(const FName& Name, bool bDefault, int32 X, int32 Y)
+	{
+		UMaterialExpressionStaticSwitchParameter* E = Cast<UMaterialExpressionStaticSwitchParameter>(Expr(UMaterialExpressionStaticSwitchParameter::StaticClass(), X, Y));
+		E->ParameterName = Name;
+		E->DefaultValue = bDefault;
+		Connect(Const(1.0f, X - 150, Y), FString(), E, TEXT("True"));
+		Connect(Const(0.0f, X - 150, Y + 40), FString(), E, TEXT("False"));
+		return E;
+	}
+
+	UMaterialExpression* FMat::TexObject(const FName& Name, EMaterialSamplerType Sampler, UTexture* Default, int32 X, int32 Y)
+	{
+		UMaterialExpressionTextureObjectParameter* E = Cast<UMaterialExpressionTextureObjectParameter>(Expr(UMaterialExpressionTextureObjectParameter::StaticClass(), X, Y));
+		E->ParameterName = Name;
+		E->SamplerType = Sampler;
+		E->SamplerSource = SSM_Wrap_WorldGroupSettings;
+		if (Default)
+		{
+			E->Texture = Default;
+		}
+		return E;
+	}
+
+	UMaterialExpression* FMat::Collection(UMaterialParameterCollection* Mpc, const FName& Name, int32 X, int32 Y)
+	{
+		UMaterialExpressionCollectionParameter* E = Cast<UMaterialExpressionCollectionParameter>(Expr(UMaterialExpressionCollectionParameter::StaticClass(), X, Y));
+		E->Collection = Mpc;
+		E->ParameterName = Name;
+		E->ParameterId = Mpc->GetParameterId(Name);
+		return E;
+	}
+
+	UMaterialInstanceConstant* FreshInstance(const FString& Name, const FString& Folder, UMaterialInterface* Parent, const TCHAR* Tag)
+	{
+		UMaterialInstanceConstant* Mi = CastChecked<UMaterialInstanceConstant>(GetOrCreate(Name, Folder, UMaterialInstanceConstant::StaticClass(), NewObject<UMaterialInstanceConstantFactoryNew>(), Tag));
+		UMaterialEditingLibrary::SetMaterialInstanceParent(Mi, Parent);
+		UMaterialEditingLibrary::ClearAllMaterialInstanceParameters(Mi);
+		return Mi;
+	}
+
+	void SetScalar(UMaterialInstanceConstant* Mi, const FName& Name, float V)
+	{
+		if (!UMaterialEditingLibrary::SetMaterialInstanceScalarParameterValue(Mi, Name, V))
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("%s: no scalar parameter %s"), *Mi->GetName(), *Name.ToString());
+		}
+	}
+
+	void SetVector(UMaterialInstanceConstant* Mi, const FName& Name, const FLinearColor& V)
+	{
+		if (!UMaterialEditingLibrary::SetMaterialInstanceVectorParameterValue(Mi, Name, V))
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("%s: no vector parameter %s"), *Mi->GetName(), *Name.ToString());
+		}
+	}
+
+	void SetTexture(UMaterialInstanceConstant* Mi, const FName& Name, UTexture* V)
+	{
+		if (!UMaterialEditingLibrary::SetMaterialInstanceTextureParameterValue(Mi, Name, V))
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("%s: no texture parameter %s"), *Mi->GetName(), *Name.ToString());
+		}
+	}
+
+	void SetSwitch(UMaterialInstanceConstant* Mi, const FName& Name, bool V)
+	{
+		if (!UMaterialEditingLibrary::SetMaterialInstanceStaticSwitchParameterValue(Mi, Name, V))
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("%s: no static switch %s"), *Mi->GetName(), *Name.ToString());
+		}
+	}
+
+	void FinishInstance(UMaterialInstanceConstant* Mi)
+	{
+		UMaterialEditingLibrary::UpdateMaterialInstance(Mi);
+		Save(Mi);
+	}
+
+	TArray<UObject*> ImportFile(const FString& File, const FString& DestPath, const FString& DestName, UObject* Options)
+	{
+		UAssetImportTask* Task = NewObject<UAssetImportTask>();
+		Task->Filename = File;
+		Task->DestinationPath = DestPath;
+		Task->DestinationName = DestName;
+		Task->bReplaceExisting = true;
+		Task->bAutomated = true;
+		Task->bSave = false;
+		Task->Options = Options;
+		FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get().ImportAssetTasks({ Task });
+		TArray<UObject*> Out;
+		for (UObject* O : Task->GetObjects())
+		{
+			if (O) { Out.Add(O); }
+		}
+		if (Out.IsEmpty())
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("import failed: %s -> %s"), *File, *DestPath);
+		}
+		return Out;
+	}
+
+	void TextureSettings(UTexture* T, bool bSrgb, TextureCompressionSettings Compression, TextureGroup LodGroup, int32 MaxSize)
+	{
+		T->Modify();
+		T->SRGB = bSrgb;
+		T->CompressionSettings = Compression;
+		T->LODGroup = LodGroup;
+		if (MaxSize > 0)
+		{
+			T->MaxTextureSize = MaxSize;
+		}
+		T->PostEditChange();
+	}
+}

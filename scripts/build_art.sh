@@ -31,15 +31,13 @@ done
 "$BLENDER" -b --factory-startup -P Tools/blender/make_kit.py | grep -vE "^(Blender|Read|Info)" | tail -5
 
 python3 -I Tools/make_lut.py
-scripts/run_python.sh Content/Python/oc_decals.py          # before the masters: walls use a leak scan as grime
+scripts/run_commandlet.sh OCBuildArt -steps=decals   # before the masters: walls use a leak scan as grime
 # The water normals are copied from the engine's DatasmithContent plugin, which this project doesn't
-# mount; enable it for this one step (see oc_art_materials.import_water_normals).
+# mount; enable it for this one step (see ImportWaterNormals in OCArtMaterials.cpp).
 cp OpenCity.uproject Saved/OpenCity.uproject.bak
-python3 -c "import json;p='OpenCity.uproject';d=json.load(open(p));d.setdefault('Plugins',[]).append({'Name':'DatasmithContent','Enabled':True});json.dump(d,open(p,'w'),indent='\t')"
-OC_PY_RENDER=1 scripts/run_python.sh Content/Python/oc_art_materials.py; status=$?
+jq --tab '.Plugins += [{"Name": "DatasmithContent", "Enabled": true}]' Saved/OpenCity.uproject.bak > OpenCity.uproject
+OC_RENDER=1 scripts/run_commandlet.sh OCBuildArt -steps=materials; status=$?
 cp Saved/OpenCity.uproject.bak OpenCity.uproject
 [[ $status -eq 0 ]] || exit $status
-scripts/run_python.sh Content/Python/oc_weather.py
-scripts/run_python.sh Content/Python/oc_import_props.py
-scripts/run_python.sh Content/Python/oc_import_kit.py
+scripts/run_commandlet.sh OCBuildArt -steps=weather,physmat,props,kit
 echo "ART OK. Next: scripts/build_world.sh && scripts/build_hlod.sh"
