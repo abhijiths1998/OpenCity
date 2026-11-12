@@ -20,6 +20,7 @@
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -178,11 +179,20 @@ namespace OCAutoDrive
 				const FVector Dir = (Route[Seg + 1].Pos - Route[Seg].Pos).GetSafeNormal2D();
 				const FQuat Rot = FRotator(0.f, Dir.Rotation().Yaw, 0.f).Quaternion();
 				const FVector Centre = Ground.ImpactPoint + FVector(0, 0, Extent.Z + 40.0);
-				if (!W->OverlapBlockingTestByChannel(Centre, Rot, ECC_WorldStatic, FCollisionShape::MakeBox(Extent), Q))
+				TArray<FOverlapResult> Hits;
+				if (!W->OverlapMultiByChannel(Hits, Centre, Rot, ECC_WorldStatic, FCollisionShape::MakeBox(Extent), Q))
 				{
 					break;
 				}
-				UE_LOG(LogOpenCity, Display, TEXT("OCDEV route: segment %d starts inside geometry at %s, placing one segment on"), Seg, *Route[Seg].Pos.ToCompactString());
+				FString What;
+				for (const FOverlapResult& H : Hits)
+				{
+					if (H.bBlockingHit && H.GetActor())
+					{
+						What += (What.IsEmpty() ? TEXT("") : TEXT(", ")) + H.GetActor()->GetActorNameOrLabel();
+					}
+				}
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV route: segment %d starts inside geometry at %s (%s), placing one segment on"), Seg, *Route[Seg].Pos.ToCompactString(), *What);
 				++Seg;
 			}
 		}

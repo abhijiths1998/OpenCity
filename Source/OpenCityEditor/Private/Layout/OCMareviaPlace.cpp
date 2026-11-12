@@ -660,6 +660,50 @@ namespace OCLayout
 				for (int32 c = FMath::Max(0, int32(L.Pos.X - L.FW / 2 - 8)); c < FMath::Min(NX, int32(L.Pos.X + L.FW / 2 + 8) + 2); ++c) { Blocked(r, c) = 1; }
 			}
 		}
+		// Junction corners and sharp bends: a car turning there cuts the corner, and at 5.5 m alley junctions
+		// and bends with facades on the carriageway edge it hit the building on it. Keep CornerClear past the
+		// widest carriageway clear round every junction and every bend of BendDeg or more (a corner set back;
+		// roads with pavements already are).
+		{
+			constexpr double CornerClear = 3.5;
+			constexpr double BendDeg = 45.0;
+			struct FAt { TArray<int32> Others; double Half = 0.0; };
+			TMap<int32, FAt> AtNode;   // node -> the nodes it joins, widest half carriageway
+			for (const FSeg& S : G.Segments)
+			{
+				FAt& Ea = AtNode.FindOrAdd(S.A);
+				Ea.Others.Add(S.B);
+				Ea.Half = FMath::Max(Ea.Half, S.Width / 2.0);
+				FAt& Eb = AtNode.FindOrAdd(S.B);
+				Eb.Others.Add(S.A);
+				Eb.Half = FMath::Max(Eb.Half, S.Width / 2.0);
+			}
+			for (const TPair<int32, FAt>& E : AtNode)
+			{
+				const FNode& N = G.Nodes[E.Key];
+				bool bCorner = E.Value.Others.Num() >= 3;
+				if (E.Value.Others.Num() == 2)
+				{
+					const FNode& P = G.Nodes[E.Value.Others[0]];
+					const FNode& Q = G.Nodes[E.Value.Others[1]];
+					const double In = std::atan2(N.Y - P.Y, N.X - P.X), Out = std::atan2(Q.Y - N.Y, Q.X - N.X);
+					const double Turn = std::fabs(std::remainder(Out - In, 2.0 * PI));
+					bCorner = Turn >= FMath::DegreesToRadians(BendDeg);
+				}
+				if (!bCorner)
+				{
+					continue;
+				}
+				const double R = E.Value.Half + CornerClear;
+				for (int32 r = FMath::Max(0, int32(N.Y - R - YMin)); r < FMath::Min(NY, int32(N.Y + R - YMin) + 2); ++r)
+				{
+					for (int32 c = FMath::Max(0, int32(N.X - R)); c < FMath::Min(NX, int32(N.X + R) + 2); ++c)
+					{
+						if (std::hypot(c - N.X, r + YMin - N.Y) < R) { Blocked(r, c) = 1; }
+					}
+				}
+			}
+		}
 		// Bridges are not in Best (their corridors aren't graded): keep their decks and approaches clear.
 		for (const FSeg& S : G.Segments)
 		{

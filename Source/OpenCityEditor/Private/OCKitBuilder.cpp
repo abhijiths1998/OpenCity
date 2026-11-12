@@ -810,18 +810,41 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 
 	// Signs where traffic approaches node N along segment S: on the approaching driver's right,
 	// Offset cm before the junction edge, facing the traffic.
-	auto SignAt = [&](UStaticMesh* Sign, const FOCRoadSegment& S, int32 N, double Offset)
+	auto SignAt = [&](UStaticMesh* Sign, const FOCRoadSegment& S0, int32 N0, double Offset)
 	{
-		const FVector A = Nodes[S.A].Location, B = Nodes[S.B].Location;
+		// Clear[N0] + Offset back along the approach, on through plain bends where the segment is shorter:
+		// capped at 45% of an 11 m link, a STOP sign stood on the inside corner of the T it guards and the
+		// cars turning right hit it. Only a segment between two junctions still caps it.
+		const FOCRoadSegment* S = &S0;
+		int32 N = N0;
+		double Back = Clear[N0] + Offset;
+		for (int32 Hop = 0; Hop < 4; ++Hop)
+		{
+			const double L = FVector::Dist2D(Nodes[S->A].Location, Nodes[S->B].Location);
+			const int32 Far = S->A == N ? S->B : S->A;
+			const TArray<int32>& There = Roads.SegmentsAt(Far);
+			if (There.Num() != 2)
+			{
+				Back = FMath::Min(Back, L * 0.45);   // another junction at the far end: keep off its corner too
+				break;
+			}
+			if (Back <= L * 0.95)
+			{
+				break;
+			}
+			const FOCRoadSegment& Next = &Segs[There[0]] == S ? Segs[There[1]] : Segs[There[0]];
+			Back = FMath::Max(Back - L, 100.0);
+			N = Far;
+			S = &Next;
+		}
+		const FVector A = Nodes[S->A].Location, B = Nodes[S->B].Location;
 		const FVector Dir = (B - A).GetSafeNormal2D();
 		const FVector Side(-Dir.Y, Dir.X, 0.0);
-		const bool bAtB = N == S.B;
+		const bool bAtB = N == S->B;
 		const FVector Travel = bAtB ? Dir : -Dir;
 		const FVector Right = bAtB ? Side : -Side;
-		const double Len = FVector::Dist2D(A, B);
-		const double Back = FMath::Min(Clear[N] + Offset, Len * 0.45);
-		const FVector P = Nodes[N].Location - Travel * Back + Right * (S.WidthCm * 0.5 + (HasWalk(S) ? SidewalkWidthCm * 0.6 : 60.0));
-		Put(Sign, P, YawForLocalY(Travel), HasWalk(S) ? 15.0 : 0.0);
+		const FVector P = Nodes[N].Location - Travel * Back + Right * (S->WidthCm * 0.5 + (HasWalk(*S) ? SidewalkWidthCm * 0.6 : 60.0));
+		Put(Sign, P, YawForLocalY(Travel), HasWalk(*S) ? 15.0 : 0.0);
 	};
 
 	for (const FOCRoadSegment& S : Segs)

@@ -530,6 +530,20 @@ namespace OCLayout
 			{
 				if (Dist(Out.Last(), Goal) < RouteStep * 0.4) { Out.Last() = Goal; } else { Out.Add(Goal); }
 			}
+			// A node less than half a step from the next one (outside hairpin loops) marks a hook where the
+			// smoothed path doubled back: 25 m of path between nodes 4 m apart made the quarry spur zigzag
+			// through two 75 degree turns, and cars flipped there. Drop it and the road runs straight on.
+			for (int32 k = 1; k + 1 < Out.Num();)
+			{
+				if (Dist(Out[k], Out[k + 1]) < RouteStep * 0.5 && !InKeep(Out[k]) && !InKeep(Out[k + 1]))
+				{
+					Out.RemoveAt(k);
+				}
+				else
+				{
+					++k;
+				}
+			}
 			for (const FPt& P : Out)
 			{
 				Res.Points.Add({ PyRound(P.X, 1), PyRound(P.Y, 1) });
@@ -1278,7 +1292,10 @@ namespace OCLayout
 			}
 		}
 		G.Path(Villa, TEXT("street"), 6.0, TEXT(""), TEXT("Gate.Colline"));   // to Villa Salvi
-		G.Path(PlanPts({ { 1400, 1660 }, { 1380, 1800 }, { 1300, 1900 }, { 1180, 1905 } }), TEXT("street"), 6.0, TEXT(""), TEXT("Gate.Colline"));
+		// The hills road reaches the checkpoint node from the south (1305, 1865): the pass leaves that node
+		// east-north-east (the land north of it is too steep to leave any other way), and straight in from
+		// the south-east it met the pass at 58 degrees, a wedge whose two surfaces part in height.
+		G.Path(PlanPts({ { 1400, 1660 }, { 1380, 1800 }, { 1305, 1865 }, { 1300, 1900 }, { 1180, 1905 } }), TEXT("street"), 6.0, TEXT(""), TEXT("Gate.Colline"));
 
 		// Monte Ferrale roads, routed over the terrain: the pass from the hills checkpoint up to the dam's
 		// east end, then straight along the dam crest; the quarry spur, the radio-mast road and the

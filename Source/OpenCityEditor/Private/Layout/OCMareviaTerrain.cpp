@@ -540,7 +540,8 @@ namespace OCLayout
 		constexpr double CutRatio = 1.5;       // m of shoulder per m of height difference between road grade and land
 		constexpr double Blend = 1.5;          // m: soft-minimum scale where road corridors meet
 
-		struct FCore { int32 X0, X1, Y0, Y1; float Ax, Ay, Dx, Dy, L2, Half, Az, DzSeg; };
+		struct FCore { int32 X0, X1, Y0, Y1; float Ax, Ay, Dx, Dy, L2, Half, Az, DzSeg, OA, LcA, OB, LcB; };
+		constexpr double VerticalCurve = 8.0;   // m each side of a node over which grades blend (a rounded crest or dip)
 	}
 
 	FGridF FlattenRoads(FGridD& Hm, const FRoadGraph& G)
@@ -553,6 +554,43 @@ namespace OCLayout
 		const float Inf = std::numeric_limits<float>::infinity();
 		FGridF Best(NX, NY, Inf), WSum(NX, NY, 0.0f), TSum(NX, NY, 0.0f), CSum(NX, NY, 0.0f), CNum(NX, NY, 0.0f),
 			NearGrade(NX, NY, 0.0f), NearDist(NX, NY, Inf);
+		// Vertical curves: the surface is straight between nodes, so a crest or dip at a node broke the grade
+		// at once (30% where two 15% alleys meet on a ridge, and cars grounded on it). Each node gets one
+		// offset, O = mean grade leaving it x Lc / 2, fading as (1 - d / Lc)^2 along every road out of it
+		// over Lc: at a bend that is the symmetric parabola joining the two grades, and at a junction all
+		// roads still meet its surface at one height. Not at bridge ends, which stay where they are.
+		TArray<double> NodeOffset, NodeLc, GradeSum;
+		TArray<int32> NodeRoads;
+		TSet<int32> Fixed;
+		NodeOffset.Init(0.0, G.Nodes.Num());
+		NodeLc.Init(VerticalCurve, G.Nodes.Num());
+		GradeSum.Init(0.0, G.Nodes.Num());
+		NodeRoads.Init(0, G.Nodes.Num());
+		for (const FSeg& S : G.Segments)
+		{
+			const FNode& A = G.Nodes[S.A];
+			const FNode& B = G.Nodes[S.B];
+			const double Len = std::hypot(B.X - A.X, B.Y - A.Y);
+			if (!S.Bridge.IsEmpty() || Len < 1e-3)
+			{
+				Fixed.Add(S.A);
+				Fixed.Add(S.B);
+				continue;
+			}
+			GradeSum[S.A] += (B.Z - A.Z) / Len;
+			GradeSum[S.B] += (A.Z - B.Z) / Len;
+			++NodeRoads[S.A];
+			++NodeRoads[S.B];
+			NodeLc[S.A] = FMath::Min(NodeLc[S.A], 0.4 * Len);
+			NodeLc[S.B] = FMath::Min(NodeLc[S.B], 0.4 * Len);
+		}
+		for (int32 n = 0; n < G.Nodes.Num(); ++n)
+		{
+			if (NodeRoads[n] >= 2 && !Fixed.Contains(n))
+			{
+				NodeOffset[n] = GradeSum[n] / NodeRoads[n] * NodeLc[n] / 2.0;
+			}
+		}
 		TArray<FCore> Cores;
 		for (const FSeg& S : G.Segments)
 		{
@@ -572,7 +610,8 @@ namespace OCLayout
 			{
 				continue;
 			}
-			Cores.Add({ X0, X1, Y0, Y1, float(A.X), float(A.Y), float(Dx), float(Dy), float(L2), float(Half), float(A.Z), float(B.Z - A.Z) });
+			Cores.Add({ X0, X1, Y0, Y1, float(A.X), float(A.Y), float(Dx), float(Dy), float(L2), float(Half), float(A.Z), float(B.Z - A.Z),
+				float(NodeOffset[S.A]), float(NodeLc[S.A]), float(NodeOffset[S.B]), float(NodeLc[S.B]) });
 		}
 		auto Eval = [](const FCore& K, int32 r, int32 c, float& OutEdge, float& OutGrade)
 		{
@@ -580,8 +619,11 @@ namespace OCLayout
 			float T = ((XX - K.Ax) * K.Dx + (YY - K.Ay) * K.Dy) / K.L2;
 			T = T < 0.0f ? 0.0f : (T > 1.0f ? 1.0f : T);
 			OutEdge = std::hypot(XX - (K.Ax + T * K.Dx), YY - (K.Ay + T * K.Dy)) - K.Half;
-			// 20 cm below the road surface, so distant (coarser) landscape LODs never poke through.
-			OutGrade = (K.Az + T * K.DzSeg) - 0.2f;
+			// The vertical curves round each end; 20 cm below the road surface, so distant (coarser)
+			// landscape LODs never poke through.
+			const float L = std::sqrt(K.L2);
+			const float Ua = FMath::Max(0.0f, 1.0f - T * L / K.LcA), Ub = FMath::Max(0.0f, 1.0f - (1.0f - T) * L / K.LcB);
+			OutGrade = (K.Az + T * K.DzSeg) + K.OA * Ua * Ua + K.OB * Ub * Ub - 0.2f;
 		};
 		for (const FCore& K : Cores)
 		{
@@ -761,23 +803,31 @@ namespace OCLayout
 	void SinkJunctions(FGridD& Hm, const FRoadGraph& G)
 	{
 		// Keep the land at or below each junction's height under its junction surface: the road builder
-		// draws a flat polygon at the node's height out to the widest road's half width, and between two
-		// roads climbing apart the land rose through its corner.
+		// drapes the junction polygon over the land out to the widest road's half width, and between two
+		// roads climbing apart the land rose through its corner. The land may still rise away from the node
+		// at the steepest grade of the junction's own roads: held flat, every arm climbing away from a
+		// junction (in a dip, or on a slope) lay on flat land for its first 1.5 m and then met its graded
+		// corridor in a 0.5 m step that stopped cars.
 		TArray<int32> Order;
 		TMap<int32, int32> Degree;
-		TMap<int32, double> Reach;
+		TMap<int32, double> Reach, Grade;
 		for (const FSeg& S : G.Segments)
 		{
 			if (!S.Bridge.IsEmpty())
 			{
 				continue;
 			}
+			const FNode& A = G.Nodes[S.A];
+			const FNode& B = G.Nodes[S.B];
+			const double SegGrade = std::fabs(B.Z - A.Z) / FMath::Max(std::hypot(B.X - A.X, B.Y - A.Y), 1.0);
 			for (const int32 N : { S.A, S.B })
 			{
 				if (!Degree.Contains(N)) { Order.Add(N); }
 				Degree.FindOrAdd(N) += 1;
 				double& R = Reach.FindOrAdd(N, 0.0);
 				R = FMath::Max(R, S.Width / 2.0 + 1.5);
+				double& Gr = Grade.FindOrAdd(N, 0.0);
+				Gr = FMath::Max(Gr, SegGrade);
 			}
 		}
 		int64 Sunk = 0;
@@ -793,16 +843,18 @@ namespace OCLayout
 			{
 				continue;
 			}
-			const double Z0 = Hm(Yi, Xi);
+			const double Z0 = Hm(Yi, Xi), Gr = Grade[N];
 			const int32 X0 = FMath::Max(0, int32(XV - R)), X1 = FMath::Min(W, int32(XV + R) + 1);
 			const int32 Y0 = FMath::Max(0, int32(Y - R - YMin)), Y1 = FMath::Min(H, int32(Y + R - YMin) + 1);
 			for (int32 r = Y0; r < Y1; ++r)
 			{
 				for (int32 c = X0; c < X1; ++c)
 				{
-					if (std::hypot(double(c) - XV, double(r + YMin) - Y) <= R && Hm(r, c) > Z0)
+					const double D = std::hypot(double(c) - XV, double(r + YMin) - Y);
+					const double Top = Z0 + Gr * D;
+					if (D <= R && Hm(r, c) > Top)
 					{
-						Hm(r, c) = Z0;
+						Hm(r, c) = Top;
 						++Sunk;
 					}
 				}
