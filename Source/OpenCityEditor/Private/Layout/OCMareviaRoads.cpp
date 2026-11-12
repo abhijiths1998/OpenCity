@@ -1189,6 +1189,42 @@ namespace OCLayout
 				Edges.Add({ A, B, Neck.Rise });
 			}
 		}
+		// Shallow forks are necks too: where two roads part at under ForkDeg, their next nodes are close in
+		// plan, and the quarry spur dropped 6 m below the pass 8 m away (cars flipped off the wedge between).
+		{
+			constexpr double ForkDeg = 35.0;
+			TMap<int32, TArray<int32>> Out;   // node -> segments
+			for (int32 s = 0; s < G.Segments.Num(); ++s)
+			{
+				Out.FindOrAdd(G.Segments[s].A).Add(s);
+				Out.FindOrAdd(G.Segments[s].B).Add(s);
+			}
+			for (const TPair<int32, TArray<int32>>& E : Out)
+			{
+				if (E.Value.Num() < 3 || Pinned.Contains(E.Key))
+				{
+					continue;
+				}
+				const FNode& N = G.Nodes[E.Key];
+				for (int32 i = 0; i < E.Value.Num(); ++i)
+				{
+					for (int32 j = i + 1; j < E.Value.Num(); ++j)
+					{
+						const FSeg& Si = G.Segments[E.Value[i]];
+						const FSeg& Sj = G.Segments[E.Value[j]];
+						const int32 P = Si.A == E.Key ? Si.B : Si.A, Q = Sj.A == E.Key ? Sj.B : Sj.A;
+						const FVector2D Di(G.Nodes[P].X - N.X, G.Nodes[P].Y - N.Y), Dj(G.Nodes[Q].X - N.X, G.Nodes[Q].Y - N.Y);
+						if (P == Q || Di.Size() < 1.0 || Dj.Size() < 1.0
+							|| FVector2D::DotProduct(Di.GetSafeNormal(), Dj.GetSafeNormal()) < std::cos(Radians(ForkDeg)))
+						{
+							continue;
+						}
+						const double Gap = Dist(G.Nodes[P].X, G.Nodes[P].Y, G.Nodes[Q].X, G.Nodes[Q].Y) - (Si.Width + Sj.Width) / 2.0;
+						Edges.Add({ P, Q, FMath::Max(Gap, 0.5) * NeckSlope });
+					}
+				}
+			}
+		}
 		for (int32 It = 0; It < 400; ++It)
 		{
 			double Moved = 0.0;
