@@ -540,7 +540,7 @@ namespace OCLayout
 		constexpr double CutRatio = 1.5;       // m of shoulder per m of height difference between road grade and land
 		constexpr double Blend = 1.5;          // m: soft-minimum scale where road corridors meet
 
-		struct FCore { int32 X0, X1, Y0, Y1; float Ax, Ay, Dx, Dy, L2, Half, Az, DzSeg, OA, LcA, OB, LcB; };
+		struct FCore { int32 X0, X1, Y0, Y1; float Ax, Ay, Dx, Dy, L2, Half, Az, DzSeg, OA, LcA, OB, LcB, NA, NB; };   // vertical curves: OA, OB cubic terms, NA, NB node shifts
 		constexpr double VerticalCurve = 8.0;   // m each side of a node over which grades blend (a rounded crest or dip)
 	}
 
@@ -555,19 +555,20 @@ namespace OCLayout
 		FGridF Best(NX, NY, Inf), WSum(NX, NY, 0.0f), TSum(NX, NY, 0.0f), CSum(NX, NY, 0.0f), CNum(NX, NY, 0.0f),
 			NearGrade(NX, NY, 0.0f), NearDist(NX, NY, Inf);
 		// Vertical curves: the surface is straight between nodes, so a crest or dip at a node broke the grade
-		// at once (30% where two 15% alleys meet on a ridge, and cars grounded on it). Each node gets one
-		// offset, O = mean grade leaving it x Lc / 2, fading as (1 - d / Lc)^2 along every road out of it
-		// over Lc: at a bend that is the symmetric parabola joining the two grades, and at a junction all
-		// roads still meet its surface at one height. Not at bridge ends, which stay where they are.
-		TArray<double> NodeOffset, NodeLc, GradeSum;
-		TArray<int32> NodeRoads;
+		// at once (30% where two 15% alleys meet on a ridge, and cars grounded on it). Each node gets a slope
+		// plane fitted to the grades of its roads (least squares, a little damped), and every road out of it
+		// bends from the plane's slope along it to its own grade over Lc, with a cubic that keeps the node's
+		// height: a bend becomes a smooth crest or dip, and a junction has no kink between any two roads.
+		// Not at bridge ends, which stay as they are.
+		struct FArm { int32 Seg; FVector2D Dir; double Grade; };
+		TArray<TArray<FArm>> Arms;
+		TArray<double> NodeLc;
 		TSet<int32> Fixed;
-		NodeOffset.Init(0.0, G.Nodes.Num());
+		Arms.SetNum(G.Nodes.Num());
 		NodeLc.Init(VerticalCurve, G.Nodes.Num());
-		GradeSum.Init(0.0, G.Nodes.Num());
-		NodeRoads.Init(0, G.Nodes.Num());
-		for (const FSeg& S : G.Segments)
+		for (int32 s = 0; s < G.Segments.Num(); ++s)
 		{
+			const FSeg& S = G.Segments[s];
 			const FNode& A = G.Nodes[S.A];
 			const FNode& B = G.Nodes[S.B];
 			const double Len = std::hypot(B.X - A.X, B.Y - A.Y);
@@ -577,23 +578,60 @@ namespace OCLayout
 				Fixed.Add(S.B);
 				continue;
 			}
-			GradeSum[S.A] += (B.Z - A.Z) / Len;
-			GradeSum[S.B] += (A.Z - B.Z) / Len;
-			++NodeRoads[S.A];
-			++NodeRoads[S.B];
+			const FVector2D D((B.X - A.X) / Len, (B.Y - A.Y) / Len);
+			Arms[S.A].Add({ s, D, (B.Z - A.Z) / Len });
+			Arms[S.B].Add({ s, -D, (A.Z - B.Z) / Len });
 			NodeLc[S.A] = FMath::Min(NodeLc[S.A], 0.4 * Len);
 			NodeLc[S.B] = FMath::Min(NodeLc[S.B], 0.4 * Len);
 		}
+		// Per segment end: the cubic's starting slope correction K (plane slope along the road - its grade).
+		TArray<double> KA, KB, NodeDrop;
+		KA.Init(0.0, G.Segments.Num());
+		KB.Init(0.0, G.Segments.Num());
+		NodeDrop.Init(0.0, G.Nodes.Num());
 		for (int32 n = 0; n < G.Nodes.Num(); ++n)
 		{
-			if (NodeRoads[n] >= 2 && !Fixed.Contains(n))
+			if (Arms[n].Num() < 2 || Fixed.Contains(n))
 			{
-				NodeOffset[n] = GradeSum[n] / NodeRoads[n] * NodeLc[n] / 2.0;
+				continue;
+			}
+			// Minimise sum (s . d_i - g_i)^2 + Damp |s|^2 for the plane slope s.
+			constexpr double Damp = 0.05;
+			double Sxx = Damp, Sxy = 0.0, Syy = Damp, Bx = 0.0, By = 0.0;
+			for (const FArm& Arm : Arms[n])
+			{
+				Sxx += Arm.Dir.X * Arm.Dir.X;
+				Sxy += Arm.Dir.X * Arm.Dir.Y;
+				Syy += Arm.Dir.Y * Arm.Dir.Y;
+				Bx += Arm.Dir.X * Arm.Grade;
+				By += Arm.Dir.Y * Arm.Grade;
+			}
+			const double Det = Sxx * Syy - Sxy * Sxy;
+			if (Det < 1e-9)
+			{
+				continue;
+			}
+			const FVector2D Slope((Syy * Bx - Sxy * By) / Det, (Sxx * By - Sxy * Bx) / Det);
+			// Each road's correction is O (1 - d/Lc)^2 + k d (1 - d/Lc)^2, starting at slope -2 O / Lc + k = K.
+			// O, shared by the node, takes the mean of the K: at a bend k is 0 and the curve is the parabola,
+			// whose slope changes steadily (with O = 0 the cubic steepened the road by K/3 before levelling it).
+			double MeanK = 0.0;
+			for (const FArm& Arm : Arms[n])
+			{
+				MeanK += FVector2D::DotProduct(Slope, Arm.Dir) - Arm.Grade;
+			}
+			MeanK /= Arms[n].Num();
+			NodeDrop[n] = -0.5 * NodeLc[n] * MeanK;
+			for (const FArm& Arm : Arms[n])
+			{
+				const double K = FVector2D::DotProduct(Slope, Arm.Dir) - Arm.Grade;
+				(G.Segments[Arm.Seg].A == n ? KA : KB)[Arm.Seg] = K - MeanK;
 			}
 		}
 		TArray<FCore> Cores;
-		for (const FSeg& S : G.Segments)
+		for (int32 s = 0; s < G.Segments.Num(); ++s)
 		{
+			const FSeg& S = G.Segments[s];
 			if (!S.Bridge.IsEmpty())
 			{
 				continue;
@@ -611,7 +649,7 @@ namespace OCLayout
 				continue;
 			}
 			Cores.Add({ X0, X1, Y0, Y1, float(A.X), float(A.Y), float(Dx), float(Dy), float(L2), float(Half), float(A.Z), float(B.Z - A.Z),
-				float(NodeOffset[S.A]), float(NodeLc[S.A]), float(NodeOffset[S.B]), float(NodeLc[S.B]) });
+				float(KA[s]), float(NodeLc[S.A]), float(KB[s]), float(NodeLc[S.B]), float(NodeDrop[S.A]), float(NodeDrop[S.B]) });
 		}
 		auto Eval = [](const FCore& K, int32 r, int32 c, float& OutEdge, float& OutGrade)
 		{
@@ -622,8 +660,9 @@ namespace OCLayout
 			// The vertical curves round each end; 20 cm below the road surface, so distant (coarser)
 			// landscape LODs never poke through.
 			const float L = std::sqrt(K.L2);
-			const float Ua = FMath::Max(0.0f, 1.0f - T * L / K.LcA), Ub = FMath::Max(0.0f, 1.0f - (1.0f - T) * L / K.LcB);
-			OutGrade = (K.Az + T * K.DzSeg) + K.OA * Ua * Ua + K.OB * Ub * Ub - 0.2f;
+			const float Da = T * L, Db = (1.0f - T) * L;
+			const float Ua = FMath::Max(0.0f, 1.0f - Da / K.LcA), Ub = FMath::Max(0.0f, 1.0f - Db / K.LcB);
+			OutGrade = (K.Az + T * K.DzSeg) + (K.NA + K.OA * Da) * Ua * Ua + (K.NB + K.OB * Db) * Ub * Ub - 0.2f;
 		};
 		for (const FCore& K : Cores)
 		{
@@ -654,9 +693,14 @@ namespace OCLayout
 				{
 					float Edge, Grade;
 					Eval(K, r, c, Edge, Grade);
+					// Weighted by nearness to each centreline, 1 there and 0 at the corridor's edge: averaged evenly,
+					// a steep alley's corridor pulled the first 3.75 m of a crossing one up to its own grade and left
+					// a 0.5 m step where it ended.
 					const bool bUse = Edge <= 0.0f && std::fabs(Grade - NearGrade(r, c)) < 1.0f;
-					CSum(r, c) = CSum(r, c) + (bUse ? Grade : 0.0f);
-					CNum(r, c) = CNum(r, c) + (bUse ? 1.0f : 0.0f);
+					const float Near = FMath::Min(1.0f, -Edge / K.Half);
+					const float Wn = bUse ? Near * Near + 1e-3f : 0.0f;   // the floor keeps a cell on one corridor's edge on it
+					CSum(r, c) = CSum(r, c) + Wn * Grade;
+					CNum(r, c) = CNum(r, c) + Wn;
 				}
 			}
 		}
@@ -666,9 +710,9 @@ namespace OCLayout
 			{
 				double& HV = Hm(r, c);
 				double Target = WSum(r, c) > 0.0f ? double(TSum(r, c) / FMath::Max(WSum(r, c), 1e-12f)) : HV;
-				if (CNum(r, c) > 0.0f)
+				if (CNum(r, c) > 1e-6f)
 				{
-					Target = double(CSum(r, c) / FMath::Max(CNum(r, c), 1.0f));
+					Target = double(CSum(r, c) / FMath::Max(CNum(r, c), 1e-6f));
 				}
 				// 1 inside a road, fading to 0 over a shoulder that widens with the cut or fill height.
 				const double Need = FMath::Clamp(std::fabs(Target - HV) * CutRatio, Shoulder, ShoulderMax);
@@ -807,10 +851,12 @@ namespace OCLayout
 		// roads climbing apart the land rose through its corner. The land may still rise away from the node
 		// at the steepest grade of the junction's own roads: held flat, every arm climbing away from a
 		// junction (in a dip, or on a slope) lay on flat land for its first 1.5 m and then met its graded
-		// corridor in a 0.5 m step that stopped cars.
+		// corridor in a 0.5 m step that stopped cars. It reaches as far as buildings keep off the corners: past
+		// 1.5 m the set-back corner of a crest junction stayed a steep bank, and cars cutting it climbed it.
 		TArray<int32> Order;
 		TMap<int32, int32> Degree;
 		TMap<int32, double> Reach, Grade;
+		TMap<int32, TArray<int32>> Others;
 		for (const FSeg& S : G.Segments)
 		{
 			if (!S.Bridge.IsEmpty())
@@ -825,15 +871,25 @@ namespace OCLayout
 				if (!Degree.Contains(N)) { Order.Add(N); }
 				Degree.FindOrAdd(N) += 1;
 				double& R = Reach.FindOrAdd(N, 0.0);
-				R = FMath::Max(R, S.Width / 2.0 + 1.5);
+				R = FMath::Max(R, S.Width / 2.0 + 3.5);   // as far as buildings keep off the corners (PlaceBuildings CornerClear)
 				double& Gr = Grade.FindOrAdd(N, 0.0);
 				Gr = FMath::Max(Gr, SegGrade);
+				Others.FindOrAdd(N).Add(N == S.A ? S.B : S.A);
 			}
 		}
 		int64 Sunk = 0;
 		for (const int32 N : Order)
 		{
-			if (Degree[N] < 3)
+			bool bCorner = Degree[N] >= 3;
+			if (Degree[N] == 2)   // a bend of 45 degrees or more has a set-back corner too
+			{
+				const FNode& P = G.Nodes[Others[N][0]];
+				const FNode& M = G.Nodes[N];
+				const FNode& Q = G.Nodes[Others[N][1]];
+				const double In = std::atan2(M.Y - P.Y, M.X - P.X), Out = std::atan2(Q.Y - M.Y, Q.X - M.X);
+				bCorner = std::fabs(std::remainder(Out - In, 2.0 * PI)) >= FMath::DegreesToRadians(45.0);
+			}
+			if (!bCorner)
 			{
 				continue;
 			}

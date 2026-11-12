@@ -809,7 +809,9 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 	};
 
 	// Signs where traffic approaches node N along segment S: on the approaching driver's right,
-	// Offset cm before the junction edge, facing the traffic.
+	// Offset cm before the junction edge, facing the traffic. Without a pavement the post stands 1 m off the carriageway:
+	// at 60 cm the plate (it faces the traffic, so it reaches back towards the road) stopped cars riding
+	// a little right of their lane on 5.5 m alleys.
 	auto SignAt = [&](UStaticMesh* Sign, const FOCRoadSegment& S0, int32 N0, double Offset)
 	{
 		// Clear[N0] + Offset back along the approach, on through plain bends where the segment is shorter:
@@ -843,7 +845,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		const bool bAtB = N == S->B;
 		const FVector Travel = bAtB ? Dir : -Dir;
 		const FVector Right = bAtB ? Side : -Side;
-		const FVector P = Nodes[N].Location - Travel * Back + Right * (S->WidthCm * 0.5 + (HasWalk(*S) ? SidewalkWidthCm * 0.6 : 60.0));
+		const FVector P = Nodes[N].Location - Travel * Back + Right * (S->WidthCm * 0.5 + (HasWalk(*S) ? SidewalkWidthCm * 0.6 : 100.0));
 		Put(Sign, P, YawForLocalY(Travel), HasWalk(*S) ? 15.0 : 0.0);
 	};
 

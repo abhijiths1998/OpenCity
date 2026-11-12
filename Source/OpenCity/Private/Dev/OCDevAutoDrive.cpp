@@ -318,7 +318,8 @@ namespace OCAutoDrive
 		}
 
 		// Pure pursuit on a point ahead along the lane.
-		const double Lookahead = FMath::Clamp(SpeedMps * 0.9, 7.0, 35.0);
+		// At least 3.5 m ahead: with 7 m the car cut the inside of 5 m-radius alley turns onto the bank there.
+		const double Lookahead = FMath::Clamp(SpeedMps * 0.9, 3.5, 35.0);
 		const FVector Target = PointAt(Along + Lookahead);
 		const FVector Local = V->GetActorTransform().InverseTransformPosition(Target);
 		const double SteerDeg = FMath::RadiansToDegrees(FMath::Atan2(Local.Y, Local.X));
