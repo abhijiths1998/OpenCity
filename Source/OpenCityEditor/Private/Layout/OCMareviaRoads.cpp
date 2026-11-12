@@ -115,6 +115,9 @@ namespace OCLayout
 		constexpr double SwitchbackMin = 12.0;    // m between the legs of a switchback where it turns
 		constexpr double SwitchbackCost = 300.0;  // m-equivalent for doubling back closer than SwitchbackMin
 		constexpr double BranchMinDeg = 30.0;     // a branch leaves its parent road at least this far off its line
+		constexpr double BranchFallbackDeg = 20.0; // ... or this, where the hillside is too steep to leave it at BranchMinDeg
+		constexpr double NeckSlope = 1.5;         // m per m: the land between a hairpin loop's two legs at its neck (validator MaxTerrainSlope 1.6)
+		constexpr double BranchLoopFree = 20.0;   // m: the quarry spur keeps this far from the pass's hairpin loops (centre to centre)
 		using FTest = TFunction<bool(double, double)>;
 
 		double Heading(const FPt& A, const FPt& B) { return std::atan2(B.Y - A.Y, B.X - A.X); }
@@ -285,6 +288,7 @@ namespace OCLayout
 		{
 			FTest Avoid, LoopAvoid, KeepOff;
 			bool bStartDir = false;
+			double MinDeg = BranchMinDeg;   // with bStartDir: the first move keeps this far off the start direction
 			double SDx = 0.0, SDy = 0.0;
 			double TurnCost = 40.0;
 			bool bStrict = true, bFallback = true;
@@ -363,7 +367,7 @@ namespace OCLayout
 			Best[Idx(S0)] = 0.0;
 			Reached[Idx(S0)] = 1;
 			Todo.push({ 0.0, S0.X, S0.Y });
-			const double BranchCos = std::cos(Radians(BranchMinDeg));
+			const double BranchCos = std::cos(Radians(Args.MinDeg));
 			while (!Todo.empty())
 			{
 				const FOpen Top = Todo.top();
@@ -462,7 +466,7 @@ namespace OCLayout
 				if (Args.bStrict && Args.bFallback)   // the rules boxed it in: route without them
 				{
 					UE_LOG(LogOpenCity, Warning, TEXT("  no route from (%s, %s) to (%s, %s) leaving at %.0f degrees; routing without the rule"),
-						*PyRepr(Start.X), *PyRepr(Start.Y), *PyRepr(Goal.X), *PyRepr(Goal.Y), BranchMinDeg);
+						*PyRepr(Start.X), *PyRepr(Start.Y), *PyRepr(Goal.X), *PyRepr(Goal.Y), Args.MinDeg);
 					FRouteArgs Loose = Args;
 					Loose.bStrict = false;
 					return RouteRoad(Soft, Start, Goal, Loose);
@@ -607,7 +611,21 @@ namespace OCLayout
 				G.LoopNodes.Append(Ids);
 				if (Ids.Num() > 2)
 				{
-					GradeChain(G, Ids, G.Nodes[Ids[0]].Z, G.Nodes[Ids.Last()].Z);
+					// The legs pass about 9 m apart at the neck: hold their height difference to what NeckSlope allows
+					// across the land between their edges (a deeper step was a sheer wall between them). The grade
+					// limiter keeps the pair to it and takes the rest of the climb on the legs.
+					FNode& N0 = G.Nodes[Ids[0]];
+					FNode& N1 = G.Nodes[Ids.Last()];
+					const double Gap = std::hypot(N1.X - N0.X, N1.Y - N0.Y) - RoadKind(TEXT("pass")).Width;
+					const double Rise = FMath::Max(Gap, 0.5) * NeckSlope;
+					if (std::fabs(N1.Z - N0.Z) > Rise)
+					{
+						const double Mid = 0.5 * (N0.Z + N1.Z), Half = (N1.Z > N0.Z ? 0.5 : -0.5) * Rise;
+						N0.Z = PyRound(Mid - Half, 2);
+						N1.Z = PyRound(Mid + Half, 2);
+					}
+					G.Necks.Add({ FPt(N0.X, N0.Y), FPt(N1.X, N1.Y), Rise });
+					GradeChain(G, Ids, N0.Z, N1.Z);
 				}
 				// Widen only round the loop itself: at the neck the legs are 9 m apart and widened surfaces merged them.
 				TSet<TPair<int32, int32>> Pairs;
@@ -1136,6 +1154,27 @@ namespace OCLayout
 			const double Run = std::hypot(G.Nodes[S.B].X - G.Nodes[S.A].X, G.Nodes[S.B].Y - G.Nodes[S.A].Y);
 			Edges.Add({ S.A, S.B, MaxGrade(S, G) * FMath::Max(Run, 1.0) });
 		}
+		// Hairpin-loop necks: the two legs keep within their allowed height difference, so the climb the loop
+		// no longer makes is taken on the legs rather than pulled back across the neck.
+		auto NodeAt = [&G](const FPt& P)
+		{
+			int32 Best = INDEX_NONE;
+			double BestD = 3.0;
+			for (int32 i = 0; i < G.Nodes.Num(); ++i)
+			{
+				const double D = std::hypot(G.Nodes[i].X - P.X, G.Nodes[i].Y - P.Y);
+				if (D < BestD) { BestD = D; Best = i; }
+			}
+			return Best;
+		};
+		for (const FRoadGraph::FNeck& Neck : G.Necks)
+		{
+			const int32 A = NodeAt(Neck.A), B = NodeAt(Neck.B);
+			if (A != INDEX_NONE && B != INDEX_NONE && A != B)
+			{
+				Edges.Add({ A, B, Neck.Rise });
+			}
+		}
 		for (int32 It = 0; It < 400; ++It)
 		{
 			double Moved = 0.0;
@@ -1297,7 +1336,7 @@ namespace OCLayout
 			for (int32 k = 0; k < Cands.Num(); ++k) { Order.Add(k); }
 			Order.StableSort([&Cost](int32 L, int32 R) { return Cost[L] < Cost[R]; });
 			TArray<int32> Out;
-			for (const int32 k : Order) { Out.Add(Cands[k]); }
+			for (const int32 k : Order) { if (!G.LoopNodes.Contains(Cands[k])) { Out.Add(Cands[k]); } }   // no road joins a hairpin loop
 			return Out;
 		};
 		// The quarry yard has one entrance, in the middle of its north side: the spur arrives there and the
@@ -1321,28 +1360,53 @@ namespace OCLayout
 			L = L != 0.0 ? L : 1.0;
 			return FVector2D((B.X - A.X) / L, (B.Y - A.Y) / L);
 		};
-		// The best branch points first; the first from which the spur can leave the pass at BranchMinDeg wins.
+		// The spur keeps BranchLoopFree off the pass's hairpin loops: its first 40 m may cross roads (RoadMask),
+		// and from a node 36 m before a loop it ran under the loop's neck with no room for the slope between.
+		const FTest WetOrQuarryOrLoop = [&](double XV, double YV)
+		{
+			for (const TArray<FPt>& Loop : Climb.Bulbs)
+			{
+				for (const FPt& P : Loop) { if (Dist(XV, YV, P.X, P.Y) < BranchLoopFree) { return true; } }
+			}
+			return WetOrQuarry(XV, YV);
+		};
+		// The best branch points first; the first from which the spur can leave the pass at BranchMinDeg wins,
+		// then at BranchFallbackDeg (the hillside beside the pass is too steep to leave it square anywhere but
+		// next to a hairpin loop), and last the best point with no angle rule.
 		FRouteResult Spur;
 		int32 Q0 = QCands[0];
-		for (int32 c = 0; c <= FMath::Min(12, QCands.Num()); ++c)
+		auto TrySpur = [&](int32 Cand, double MinDeg, bool bFallback)
 		{
-			const bool bLast = c == FMath::Min(12, QCands.Num());
-			Q0 = bLast ? QCands[0] : QCands[c];
-			const FPt Q0p(G.Nodes[Q0].X, G.Nodes[Q0].Y);
+			const FPt P(G.Nodes[Cand].X, G.Nodes[Cand].Y);
 			FRouteArgs A;
-			A.Avoid = WetOrQuarry;
+			A.Avoid = WetOrQuarryOrLoop;
 			A.LoopAvoid = NearRoad;
-			A.KeepOff = RoadMask(G, { Q0p, GateN });
-			const FVector2D Sd = Tangent(PassIds, Q0);
+			A.KeepOff = RoadMask(G, { P, GateN });
+			const FVector2D Sd = Tangent(PassIds, Cand);
 			A.bStartDir = true;
 			A.SDx = Sd.X;
 			A.SDy = Sd.Y;
-			A.bFallback = bLast;
-			Spur = RouteRoad(Soft, Q0p, GateN, A);
+			A.MinDeg = MinDeg;
+			A.bFallback = bFallback;
+			return RouteRoad(Soft, P, GateN, A);
+		};
+		for (const double MinDeg : { BranchMinDeg, BranchFallbackDeg })
+		{
+			for (int32 c = 0; c < FMath::Min(40, QCands.Num()) && !Spur.bOk; ++c)
+			{
+				Spur = TrySpur(QCands[c], MinDeg, false);
+				Q0 = QCands[c];
+			}
 			if (Spur.bOk)
 			{
+				UE_LOG(LogOpenCity, Display, TEXT("quarry spur leaves the pass at %.0f degrees or more"), MinDeg);
 				break;
 			}
+		}
+		if (!Spur.bOk)
+		{
+			Q0 = QCands[0];
+			Spur = TrySpur(Q0, BranchMinDeg, true);
 		}
 		check(Spur.bOk);
 		const FPt Q0p(G.Nodes[Q0].X, G.Nodes[Q0].Y);

@@ -135,6 +135,10 @@ namespace OCLayout
 		const FGridD* Terrain = nullptr;
 		int32 NextUid = 1;
 		TSet<int32> LoopNodes;   // hairpin loops and turning circles: no other road joins there
+		/** Hairpin-loop necks: where the loop leaves one leg and where it joins the other (close in plan),
+		 *  and the most their heights may differ so the land between them is no steeper than NeckSlope. */
+		struct FNeck { FPt A, B; double Rise; };
+		TArray<FNeck> Necks;
 
 		double Height(double X, double Y) const;
 		int32 Node(double X, double Y, double Merge = 6.0);
