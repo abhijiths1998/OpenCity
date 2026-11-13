@@ -1163,11 +1163,17 @@ namespace OCLayout
 		}
 		struct FEdge { int32 A, B; double Rise; };
 		TArray<FEdge> Edges;
+		// The vertical curves in FlattenRoads move each node by up to ~0.2 m off its graded height, which is
+		// nothing on a long road but put an 11 m link near Villa Salvi at 11.3% on a 10% limit. So short
+		// segments keep a margin under their limit (at most a quarter of the allowed rise).
+		constexpr double CurveMargin = 0.2;
 		for (const FSeg& S : G.Segments)
 		{
 			const double Run = std::hypot(G.Nodes[S.B].X - G.Nodes[S.A].X, G.Nodes[S.B].Y - G.Nodes[S.A].Y);
-			Edges.Add({ S.A, S.B, MaxGrade(S, G) * FMath::Max(Run, 1.0) });
+			const double Allowed = MaxGrade(S, G) * FMath::Max(Run, 1.0);
+			Edges.Add({ S.A, S.B, Allowed - FMath::Min(CurveMargin, 0.25 * Allowed) });
 		}
+
 		// Hairpin-loop necks: the two legs keep within their allowed height difference, so the climb the loop
 		// no longer makes is taken on the legs rather than pulled back across the neck.
 		auto NodeAt = [&G](const FPt& P)
@@ -1331,7 +1337,11 @@ namespace OCLayout
 		// The hills road reaches the checkpoint node from the south (1305, 1865): the pass leaves that node
 		// east-north-east (the land north of it is too steep to leave any other way), and straight in from
 		// the south-east it met the pass at 58 degrees, a wedge whose two surfaces part in height.
-		G.Path(PlanPts({ { 1400, 1660 }, { 1380, 1800 }, { 1305, 1865 }, { 1300, 1900 }, { 1180, 1905 } }), TEXT("street"), 6.0, TEXT(""), TEXT("Gate.Colline"));
+		// It ends on Ponte delle Colline: its last plan point lies 122 m short of the bridge, past the stitch's
+		// 120 m reach, and the bridge was a dead end classed as a gravel track.
+		TArray<FPt> Hills = PlanPts({ { 1400, 1660 }, { 1380, 1800 }, { 1305, 1865 }, { 1300, 1900 }, { 1180, 1905 } });
+		Hills.Add({ RiverX(1900) + RiverHalfWidth(1900) + 30, 1900, true });
+		G.Path(Hills, TEXT("street"), 6.0, TEXT(""), TEXT("Gate.Colline"));
 
 		// Monte Ferrale roads, routed over the terrain: the pass from the hills checkpoint up to the dam's
 		// east end, then straight along the dam crest; the quarry spur, the radio-mast road and the

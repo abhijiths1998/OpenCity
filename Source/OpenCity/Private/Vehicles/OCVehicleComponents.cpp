@@ -3,6 +3,7 @@
 #include "Camera/CameraComponent.h"
 #include "ChaosVehicleMovementComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -120,6 +121,8 @@ void UOCVehicleDamageComponent::HandleHit(UPrimitiveComponent* HitComponent, AAc
 	}
 	// Impulse (kg*cm/s) over mass is the change in velocity this hit caused.
 	const float DeltaVKmh = NormalImpulse.Size() / Mass * 0.036f;
+	LastHit = FString::Printf(TEXT(" against %s (%s) at %s"), *GetNameSafe(OtherActor),
+		Cast<UStaticMeshComponent>(OtherComp) ? *GetNameSafe(Cast<UStaticMeshComponent>(OtherComp)->GetStaticMesh()) : *GetNameSafe(OtherComp), *Hit.ImpactPoint.ToCompactString());
 	ApplyImpact(DeltaVKmh);
 }
 
@@ -129,10 +132,12 @@ void UOCVehicleDamageComponent::ApplyImpact(float ImpactKmh)
 	const float Damage = Model.ApplyImpact(ImpactKmh, GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0);
 	if (Damage <= 0.f)
 	{
+		LastHit.Reset();
 		return;
 	}
-	UE_LOG(LogOpenCity, Log, TEXT("%s: impact %.0f km/h, damage %.0f, health %.0f%%"), *GetNameSafe(GetOwner()),
-		ImpactKmh, Damage, Model.GetHealthFraction() * 100.f);
+	UE_LOG(LogOpenCity, Log, TEXT("%s: impact %.0f km/h, damage %.0f, health %.0f%%%s"), *GetNameSafe(GetOwner()),
+		ImpactKmh, Damage, Model.GetHealthFraction() * 100.f, *LastHit);
+	LastHit.Reset();
 	OnDamaged.Broadcast(Damage, Model.GetHealthFraction());
 	if (!bWasWrecked && Model.IsWrecked())
 	{

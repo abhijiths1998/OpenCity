@@ -79,6 +79,7 @@ private:
 
 	TWeakObjectPtr<UPrimitiveComponent> Body;
 	FOCVehicleDamageModel Model;
+	FString LastHit;   // what the last physics hit was against, for the impact log
 };
 
 /** Radio stub: tunes stations and remembers the station per vehicle. No audio until M10. */

@@ -540,7 +540,7 @@ namespace OCLayout
 		constexpr double CutRatio = 1.5;       // m of shoulder per m of height difference between road grade and land
 		constexpr double Blend = 1.5;          // m: soft-minimum scale where road corridors meet
 
-		struct FCore { int32 X0, X1, Y0, Y1; float Ax, Ay, Dx, Dy, L2, Half, Az, DzSeg, OA, LcA, OB, LcB, NA, NB; };   // vertical curves: OA, OB cubic terms, NA, NB node shifts
+		struct FCore { int32 X0, X1, Y0, Y1; float Ax, Ay, Dx, Dy, L2, Half, Az, DzSeg, OA, LcA, OB, LcB, NA, NB, SAx, SAy, SBx, SBy; };   // vertical curves: OA, OB cubic terms, NA, NB node shifts, S* node planes
 		constexpr double VerticalCurve = 8.0;   // m each side of a node over which grades blend (a rounded crest or dip)
 	}
 
@@ -589,6 +589,8 @@ namespace OCLayout
 		KA.Init(0.0, G.Segments.Num());
 		KB.Init(0.0, G.Segments.Num());
 		NodeDrop.Init(0.0, G.Nodes.Num());
+		TArray<FVector2D> NodeSlope;   // the plane's slope, which also tilts each road across near the node
+		NodeSlope.Init(FVector2D::ZeroVector, G.Nodes.Num());
 		for (int32 n = 0; n < G.Nodes.Num(); ++n)
 		{
 			if (Arms[n].Num() < 2 || Fixed.Contains(n))
@@ -612,6 +614,27 @@ namespace OCLayout
 				continue;
 			}
 			const FVector2D Slope((Syy * Bx - Sxy * By) / Det, (Sxx * By - Sxy * Bx) / Det);
+			// Roads tilt across to the plane only where equal roads meet (3+ arms of one kind and width, 45
+			// degrees or more apart, as in the centro grid). A through road keeps its own cross-section: tilted
+			// to the plane, the coast road leaned 10% at the Villa Salvi T, and the pass 12% at the quarry
+			// spur's shallow fork, and cars stalled on both.
+			bool bEqual = Arms[n].Num() >= 3;
+			double Steepest = 0.0;
+			for (int32 i = 0; i < Arms[n].Num() && bEqual; ++i)
+			{
+				const FSeg& Si = G.Segments[Arms[n][i].Seg];
+				Steepest = FMath::Max(Steepest, std::fabs(Arms[n][i].Grade));
+				for (int32 j = i + 1; j < Arms[n].Num() && bEqual; ++j)
+				{
+					const FSeg& Sj = G.Segments[Arms[n][j].Seg];
+					bEqual = Si.Kind == Sj.Kind && Si.Width == Sj.Width
+						&& FVector2D::DotProduct(Arms[n][i].Dir, Arms[n][j].Dir) <= std::cos(FMath::DegreesToRadians(45.0));
+				}
+			}
+			if (bEqual)   // never steeper across than the steepest of its roads
+			{
+				NodeSlope[n] = Slope.Size() > Steepest ? Slope * (Steepest / Slope.Size()) : Slope;
+			}
 			// Each road's correction is O (1 - d/Lc)^2 + k d (1 - d/Lc)^2, starting at slope -2 O / Lc + k = K.
 			// O, shared by the node, takes the mean of the K: at a bend k is 0 and the curve is the parabola,
 			// whose slope changes steadily (with O = 0 the cubic steepened the road by K/3 before levelling it).
@@ -649,20 +672,26 @@ namespace OCLayout
 				continue;
 			}
 			Cores.Add({ X0, X1, Y0, Y1, float(A.X), float(A.Y), float(Dx), float(Dy), float(L2), float(Half), float(A.Z), float(B.Z - A.Z),
-				float(KA[s]), float(NodeLc[S.A]), float(KB[s]), float(NodeLc[S.B]), float(NodeDrop[S.A]), float(NodeDrop[S.B]) });
+				float(KA[s]), float(NodeLc[S.A]), float(KB[s]), float(NodeLc[S.B]), float(NodeDrop[S.A]), float(NodeDrop[S.B]),
+				float(NodeSlope[S.A].X), float(NodeSlope[S.A].Y), float(NodeSlope[S.B].X), float(NodeSlope[S.B].Y) });
 		}
 		auto Eval = [](const FCore& K, int32 r, int32 c, float& OutEdge, float& OutGrade)
 		{
 			const float YY = float(r) + float(YMin), XX = float(c);
 			float T = ((XX - K.Ax) * K.Dx + (YY - K.Ay) * K.Dy) / K.L2;
 			T = T < 0.0f ? 0.0f : (T > 1.0f ? 1.0f : T);
-			OutEdge = std::hypot(XX - (K.Ax + T * K.Dx), YY - (K.Ay + T * K.Dy)) - K.Half;
+			const float Ox = XX - (K.Ax + T * K.Dx), Oy = YY - (K.Ay + T * K.Dy);   // off the centreline
+			OutEdge = std::hypot(Ox, Oy) - K.Half;
 			// The vertical curves round each end; 20 cm below the road surface, so distant (coarser)
 			// landscape LODs never poke through.
 			const float L = std::sqrt(K.L2);
 			const float Da = T * L, Db = (1.0f - T) * L;
 			const float Ua = FMath::Max(0.0f, 1.0f - Da / K.LcA), Ub = FMath::Max(0.0f, 1.0f - Db / K.LcB);
 			OutGrade = (K.Az + T * K.DzSeg) + (K.NA + K.OA * Da) * Ua * Ua + (K.NB + K.OB * Db) * Ub * Ub - 0.2f;
+			// Across the road too the surface follows the node's plane near it, fading out with the curve: each
+			// road was level across, so two crossing at a junction on a slope disagreed by their width times the
+			// cross slope, and the blend between them left a 0.3 m ridge across a 14.5% alley (Città Alta, 789, 1207).
+			OutGrade += (K.SAx * Ox + K.SAy * Oy) * Ua * Ua + (K.SBx * Ox + K.SBy * Oy) * Ub * Ub;
 		};
 		for (const FCore& K : Cores)
 		{

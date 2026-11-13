@@ -80,7 +80,7 @@ These need your login or `sudo`, so they're yours to do:
 
 **Acceptance:**
 
-- [ ] 3 × 3 km map drivable from end to end in grey-box, including the mountain pass road and over the dam *(5.1 of 14.6 km driven by `oc.dev.route` before the autopilot wrecked in Borgo Marino's alleys; bridges, Molo and the swing bridge crossed; pass road and dam not yet driven end to end)*
+- [ ] 3 × 3 km map drivable from end to end in grey-box, including the mountain pass road and over the dam *(`oc.dev.route` tour through every district, up the pass and over the dam: 100% with no resets in a game window on 2026-11-13; 1 reset headless after later junction changes, see INFRA_DESIGN.md section 10. Parked 2026-11-13 for M4 to M11)*
 - [x] Road graph drives both road geometry and lane data (`FOCLaneGraph`, unit-tested)
 - [x] Every story landmark in `STORY.md` exists as a named grey-box in the right district
 - [x] River, estuary and Darsena exist, with drivable bridges; falling into deep water resets you to the bank *(seen in drive tests: 'sank' + reset)*

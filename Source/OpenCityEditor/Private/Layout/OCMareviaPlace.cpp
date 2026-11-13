@@ -954,6 +954,9 @@ namespace OCLayout
 			{
 				if (bCore) { return { TEXT("centro_storico"), TEXT("lastricato"), TEXT("medieval"), TEXT("none"), true }; }
 				if (District == TEXT("CittaAlta")) { return { TEXT("centro_storico"), TEXT("sampietrini"), TEXT("c19"), TEXT("none"), false }; }
+				// Borgo Marino is an old fishing village (STORY.md): its 5.5 m lanes are a village core, not post-war
+				// local streets under the DM F minimum of 6.5 m (46 width warnings). Asphalt, wall lanterns.
+				if (District == TEXT("BorgoMarino")) { return { TEXT("centro_storico"), TEXT("asphalt"), TEXT("c19"), TEXT("none"), false }; }
 				return { TEXT("urbana_locale"), TEXT("asphalt"), TEXT("postwar"), TEXT("white"), false };
 			}
 			if (bCore) { return { TEXT("centro_storico"), TEXT("sampietrini"), TEXT("medieval"), TEXT("none"), true }; }
@@ -1072,6 +1075,13 @@ namespace OCLayout
 			// Italian limits: the profile's design maximum (urban 50), Zona 30 inside the walls.
 			const int32 Design = int32(Prof->Get(TEXT("design_speed_max_kmh"))->AsNumber());
 			S.Speed = FMath::Min3(S.Speed, Design, S.bZtl ? 30 : 999);
+			// A road wider than its profile's carriageway (a 9 m street that became a hill track or a walled-core
+			// street) narrows to it. Only narrowing: its graded corridor and building set-backs were laid out wider.
+			auto Cm = [&Prof](const TCHAR* Key) { const FJsonPtr V = Prof->Get(Key); return V ? V->AsNumber() : 0.0; };
+			const double Carriageway = (2.0 * Cm(TEXT("lanes_per_dir")) * Cm(TEXT("lane_cm"))
+				+ 2.0 * (Cm(TEXT("shoulder_left_cm")) + Cm(TEXT("shoulder_right_cm")) + Cm(TEXT("emergency_lane_cm")))
+				+ Cm(TEXT("median_cm")) + Cm(TEXT("parking_cm"))) / 100.0;
+			if (S.Bridge.IsEmpty() && Carriageway > 0.0 && S.Width - S.Widening > Carriageway * 1.12) { S.Width = Carriageway + S.Widening; }   // curve widening stays
 		}
 		// Junction types, in first-appearance order of the nodes.
 		TArray<int32> Order;
