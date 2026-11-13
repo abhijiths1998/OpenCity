@@ -1,6 +1,8 @@
 #include "Dev/OCPerfCameraPath.h"
 
 #include "Camera/CameraComponent.h"
+#include "ContentStreaming.h"
+#include "HAL/IConsoleManager.h"
 #include "Components/SplineComponent.h"
 #include "DynamicRHI.h"
 #include "Engine/Engine.h"
@@ -176,6 +178,15 @@ void AOCPerfCameraPath::FinishLap()
 	LapSummaries.Add(Summary);
 	CurrentLap.Reset();
 	UE_LOG(LogOpenCity, Display, TEXT("OCPerf: lap %d %s"), LapSummaries.Num(), *Summary.ToString());
+	// Texture pool sizing (M4a): what the streamer wanted against the pool it has, and the GI path in use.
+	{
+		const IRenderAssetStreamingManager& Sm = IStreamingManager::Get().GetRenderAssetStreamingManager();
+		const IConsoleVariable* Gather = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Lumen.FinalGatherMethod"));
+		constexpr double MiB = 1024.0 * 1024.0;
+		UE_LOG(LogOpenCity, Display, TEXT("OCPerf: lap %d streaming pool %.0f MiB, required %.0f MiB, max ever %.0f MiB, over budget %.0f MiB; Lumen final gather %d"),
+			LapSummaries.Num(), Sm.GetPoolSize() / MiB, Sm.GetRequiredPoolSize() / MiB, Sm.GetMaxEverRequired() / MiB, Sm.GetMemoryOverBudget() / MiB,
+			Gather ? Gather->GetInt() : -1);
+	}
 
 	if (LapsWanted == 0)
 	{

@@ -187,14 +187,14 @@ All figures below are **Targets to be replaced by measurements** in M0 and M4.
 
 | Category | MiB |
 |---|---:|
-| Texture streaming pool (`r.Streaming.PoolSize=2000`) | 2,000 |
+| Texture streaming pool (`r.Streaming.PoolSize=800`; measured need 212, 2026-11-13) | 800 |
 | Render targets, TSR history | 650 |
 | Non-Nanite meshes, skeletal meshes, GPU Scene | 600 |
 | Nanite streaming pool | 400 |
 | Lumen scene | 350 |
 | Shadows (VSM physical pages) | 300 |
 | Niagara, decals, other | 150 |
-| Headroom | 550 |
+| Headroom (1,200 freed from the texture pool) | 1,750 |
 | **Total** | **5,000** |
 
 The desktop takes roughly 800 MiB of the remaining 1,144 (an estimate from the current per-process list). If `stat unit` reports over budget, cut the texture pool first. UE 5.8 shows VRAM used and budget directly in `stat unit` on discrete GPUs.
@@ -254,7 +254,7 @@ The brief requires presets that really change the output. Low must be a true fal
 | Clouds | None (painted sky layer in M4) | **None** (measured: clouds cost ~5.9 ms) | Volumetric, cheap settings | Volumetric, full |
 | Foliage density | 40% | 70% | 100% | 100% |
 | View distance scale | 0.6 | 0.8 | 1.0 | 1.2 |
-| Texture pool (MiB) | 1,200 | 2,000 | 2,400 | 2,800 |
+| Texture pool (MiB) | 600 | 800 | 1,000 | 1,200 |
 | Traffic and crowd | 50% | 100% | 120% | 150% |
 
 High and Ultra exist for stronger GPUs. This laptop is not expected to hold 60 FPS on them. Dynamic resolution is available on Vulkan in 5.8 and helps hold 60 on Medium. Whether DLSS works on Linux is unverified: **check in M4**, and TSR remains the baseline either way.
@@ -275,7 +275,7 @@ High and Ultra exist for stronger GPUs. This laptop is not expected to hold 60 F
 
 Low now keeps basic sun shadows: the engine's Low turns them off and streets read flat. With them, Low is render-thread bound in editor `-game` (~12 ms), so it lands near Medium's FPS here while using ~40% less GPU. High swings by 2x with heat alone: the render thread went from 10 to 35 ms over one back-to-back batch while the CPU sat at 78 C with its clock capped. Single-cvar A/B tests on High (`r.DistanceFieldShadowing 0`, `r.Lumen.TraceMeshSDFs 0`, `r.VolumetricFog 0`) stayed inside that noise, so High keeps the engine values (`Config/DefaultScalability.ini` has the numbers). For A/B tests use `OC_PERF_EXEC="r.Foo 0" scripts/perf_run.sh ...`: `r.*` cvars passed with `-dpcvars` crash this build at startup with a Vulkan out-of-memory.
 
-Lumen Lite is the basis of the Medium plan: it is reported at about 2x the speed of high-quality Lumen, using `sg.GlobalIlluminationQuality 1` and `sg.ReflectionQuality 1`. **It is Beta and untested here.** If it fails on Linux Vulkan, Medium falls back to reduced software Lumen at a lower render scale.
+Lumen Lite is the basis of the Medium plan: it is reported at about 2x the speed of high-quality Lumen, using `sg.GlobalIlluminationQuality 1` and `sg.ReflectionQuality 1`. **Tested 2026-11-13 on Linux Vulkan SM6 (M4a):** in 5.8 it is the irradiance-field final gather (`r.Lumen.FinalGatherMethod=0`, set by GI quality 1). On the L_Marevia perf lap, back to back: 75.6 and 67.3 fps (GPU 12.5 and 14.0 ms) against 55.8 fps (GPU 17.3 ms) with the screen-probe gather. Medium keeps it.
 
 ## 9. Testing
 
