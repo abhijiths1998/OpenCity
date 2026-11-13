@@ -5,6 +5,7 @@
 #include "OCTrafficSettings.generated.h"
 
 class UOCVehicleData;
+class AOCVehicle;
 
 /** Project Settings > Game > OpenCity Traffic (DefaultGame.ini). Population rings from ARCHITECTURE.md section 8. */
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "OpenCity Traffic"))
@@ -16,6 +17,18 @@ public:
 	/** Models traffic picks from (each with its own paint palette). */
 	UPROPERTY(Config, EditAnywhere, Category = "Traffic")
 	TArray<TSoftObjectPtr<UOCVehicleData>> Models;
+
+	/** Drivable cars a traffic car turns into when it is hit or taken (pooled at load, matched by model). */
+	UPROPERTY(Config, EditAnywhere, Category = "Traffic")
+	TArray<TSoftClassPtr<AOCVehicle>> PhysicsVehicles;
+
+	/** Physics cars pooled per model. */
+	UPROPERTY(Config, EditAnywhere, Category = "Traffic", meta = (ClampMin = "1"))
+	int32 PhysicsPerModel = 3;
+
+	/** A physics body hitting a traffic car faster than this (km/h) knocks it out of traffic. */
+	UPROPERTY(Config, EditAnywhere, Category = "Traffic", meta = (Units = "km/h"))
+	float KnockKmh = 8.f;
 
 	/** Cars on Medium; Low 50%, High 120%, Ultra 150% (ARCHITECTURE.md, "Traffic and crowd"). */
 	UPROPERTY(Config, EditAnywhere, Category = "Traffic", meta = (ClampMin = "0"))

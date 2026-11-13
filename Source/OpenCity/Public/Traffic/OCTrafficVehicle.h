@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Interaction/OCInteractable.h"
 #include "OCTrafficVehicle.generated.h"
 
 class UBoxComponent;
@@ -14,16 +15,23 @@ class UOCVehicleData;
  * the chassis bones' rest pose, painted through the same custom primitive data) and blocks like one.
  */
 UCLASS(NotBlueprintable)
-class OPENCITY_API AOCTrafficVehicle : public AActor
+class OPENCITY_API AOCTrafficVehicle : public AActor, public IOCInteractable
 {
 	GENERATED_BODY()
 
 public:
 	AOCTrafficVehicle();
 
+	// IOCInteractable: taking a traffic car turns it into its drivable twin, then enters that.
+	virtual bool CanInteract(const APawn* Instigator) const override;
+	virtual bool Interact(APawn* Instigator) override;
+	virtual FText GetInteractionText() const override;
+
 	/** Dress the car as Model with this paint (rebuilds the parts only when the model changes). */
 	void SetModel(UOCVehicleData* Model, const FLinearColor& Paint, float Dirt);
 	UOCVehicleData* GetModel() const { return Model; }
+	const FLinearColor& GetPaint() const { return Paint; }
+	float GetDirt() const { return DirtAmount; }
 
 	/** Out of the world (pooled) or in it. */
 	void SetActive(bool bActive);
@@ -39,6 +47,9 @@ public:
 	FVector GetCentreFromChassis() const { return CentreFromChassis; }
 
 private:
+	UFUNCTION()
+	void HandleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UBoxComponent> Box;
 
@@ -50,4 +61,6 @@ private:
 
 	bool bInWorld = true;
 	FVector CentreFromChassis = FVector(0.0, 0.0, 70.0);
+	FLinearColor Paint = FLinearColor::Gray;
+	float DirtAmount = 0.f;
 };

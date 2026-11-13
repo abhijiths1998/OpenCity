@@ -66,6 +66,14 @@ public:
 	/** Leave the vehicle now if a free exit spot exists (ignores speed). */
 	bool ForceExit();
 
+	/** Paint and dirt for this car (traffic hands its own over when it turns physical). */
+	void SetPaint(const FLinearColor& Color, float InDirt);
+
+	/** Pooled for traffic (M5): parked out of the world with physics off, or placed and moving. */
+	void PoolPark();
+	void PoolUnpark(const FTransform& Where, const FVector& Velocity);
+	bool IsPoolParked() const { return bParked; }
+
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
@@ -116,6 +124,7 @@ protected:
 	FLinearColor PaintColor = FLinearColor(-1.f, 0.f, 0.f, 1.f);  // R < 0: not picked yet
 	float Dirt = 0.f;
 	float DamageAmount01 = 0.f;
+	bool bParked = false;
 
 private:
 	void HandleThrottle(const FInputActionValue& Value);

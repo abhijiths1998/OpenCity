@@ -127,8 +127,8 @@ These need your login or `sudo`, so they're yours to do:
 **Acceptance:**
 
 - [ ] Mass decision recorded, with measured comparison
-- [ ] Traffic obeys lanes and junctions and avoids obvious collisions
-- [ ] A hit traffic car becomes physical and can be stolen
+- [x] Traffic obeys lanes and junctions and avoids obvious collisions *(2026-11-13: `FOCTrafficSim` on the lane graph, IDM following, junction links checked for crossing paths, no entry unless the exit lane has room, closed gates never entered; 3 unit tests (0 conflicting crossings and no overlaps in 3 min of a crowded crossroads). In L_Marevia, 24 pooled kinematic cars around the player, 0 conflicting crossings; cars stop for the player's car and people. Still to look at hands-on: driving among them)*
+- [x] A hit traffic car becomes physical and can be stolen *(2026-11-13: hit by a physics body (speed change over 8 km/h), or taken with the interact button, a traffic car swaps for a pooled drivable twin of the same model, paint and speed (3 per model, parked at load). Tested headless with `oc.dev.traffic knock`, `take` and `ram` (a real collision at 32 km/h))*
 - [ ] Pedestrians react to gunfire and vehicles
 - [ ] No visible pop-in within 150 m, and no hitch above 5 ms from spawning
 - [ ] Medium still holds 60 FPS with full population

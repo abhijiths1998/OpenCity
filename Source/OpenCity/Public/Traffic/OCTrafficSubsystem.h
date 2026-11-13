@@ -7,6 +7,7 @@
 #include "OCTrafficSubsystem.generated.h"
 
 class AOCTrafficVehicle;
+class AOCVehicle;
 class UOCVehicleData;
 class FOCLaneGraph;
 
@@ -34,6 +35,15 @@ public:
 	int32 GetBudget() const;
 	FString DescribeStats() const;
 
+	/**
+	 * Swap a traffic car for its pooled drivable twin (same model, paint and place; its traffic speed plus
+	 * Impulse, or standing still with bStop). The traffic car goes back to the pool. Null if no twin is free.
+	 */
+	AOCVehicle* Physicalize(AOCTrafficVehicle* Traffic, const FVector& Impulse, bool bStop);
+
+	/** A physics body hit this traffic car: physicalize it on the next tick. */
+	void RequestKnock(AOCTrafficVehicle* Traffic, const FVector& Impulse);
+
 	/** The actor showing a sim car (null if none). */
 	AOCTrafficVehicle* FindActor(int32 SimId) const;
 
@@ -56,4 +66,11 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UOCVehicleData>> Models;
+
+	/** Drivable twins, parked until a traffic car turns physical. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<AOCVehicle>> PhysPool;
+
+	TArray<TPair<TWeakObjectPtr<AOCTrafficVehicle>, FVector>> PendingKnocks;
+	int32 Knocked = 0, Taken = 0;
 };

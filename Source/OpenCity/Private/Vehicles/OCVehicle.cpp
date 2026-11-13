@@ -703,3 +703,37 @@ void AOCVehicle::HandleWrecked()
 }
 
 #undef LOCTEXT_NAMESPACE
+
+void AOCVehicle::SetPaint(const FLinearColor& Color, float InDirt)
+{
+	PaintColor = Color;
+	Dirt = InDirt;
+	ApplyPaint();
+}
+
+void AOCVehicle::PoolPark()
+{
+	bParked = true;
+	if (USkeletalMeshComponent* M = GetMesh())
+	{
+		M->SetSimulatePhysics(false);
+	}
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+	SetActorLocation(FVector(0.0, 0.0, -100000.0), false, nullptr, ETeleportType::ResetPhysics);
+}
+
+void AOCVehicle::PoolUnpark(const FTransform& Where, const FVector& Velocity)
+{
+	bParked = false;
+	SetActorLocationAndRotation(Where.GetLocation(), Where.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+	SetActorHiddenInGame(false);
+	SetActorEnableCollision(true);
+	if (USkeletalMeshComponent* M = GetMesh())
+	{
+		M->SetSimulatePhysics(true);
+		M->SetPhysicsLinearVelocity(Velocity);
+		M->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		M->WakeAllRigidBodies();
+	}
+}
