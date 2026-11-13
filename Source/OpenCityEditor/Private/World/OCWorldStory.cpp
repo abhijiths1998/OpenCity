@@ -224,7 +224,8 @@ namespace OCWorldBuild
 		void BuildLandmarks(const FJsonPtr& Layout)
 		{
 			// Parts replaced by the kit-built main volume (the layout generator's kit landmarks).
-			static const TSet<FString> KitReplaced = { TEXT("Main"), TEXT("Roof"), TEXT("Tower"), TEXT("Crown"), TEXT("Band"), TEXT("Neon"), TEXT("Door") };
+			static const TSet<FString> KitReplaced = { TEXT("Main"), TEXT("Roof"), TEXT("Tower"), TEXT("Crown"), TEXT("Band"), TEXT("Neon"), TEXT("Door"),
+			TEXT("Apse"), TEXT("Campanile"), TEXT("CampanileRoof") };   // the cathedral kit (BuildKitBuildings) builds these
 			const double Crest = Num(Layout->Get(TEXT("water")), TEXT("reservoir_level")) + 2.0;
 			TSet<FString> KitBuilt;
 			for (const FJsonPtr& B : Arr(Layout, TEXT("buildings")))

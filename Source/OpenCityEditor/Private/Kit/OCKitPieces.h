@@ -9,7 +9,7 @@
 namespace OCKit
 {
 	/** Material slots, in slot order (the paint slots are street fixtures; Paint = colour per instance). */
-	constexpr int32 NumMats = 16;
+	constexpr int32 NumMats = 18;
 	extern const TCHAR* const MatOrder[NumMats];
 
 	struct FUcx

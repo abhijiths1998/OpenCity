@@ -286,6 +286,18 @@
    "author": "Poly Haven",
    "license": "CC0",
    "notes": "Kit: Ligurian grey slate roofs, part of the old town (MI_Kit_Slate)"
+  },
+  {
+   "slug": "white_marble",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/white_marble",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: church marble cladding, white and tinted dark green (MI_Kit_Marble, MI_Kit_MarbleDark)"
   }
  ],
  "models": [

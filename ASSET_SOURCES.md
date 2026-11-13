@@ -23,6 +23,7 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `o
 | `red_brick_03` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/red_brick_03 | Poly Haven | CC0 | Kit: Le Fornaci and port brick warehouses (MI_Kit_Brick) | 2026-11-13 |
 | `rough_linen` (BC, N, ORM, 1K) | Poly Haven | https://polyhaven.com/a/rough_linen | Poly Haven | CC0 | Kit: shop awnings and laundry, tinted per building (MI_Kit_Fabric) | 2026-11-13 |
 | `roof_slates_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/roof_slates_02 | Poly Haven | CC0 | Kit: Ligurian grey slate roofs, part of the old town (MI_Kit_Slate) | 2026-11-13 |
+| `white_marble` (BC, ORM, 2K; polished, no normal map) | Poly Haven | https://polyhaven.com/a/white_marble | Poly Haven | CC0 | Kit: church marble cladding, white and tinted dark green (MI_Kit_Marble, MI_Kit_MarbleDark) | 2026-11-14 |
 | `old_sandstone_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/old_sandstone_02 | Poly Haven | CC0 | Kit: stone trims, sills, cornices, quoins, plinths (MI_Kit_Trim) | 2026-11-09 |
 | `wood_peeling_paint_weathered` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/wood_peeling_paint_weathered | Poly Haven | CC0 | Kit: shutters, doors, frames, tinted per building (MI_Kit_Wood) | 2026-11-09 |
 | `metal_plate` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/metal_plate | Poly Haven | CC0 | Grey-box metal on landmarks (MI_Box_Metal) | 2026-11-09 |

@@ -12,7 +12,7 @@ namespace OCKit
 {
 	const TCHAR* const MatOrder[NumMats] = { TEXT("Wall"), TEXT("Trim"), TEXT("Wood"), TEXT("Glass"), TEXT("Metal"), TEXT("Roof"), TEXT("Concrete"),
 		TEXT("PaintRed"), TEXT("PaintWhite"), TEXT("PaintBlack"), TEXT("PaintBlue"), TEXT("Paint"),
-		TEXT("Brick"), TEXT("Corrugated"), TEXT("Fabric"), TEXT("Slate") };
+		TEXT("Brick"), TEXT("Corrugated"), TEXT("Fabric"), TEXT("Slate"), TEXT("Marble"), TEXT("MarbleDark") };
 
 	void FPiece::Add(FSoup S, const TCHAR* Mat)
 	{
@@ -2715,6 +2715,341 @@ namespace OCKit
 			P.Box(-0.38, 0.38, -0.38, 0.38, 0, 2.85);
 			return P;
 		}
+
+		// ==== Tuscan landmarks and the inhabited bridge (reference look: domed cathedral, arcaded round
+		// campanile, banded octagonal baptistery, shops on a bridge). Original designs, not replicas. ====
+
+		/** Closed solid lofted through rings of equal point count (each ring a convex polygon); caps both ends. */
+		FSoup Loft(const TArray<TArray<V3>>& Rings, bool bCapBottom = true, bool bCapTop = true)
+		{
+			FSoup S;
+			TArray<TArray<int32>> Idx;
+			for (const TArray<V3>& R : Rings)
+			{
+				TArray<int32>& I = Idx.AddDefaulted_GetRef();
+				for (const V3& P : R) { I.Add(S.Add(P)); }
+			}
+			const int32 N = Rings[0].Num();
+			for (int32 k = 0; k + 1 < Idx.Num(); ++k)
+			{
+				for (int32 i = 0; i < N; ++i)
+				{
+					S.Face(0, { Idx[k][i], Idx[k][(i + 1) % N], Idx[k + 1][(i + 1) % N], Idx[k + 1][i] });
+				}
+			}
+			if (bCapBottom) { S.Face(0, Idx[0]); }
+			if (bCapTop) { S.Face(0, Idx.Last()); }
+			S.NextShell = 1;
+			Weld(S, 1e-6);
+			OrientOutward(S);
+			return S;
+		}
+
+		TArray<V3> Ring(int32 Sides, double R, double Z, double Phase = 0.0)
+		{
+			TArray<V3> Out;
+			for (int32 i = 0; i < Sides; ++i)
+			{
+				const double A = Phase + 2 * UE_PI * i / Sides;
+				Out.Add(V3(R * FMath::Cos(A), R * FMath::Sin(A), Z));
+			}
+			return Out;
+		}
+
+		/** A flat panel facing outward from the Z axis at angle A, centred at radius R (for drum and tower details). */
+		void RadialBox(FSoup& S, double A, double R, double HalfW, double Depth, double Z0, double Z1)
+		{
+			FSoup B = Box(-HalfW, HalfW, -Depth, 0.0, Z0, Z1);   // faces -Y
+			Transform(B, FM4::Rotation(A + UE_PI / 2, AZ) * FM4::Translation(V3(0, -R, 0)));
+			Append(S, B);
+		}
+
+		/** Dome on an octagonal drum (unit: drum radius 1 m, scaled uniformly): drum with oculi and marble
+		 *  frames, a pointed eight-sided dome in tiles with white marble ribs, a lantern. Pivot at the drum foot. */
+		FPiece MakeDome(int32 Which = -1)   // -1 all, 0 drum, 1 shell and ribs, 2 lantern
+		{
+			FPiece P;
+			P.Name = Which < 0 ? TEXT("LM_Dome") : (Which == 0 ? TEXT("LM_DomeDrum") : (Which == 1 ? TEXT("LM_DomeShell") : TEXT("LM_DomeLantern")));
+			P.Kind = TEXT("fixture");
+			const double Ph = UE_PI / 8, Hd = 0.45;   // drum height
+			P.Add(Loft({ Ring(8, 1.0, 0.0, Ph), Ring(8, 1.0, Hd, Ph) }), TEXT("Marble"));
+			FSoup Dark;
+			for (int32 i = 0; i < 8; ++i)
+			{
+				const double A = 2 * UE_PI * i / 8;
+				const double Rf = FMath::Cos(UE_PI / 8);   // face distance
+				RadialBox(Dark, A, Rf, 0.36, 0.015, 0.03, 0.05);
+				RadialBox(Dark, A, Rf, 0.36, 0.015, Hd - 0.06, Hd - 0.04);
+				FSoup O;   // oculus: a dark ring with a glazed centre
+				ArcBlocks(O, 0.0, Hd * 0.52, 0.09, 0.13, -0.02, 0.0, 0.0, 2 * UE_PI, 16);
+				Transform(O, FM4::Rotation(A + UE_PI / 2, AZ) * FM4::Translation(V3(0, -Rf, 0)));
+				Append(Dark, O);
+				RadialBox(Dark, A + UE_PI / 8, 1.0, 0.035, 0.03, 0.0, Hd);   // corner strips
+			}
+			P.Add(MoveTemp(Dark), TEXT("MarbleDark"));
+			P.Add(Loft({ Ring(8, 1.06, Hd, Ph), Ring(8, 1.06, Hd + 0.05, Ph) }), TEXT("Marble"));   // cornice
+			// Pointed dome: radius falls from 1.0 to the lantern ring (0.18) while it rises 0.95.
+			TArray<TArray<V3>> Rings;
+			const double Base = Hd + 0.05, Rise = 0.95, Rl = 0.18;
+			for (int32 k = 0; k <= 10; ++k)
+			{
+				const double Tk = double(k) / 10.0, A = Tk * UE_PI / 2;
+				const double R = Rl + (1.0 - Rl) * FMath::Pow(FMath::Max(0.0, FMath::Cos(A)), 0.85);   // cos(pi/2) rounds below 0: Pow gave NaN
+				Rings.Add(Ring(8, R, Base + Rise * FMath::Pow(FMath::Max(0.0, FMath::Sin(A)), 0.9), Ph));
+			}
+			P.Add(Loft(Rings), TEXT("Roof"));
+			// White ribs on the eight edges.
+			for (int32 i = 0; i < 8; ++i)
+			{
+				const double A = Ph + 2 * UE_PI * i / 8;
+				const V3 Dir(FMath::Cos(A), FMath::Sin(A), 0.0), Tan(-FMath::Sin(A), FMath::Cos(A), 0.0);
+				TArray<TArray<V3>> RibRings;
+				for (const TArray<V3>& R : Rings)
+				{
+					const V3 C = R[i];
+					RibRings.Add({ C - Tan * 0.035 - Dir * 0.01, C + Tan * 0.035 - Dir * 0.01, C + Tan * 0.025 + Dir * 0.04, C - Tan * 0.025 + Dir * 0.04 });
+				}
+				P.Add(Loft(RibRings), TEXT("Marble"));
+			}
+			// Lantern: eight posts round a core, a cone and a ball.
+			const double Lz = Base + Rise;
+			P.Add(Loft({ Ring(8, 0.12, Lz, Ph), Ring(8, 0.12, Lz + 0.22, Ph) }), TEXT("MarbleDark"));
+			FSoup Posts;
+			for (int32 i = 0; i < 8; ++i) { const double A = Ph + 2 * UE_PI * i / 8; AddBox(Posts, 0.17 * FMath::Cos(A) - 0.015, 0.17 * FMath::Cos(A) + 0.015, 0.17 * FMath::Sin(A) - 0.015, 0.17 * FMath::Sin(A) + 0.015, Lz, Lz + 0.22); }
+			P.Add(MoveTemp(Posts), TEXT("Marble"));
+			P.Add(Loft({ Ring(8, 0.2, Lz + 0.22, Ph), Ring(8, 0.02, Lz + 0.42, Ph) }), TEXT("Marble"));
+			FSoup Ball;
+			AddCyl(Ball, V3(0, 0, Lz + 0.42), 0.03, 0.06, 10);
+			AddCyl(Ball, V3(0, 0, Lz + 0.48), 0.004, 0.06, 6);
+			P.Add(MoveTemp(Ball), TEXT("Metal"));
+			if (Which >= 0)
+			{
+				// Parts in order: drum, dark trim, cornice (0-2); shell and eight ribs (3-11); lantern (12-15).
+				const int32 From = Which == 0 ? 0 : (Which == 1 ? 3 : 12), To = Which == 0 ? 2 : (Which == 1 ? 11 : 15);
+				TArray<TPair<FSoup, int32>> Keep;
+				for (int32 i = From; i <= To && i < P.Parts.Num(); ++i) { Keep.Add(MoveTemp(P.Parts[i])); }
+				P.Parts = MoveTemp(Keep);
+			}
+			P.Box(-1, 1, -1, 1, 0, Lz + 0.5);
+			return P;
+		}
+
+		/** Round arcaded campanile, 30 m: a blind-arcaded base, six open galleries of slender columns, a
+		 *  narrower belfry. Pivot at the foot; the assembler gives it a small lean. */
+		FPiece MakeRoundTower()
+		{
+			FPiece P;
+			P.Name = TEXT("LM_TowerRound");
+			P.Kind = TEXT("fixture");
+			const double R = 3.6, Base = 6.0, Gal = 3.4, Levels = 6;
+			P.Add(Loft({ Ring(24, R, -2.0), Ring(24, R, Base + Gal * Levels) }), TEXT("Marble"));   // core
+			FSoup Cols, Rings2, Dark;
+			for (int32 i = 0; i < 16; ++i)   // base: engaged half columns and blind arches
+			{
+				const double A = 2 * UE_PI * i / 16;
+				AddCyl(Cols, V3((R + 0.05) * FMath::Cos(A), (R + 0.05) * FMath::Sin(A), 0.0), 0.22, Base - 0.8, 10);
+				RadialBox(Dark, A + UE_PI / 16, R, 0.45, 0.02, 1.0, Base - 1.2);
+			}
+			for (int32 L = 0; L < Levels; ++L)
+			{
+				const double Z0 = Base + Gal * L;
+				AddCyl(Rings2, V3(0, 0, Z0), R + 0.75, 0.30, 24);           // gallery floor and cornice
+				for (int32 i = 0; i < 24; ++i)
+				{
+					const double A = 2 * UE_PI * i / 24;
+					AddCyl(Cols, V3((R + 0.6) * FMath::Cos(A), (R + 0.6) * FMath::Sin(A), Z0 + 0.3), 0.11, Gal - 0.75, 8);
+					RadialBox(Rings2, A + UE_PI / 24, R + 0.72, 0.42, 0.25, Z0 + Gal - 0.45, Z0 + Gal);   // arch band
+					RadialBox(Dark, A + UE_PI / 24, R, 0.30, 0.01, Z0 + 0.9, Z0 + Gal - 0.6);              // doors in the core
+				}
+			}
+			const double Top = Base + Gal * Levels;
+			AddCyl(Rings2, V3(0, 0, Top), R + 0.8, 0.35, 24);
+			P.Add(MoveTemp(Cols), TEXT("Marble"));
+			P.Add(MoveTemp(Rings2), TEXT("Marble"));
+			P.Add(MoveTemp(Dark), TEXT("MarbleDark"));
+			// Belfry: a narrower drum with arched openings and a low tiled cone.
+			P.Add(Loft({ Ring(16, R * 0.7, Top + 0.35), Ring(16, R * 0.7, Top + 3.6) }), TEXT("Marble"));
+			FSoup Bel;
+			for (int32 i = 0; i < 8; ++i) { RadialBox(Bel, 2 * UE_PI * i / 8, R * 0.7, 0.45, 0.02, Top + 1.0, Top + 3.0); }
+			P.Add(MoveTemp(Bel), TEXT("MarbleDark"));
+			P.Add(Loft({ Ring(16, R * 0.75, Top + 3.6), Ring(16, 0.2, Top + 5.0) }), TEXT("Roof"));
+			P.Box(-R - 0.8, R + 0.8, -R - 0.8, R + 0.8, 0, Top + 5.0);
+			return P;
+		}
+
+		/** Octagonal baptistery (circumradius 4 m): white marble with dark corner pilasters, bands and panelled
+		 *  bays, blind arches on the upper order, an attic, a white pyramid roof and a lantern; one portal. */
+		FPiece MakeBaptistery()
+		{
+			FPiece P;
+			P.Name = TEXT("LM_Baptistery");
+			P.Kind = TEXT("fixture");
+			const double R = 4.0, Ph = UE_PI / 8, H1 = 5.0, H2 = 9.5, Ha = 11.0;
+			P.Add(Loft({ Ring(8, R, -2.0, Ph), Ring(8, R, Ha, Ph) }), TEXT("Marble"));
+			const double Rf = R * FMath::Cos(UE_PI / 8), Fw = R * FMath::Sin(UE_PI / 8);   // face distance, half width
+			FSoup Dark;
+			for (int32 i = 0; i < 8; ++i)
+			{
+				const double A = 2 * UE_PI * i / 8;
+				RadialBox(Dark, A + UE_PI / 8, R, 0.22, 0.06, 0.0, Ha);              // banded corner pilasters
+				for (const double Z : { 0.0, H1 - 0.15, H2 - 0.15, Ha - 0.2 }) { RadialBox(Dark, A, Rf, Fw, 0.03, Z, Z + 0.15); }   // bands
+				// Lower order: a dark-framed panel (the portal on face 0); upper order: blind arch with a window.
+				if (i == 0)
+				{
+					RadialBox(Dark, A, Rf, 0.9, 0.08, 0.0, 3.6);
+				}
+				else
+				{
+					for (const double X : { -Fw + 0.4, Fw - 0.5 }) { FSoup B = Box(X, X + 0.1, -0.03, 0.0, 0.6, H1 - 0.6); Transform(B, FM4::Rotation(A + UE_PI / 2, AZ) * FM4::Translation(V3(0, -Rf, 0))); Append(Dark, B); }
+					RadialBox(Dark, A, Rf, Fw - 0.4, 0.03, 0.6, 0.7);
+					RadialBox(Dark, A, Rf, Fw - 0.4, 0.03, H1 - 0.7, H1 - 0.6);
+				}
+				FSoup Arch;
+				ArcBlocks(Arch, 0.0, H2 - 1.6, Fw - 0.65, Fw - 0.5, -0.03, 0.0, 0.0, UE_PI, 8);
+				Append(Arch, Box(-Fw + 0.5, -Fw + 0.65, -0.03, 0.0, H1 + 0.3, H2 - 1.6));
+				Append(Arch, Box(Fw - 0.65, Fw - 0.5, -0.03, 0.0, H1 + 0.3, H2 - 1.6));
+				Append(Arch, Box(-0.35, 0.35, -0.02, 0.0, H1 + 1.2, H2 - 2.0));   // window
+				Transform(Arch, FM4::Rotation(A + UE_PI / 2, AZ) * FM4::Translation(V3(0, -Rf, 0)));
+				Append(Dark, Arch);
+			}
+			P.Add(MoveTemp(Dark), TEXT("MarbleDark"));
+			FSoup Door = Box(-0.75, 0.75, -0.1, 0.0, 0.0, 3.4);   // bronze-dark doors on face 0
+			Transform(Door, FM4::Rotation(UE_PI / 2, AZ) * FM4::Translation(V3(0, -Rf, 0)));
+			P.Add(MoveTemp(Door), TEXT("Wood"));
+			P.Add(Loft({ Ring(8, R + 0.25, Ha, Ph), Ring(8, R + 0.25, Ha + 0.3, Ph) }), TEXT("Marble"));    // cornice
+			P.Add(Loft({ Ring(8, R + 0.1, Ha + 0.3, Ph), Ring(8, 0.6, Ha + 3.2, Ph) }), TEXT("Marble"));  // pyramid roof
+			P.Add(Loft({ Ring(8, 0.55, Ha + 3.2, Ph), Ring(8, 0.55, Ha + 4.0, Ph) }), TEXT("MarbleDark"));
+			P.Add(Loft({ Ring(8, 0.65, Ha + 4.0, Ph), Ring(8, 0.05, Ha + 4.9, Ph) }), TEXT("Marble"));
+			P.Box(-R, R, -R, R, 0, Ha + 4.9);
+			return P;
+		}
+
+		/** Apse: a half-round end (unit radius 1, height 1) in banded marble with a half-cone roof. Pivot at the
+		 *  centre of its chord, the half circle bulging toward -Y. */
+		FPiece MakeApse()
+		{
+			FPiece P;
+			P.Name = TEXT("LM_Apse");
+			P.Kind = TEXT("fixture");
+			TArray<V3> Low, High, RoofLow, Apex;
+			for (int32 k = 0; k <= 12; ++k)
+			{
+				const double A = UE_PI + UE_PI * k / 12;   // from -X round through -Y to +X
+				Low.Add(V3(FMath::Cos(A), FMath::Sin(A), -0.3));
+				High.Add(V3(FMath::Cos(A), FMath::Sin(A), 1.0));
+				RoofLow.Add(V3(1.06 * FMath::Cos(A), 1.06 * FMath::Sin(A), 1.0));
+				Apex.Add(V3(0.08 * FMath::Cos(A), 0.08 * FMath::Sin(A), 1.35));
+			}
+			P.Add(Loft({ Low, High }), TEXT("Marble"));
+			FSoup Dark;
+			for (int32 k = 0; k < 12; ++k)
+			{
+				const double A = UE_PI + UE_PI * (k + 0.5) / 12;
+				RadialBox(Dark, A - UE_PI / 2 + UE_PI, 1.0, 0.03, 0.02, 0.0, 1.0);   // pilaster strips
+			}
+			for (const double Z : { 0.3, 0.6, 0.95 })
+			{
+				TArray<V3> B0, B1;
+				for (int32 k = 0; k <= 12; ++k) { const double A = UE_PI + UE_PI * k / 12; B0.Add(V3(1.01 * FMath::Cos(A), 1.01 * FMath::Sin(A), Z)); B1.Add(V3(1.01 * FMath::Cos(A), 1.01 * FMath::Sin(A), Z + 0.03)); }
+				Append(Dark, Loft({ B0, B1 }));
+			}
+			P.Add(MoveTemp(Dark), TEXT("MarbleDark"));
+			P.Add(Loft({ RoofLow, Apex }), TEXT("Roof"));
+			P.Box(-1, 1, -1, 0, 0, 1.35);
+			return P;
+		}
+
+		/** Marble cladding for the church: wall with a dark-framed inlay panel, arched window in a dark frame,
+		 *  a blind arcade register of small columns (upper front), and the portal in marble. */
+		FPiece MakeMarble(double W, int32 Kind)   // 0 wall, 1 window, 2 arcade
+		{
+			FPiece P;
+			P.Name = FString(Kind == 0 ? TEXT("MarbleWall_") : (Kind == 1 ? TEXT("MarbleWindow_") : TEXT("MarbleArcade_"))) + Cm(W);
+			FSoup Dark;
+			AddBox(Dark, 0.0, W, -0.02, 0.0, 0.0, 0.14);         // base band
+			AddBox(Dark, 0.0, W, -0.02, 0.0, H - 0.14, H);       // top band
+			TArray<TPair<FCut, double>> Arches;
+			if (Kind == 0)
+			{
+				for (const V2 Pan : (W < 3 ? TArray<V2>{ V2(0.3, W - 0.3) } : TArray<V2>{ V2(0.3, 1.85), V2(2.15, 3.7) }))
+				{
+					AddBox(Dark, Pan.X, Pan.Y, -0.015, 0.0, 0.5, 0.6);
+					AddBox(Dark, Pan.X, Pan.Y, -0.015, 0.0, H - 0.6, H - 0.5);
+					AddBox(Dark, Pan.X, Pan.X + 0.1, -0.015, 0.0, 0.6, H - 0.6);
+					AddBox(Dark, Pan.Y - 0.1, Pan.Y, -0.015, 0.0, 0.6, H - 0.6);
+				}
+			}
+			else if (Kind == 1)
+			{
+				for (const double C : (W < 3 ? TArray<double>{ W / 2 } : TArray<double>{ 1.0, 3.0 }))
+				{
+					const double Ow = 0.8, Zb = 0.7, Zs = 2.3;
+					Arches.Add(ArchOf({ C - Ow / 2, C + Ow / 2, Zb, Zs + Ow / 2, Recess }, Zs));
+					ArcBlocks(Dark, C, Zs, Ow / 2, Ow / 2 + 0.14, -0.03, 0.0, 0.0, UE_PI, 10);
+					AddBox(Dark, C - Ow / 2 - 0.14, C - Ow / 2, -0.03, 0.0, Zb, Zs);
+					AddBox(Dark, C + Ow / 2, C + Ow / 2 + 0.14, -0.03, 0.0, Zb, Zs);
+					AddBox(Dark, C - Ow / 2 - 0.2, C + Ow / 2 + 0.2, -0.05, 0.0, Zb - 0.08, Zb);
+					FSoup G;
+					AddQuadY(G, C - Ow / 2, C + Ow / 2, GlassY, Zb, Zs);
+					P.Add(MoveTemp(G), TEXT("Glass"));
+					ArchGlass(P, C, Zs, Ow / 2, GlassY);
+				}
+			}
+			else
+			{
+				// Blind arcade: slender columns every 0.8 m carrying round arches, a shadowed back.
+				FSoup Cols;
+				for (double X = 0.4; X < W; X += 0.8)
+				{
+					AddCyl(Cols, V3(X, -0.12, 0.25), 0.07, 1.95, 8);
+					AddBox(Cols, X - 0.1, X + 0.1, -0.22, -0.02, 2.2, 2.3);   // capital
+				}
+				for (double X = 0.4; X + 0.8 <= W + 0.01; X += 0.8) { ArcBlocks(Cols, X + 0.4, 2.3, 0.33, 0.43, -0.22, 0.0, 0.0, UE_PI, 8); }
+				AddBox(Cols, 0.0, W, -0.25, 0.0, 0.15, 0.25);   // gallery floor
+				P.Add(MoveTemp(Cols), TEXT("Marble"));
+				AddBox(Dark, 0.0, W, -0.005, 0.0, 0.25, 2.3);    // shadowed back
+			}
+			P.Add(MoveTemp(Dark), TEXT("MarbleDark"));
+			WallSlabArch(P, W, {}, Arches, H, TEXT("Marble"));
+			P.Add(Box(0.0, W, -0.02, T, -3.0, 0.0), TEXT("Marble"));   // footing for slopes
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Shop house for an inhabited bridge: 4 m along the deck, 3 m deep over the water on timber corbels,
+		 *  two storeys; the shop opens on the deck (face at Y = 0 looking -Y), small windows on the river. */
+		FPiece MakeBridgeShop()
+		{
+			FPiece P;
+			P.Name = TEXT("BridgeShop_400");
+			P.Kind = TEXT("fixture");
+			const double W = 4.0, Dp = 3.0, Ht = 5.6;
+			FSoup Body = Box(0.0, W, 0.0, Dp, 0.0, Ht);
+			FSoup Cut;
+			AddBox(Cut, 0.4, W - 0.4, -0.1, 0.25, 0.0, 2.5);                 // shop opening on the deck
+			AddBox(Cut, 1.4, 2.6, Dp - 0.25, Dp + 0.1, 3.4, 4.6);            // river window
+			AddBox(Cut, 1.4, 2.6, -0.1, 0.25, 3.4, 4.6);                     // deck-side upper window
+			Body = BoolDiff(Body, Cut);
+			P.Add(MoveTemp(Body), TEXT("Wall"));
+			RollerCurtain(P, 0.42, W - 0.42, 1.6, 2.5, 0.20);                // shutter half up
+			FSoup G;
+			AddQuadY(G, 0.4, W - 0.4, 0.22, 0.0, 1.6);
+			AddQuadY(G, 1.4, 2.6, 0.20, 3.4, 4.6);
+			AddQuadY(G, 1.4, 2.6, Dp - 0.2, 3.4, 4.6);
+			P.Add(MoveTemp(G), TEXT("Glass"));
+			FSoup Wd;   // shutters on the upper windows, corbels and a beam under the overhang
+			for (const double Y : { -0.03, Dp })
+			{
+				AddBox(Wd, 1.0, 1.38, Y, Y + 0.03, 3.4, 4.6);
+				AddBox(Wd, 2.62, 3.0, Y, Y + 0.03, 3.4, 4.6);
+			}
+			for (const double X : { 0.3, 2.0, 3.7 }) { Append(Wd, PrismX({ V2(0.4, 0.0), V2(Dp, 0.0), V2(Dp, -0.25), V2(0.6, -1.6), V2(0.4, -1.6) }, X - 0.1, X + 0.1)); }
+			AddBox(Wd, 0.0, W, 0.3, Dp, -0.25, 0.0);
+			P.Add(MoveTemp(Wd), TEXT("Wood"));
+			P.Add(PrismX({ V2(-0.4, Ht), V2(Dp + 0.4, Ht), V2(Dp + 0.4, Ht + 0.1), V2(-0.4, Ht + 0.7) }, -0.2, W + 0.2), TEXT("Roof"));   // lean roof to the river
+			P.Box(0, W, 0, Dp, 0, Ht + 0.7);
+			return P;
+		}
 	}
 
 	TArray<TFunction<FPiece()>> Builders()
@@ -2756,7 +3091,11 @@ namespace OCKit
 			[] { return MakeSillBand(2.0); }, [] { return MakeSillBand(4.0); }, [] { return MakeRustic(2.0, false); }, [] { return MakeRustic(4.0, false); }, [] { return MakeRustic(4.0, true); },
 			[] { return MakeBalconyBracket(false); }, [] { return MakeBalconyBracket(true); }, MakeEdicola, MakeShopArch, [] { return MakeScarpa(2.0); }, [] { return MakeScarpa(4.0); },
 			MakeArcade, MakeLoggia, MakeArchetto, MakeSottoportico, MakeExtStair, MakeRoofMono, MakeRoofVault, MakeChimneyPot, MakeDormer, MakeAerial,
-			MakeAltana, MakePergola, MakeBellGable, MakeGardenWall, MakeGatePier };
+			MakeAltana, MakePergola, MakeBellGable, MakeGardenWall, MakeGatePier,
+			// Tuscan landmarks and the inhabited bridge.
+			[] { return MakeDome(); }, MakeRoundTower, MakeBaptistery, MakeApse, MakeBridgeShop,
+			[] { return MakeMarble(2.0, 0); }, [] { return MakeMarble(4.0, 0); }, [] { return MakeMarble(2.0, 1); }, [] { return MakeMarble(4.0, 1); }, [] { return MakeMarble(4.0, 2); },
+			[] { FPiece P = MakeChurchPortal(); P.Name = TEXT("MarblePortal_400"); for (TPair<FSoup, int32>& Part : P.Parts) { if (Part.Value == 0 || Part.Value == 1) { Part.Value = 16; } } return P; } };
 		for (const TCHAR* Family : { TEXT("WindowTall"), TEXT("WindowArch"), TEXT("WindowSmall"), TEXT("WindowClosed"), TEXT("WindowHalf"), TEXT("WindowBlind") })
 		{
 			for (const double W : { 2.0, 4.0 }) { Out.Add([Family, W] { return MakeWindowFamily(Family, W); }); }

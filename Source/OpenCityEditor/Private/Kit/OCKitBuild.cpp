@@ -247,6 +247,13 @@ namespace
 		Mesh->CommitMeshDescription(0);
 		Mesh->SetStaticMaterials(Materials);
 		Mesh->GetNaniteSettings().bEnabled = true;
+		if (P.Name.StartsWith(TEXT("LM_")))
+		{
+			// Landmarks: keep the whole mesh as the fallback (the automatic one dropped LM_Dome's shell, leaving
+			// lantern-sized bounds).
+			Mesh->GetNaniteSettings().FallbackTarget = ENaniteFallbackTarget::PercentTriangles;
+			Mesh->GetNaniteSettings().FallbackPercentTriangles = 1.0f;
+		}
 		// collision: the KIT_SPEC UCX shapes as simple collision (cm)
 		Mesh->CreateBodySetup();
 		UBodySetup* Body = Mesh->GetBodySetup();
@@ -297,6 +304,28 @@ namespace OCArt
 			int32 Tris = 0;
 			if (!WritePiece(P, Dest, Tris)) { ++Failed; continue; }
 			UStaticMesh* Mesh = OCEd::Load<UStaticMesh>(Path);
+			{
+				// Bounds drive culling: a piece whose saved bounds miss part of its geometry gets them extended; NaN
+				// vertices (a bad profile, as LM_Dome once had) are an error.
+				FBox3d Geo(ForceInit);
+				bool bNaN = false;
+				for (const TPair<FSoup, int32>& Part : P.Parts) { for (const FVector3d& V : Part.Key.V) { bNaN |= V.ContainsNaN(); if (!V.ContainsNaN()) { Geo += V * 100.0; } } }
+				if (bNaN)
+				{
+					UE_LOG(LogOpenCity, Error, TEXT("kit: %s has NaN vertices"), *P.Name);
+					++Failed;
+				}
+				const FBox Built = Mesh->GetBounds().GetBox();
+				if (Geo.IsValid && !(Built.IsInsideOrOn(FVector(Geo.Min) + FVector(1.0)) && Built.IsInsideOrOn(FVector(Geo.Max) - FVector(1.0))))
+				{
+					Mesh->Modify();
+					Mesh->SetNegativeBoundsExtension(FVector::Max(FVector::ZeroVector, Built.Min - FVector(Geo.Min)));
+					Mesh->SetPositiveBoundsExtension(FVector::Max(FVector::ZeroVector, FVector(Geo.Max) - Built.Max));
+					Mesh->CalculateExtendedBounds();
+					OCEd::Save(Mesh);
+					OCEd::Log(KitTag, FString::Printf(TEXT("%s: bounds extended to the geometry"), *P.Name));
+				}
+			}
 			const FVector E = Mesh->GetBounds().BoxExtent, O = Mesh->GetBounds().Origin;
 			const FString Budget = Tris > (P.Kind == TEXT("facade") ? 3300 : 2200) ? TEXT("  OVER BUDGET") : TEXT("");
 			OCEd::Log(KitTag, FString::Printf(TEXT("%s: %d tris, X %.1f..%.1f Y %.1f..%.1f Z %.1f..%.1f cm, slots %d, winding %.2f (was %.2f), open edges %d%s"), *P.Name, Tris,

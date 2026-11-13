@@ -225,6 +225,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Detail", meta = (ClampMin = "0"))
 	float Dressing = 1.f;
 
+	/** Defaults generation this asset was filled with; an older one is refilled by the world build. */
+	UPROPERTY(VisibleAnywhere, Category = "Building")
+	int32 Version = 0;
+
+	static constexpr int32 CurrentVersion = 2;
+
 	const FOCBuildingArchetype* Find(FName Name) const;
 
 	/** The starting set (BUILDINGS_PLAN.md section 3.2). */

@@ -36,7 +36,7 @@ UInstancedStaticMeshComponent* AOCKitBuildingChunk::GetOrAddPiece(UStaticMesh* M
 	// stretched per instance (roofs, gable ends, pediments, brace arches, bridge rooms) are as big as the
 	// building: never cull them by their unscaled size (every roof used to vanish beyond 120 m).
 	const FString MeshName = Mesh->GetName();
-	static const TCHAR* Stretched[] = { TEXT("SM_Kit_Roof"), TEXT("SM_Kit_GableEnd"), TEXT("SM_Kit_Pediment"), TEXT("SM_Kit_Archetto"), TEXT("SM_Kit_Sottoportico") };
+	static const TCHAR* Stretched[] = { TEXT("SM_Kit_Roof"), TEXT("SM_Kit_GableEnd"), TEXT("SM_Kit_Pediment"), TEXT("SM_Kit_Archetto"), TEXT("SM_Kit_Sottoportico"), TEXT("SM_Kit_LM_") };
 	bool bStretched = false;
 	for (const TCHAR* Prefix : Stretched) { bStretched |= MeshName.StartsWith(Prefix); }
 	const double Size = Mesh->GetBounds().BoxExtent.GetMax() * 2.0;

@@ -271,6 +271,14 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		Styles->FillDefaults();
 		OCEd::Save(Styles);
 	}
+	else if (Styles->Version < UOCBuildingStyleSet::CurrentVersion)
+	{
+		// An asset from an older defaults generation: refill it (tuning made on it is replaced; logged).
+		UE_LOG(LogOpenCity, Warning, TEXT("BuildKitBuildings: %s is defaults version %d, refilling with version %d"), StylesAsset, Styles->Version, UOCBuildingStyleSet::CurrentVersion);
+		Styles->Modify();
+		Styles->FillDefaults();
+		OCEd::Save(Styles);
+	}
 
 	// Every kit mesh in the folder, by piece name (SM_Kit_<Name>).
 	FPieces Pieces;
@@ -475,6 +483,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		auto Stream = [BSeed](uint32 Purpose, uint32 Part = 0) { return FRandomStream(int32(OCSubSeed(BSeed, Part, Purpose) & 0x7fffffff)); };
 		FRandomStream Rr = Stream(OCSeedPurpose::Roof), Rp = Stream(OCSeedPurpose::Props), Rd = Stream(OCSeedPurpose::LitWindows);
 		const bool bPlaster = Arch.Material == TEXT("Plaster"), bBrick = Arch.Material == TEXT("Brick"), bShed = Arch.Material == TEXT("Shed");
+		const bool bMarble = Arch.Material == TEXT("Marble");   // the cathedral: marble cladding, dark inlay bands
 
 		// Who stands against this building (for colour and window contrast): probe each facade's middle.
 		TSet<int32> Touching;
@@ -603,10 +612,11 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		const bool bSeafront = Arch.Palette == 1;
 		auto Sized = [&](const FString& Family, bool bFour) { return Family + (bFour ? TEXT("_400") : TEXT("_200")); };
 		// The plain wall of this building's material.
-		auto Blank = [&](bool bFour) { return Sized(bBrick ? TEXT("Brick_Wall") : (bShed ? TEXT("Shed_Wall") : TEXT("Wall")), bFour); };
+		auto Blank = [&](bool bFour) { return Sized(bMarble ? TEXT("MarbleWall") : (bBrick ? TEXT("Brick_Wall") : (bShed ? TEXT("Shed_Wall") : TEXT("Wall"))), bFour); };
 		// A window family in a bay, with fallbacks when a family has no piece of that width.
 		auto WindowPiece = [&](FName Family, bool bFour) -> FString
 		{
+			if (bMarble) { return Sized(TEXT("MarbleWindow"), bFour); }
 			if (bBrick) { return Sized(TEXT("Brick_WindowArch"), bFour); }
 			if (bShed) { return bFour ? FString(TEXT("Shed_WindowStrip_400")) : Blank(false); }
 			FString F = Family.ToString();
@@ -887,7 +897,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 							else if (bFour && Arch.Door != TEXT("Door") && Has(Wide))
 							{
 								Cell(Wide, P, Rot, true);
-								bSkipNext = Arch.Door == TEXT("Church_Portal");   // the portal is two storeys tall
+								bSkipNext = Arch.Door == TEXT("Church_Portal") || Arch.Door == TEXT("MarblePortal");   // the portal is two storeys tall
 							}
 							else
 							{
@@ -948,7 +958,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 						}
 						case EOCBay::GroundWindow:
 						{
-							if (bBrick || bShed)
+							if (bBrick || bShed || bMarble)
 							{
 								Cell(WindowPiece(Look.Upper, bFour), P, Rot, true);
 								break;
@@ -997,6 +1007,11 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 					if (bChurch && f == B.Front && bFour && int32(&Col - Plan.Columns.GetData()) == Plan.DoorColumn && s == 2)
 					{
 						Cell(TEXT("Church_Rose_400"), P, Rot, false);   // over the two-storey portal
+						continue;
+					}
+					if (bMarble && f == B.Front && bFour)
+					{
+						Cell(TEXT("MarbleArcade_400"), P, Rot, false);   // galleries of blind arcading across the front
 						continue;
 					}
 					FName Family = s == 1 ? Look.UpperFirst : (bTop ? Look.Top : Look.Upper);
@@ -1425,8 +1440,106 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 				}
 			}
 		}
+		// The cathedral (Santa Lucia): a ribbed dome on a drum over the crossing, a banded apse at the back, a
+		// round arcaded campanile leaning a little at one front corner, an octagonal baptistery at the other.
+		if (bChurch && B.Front >= 0)
+		{
+			const FVector FrontOut = B.F[B.Front].Out, Side = Alongs[B.Front];
+			const double FrontHalf = B.F[B.Front].Half, SideHalf = Lengths[B.Front] * 0.5;
+			const FVector FrontMid = C + FrontOut * FrontHalf;
+			const double DomeR = FMath::Min(W, D) * 0.36;
+			const FVector DomeAt = C - FrontOut * (FrontHalf - DomeR - 300.0);
+			Add(TEXT("LM_Dome"), FVector(DomeAt.X, DomeAt.Y, RoofZ + Rise - 150.0), FRotator(0.0, Yaw.Yaw, 0.0), FVector(DomeR / 100.0));
+			const FVector Back = C - FrontOut * FrontHalf;
+			Add(TEXT("LM_Apse"), Back + FVector(0, 0, Z0), FRotationMatrix::MakeFromXY(-Side, FrontOut).Rotator(),
+				FVector(SideHalf * 0.7 / 100.0, SideHalf * 0.7 / 100.0, (TopZ - Z0) * 0.8 / 100.0));
+			auto Clear = [&](const FVector& At, double R)
+			{
+				for (int32 k = 0; k < 8; ++k)
+				{
+					const FVector P = At + FVector(FMath::Cos(k * UE_PI / 4), FMath::Sin(k * UE_PI / 4), 0.0) * R;
+					if (Index.CoverTop(P, -1) > Lowest || RoadIndex.EdgeDistance(FVector2D(P)) < 0.0)
+					{
+						return false;
+					}
+				}
+				return true;
+			};
+			const double FrontYaw = FMath::RadiansToDegrees(FMath::Atan2(FrontOut.Y, FrontOut.X));
+			const FVector Tower = FrontMid - FrontOut * 450.0 + Side * (SideHalf + 480.0);
+			if (Clear(Tower, 470.0))
+			{
+				Add(TEXT("LM_TowerRound"), FVector(Tower.X, Tower.Y, Height.HeightCm(Tower.X, Tower.Y)), FRotator(2.5, FrontYaw + 35.0, 0.0));
+				++Dressed;
+			}
+			const FVector Bapt = FrontMid - FrontOut * 500.0 - Side * (SideHalf + 520.0);
+			if (Clear(Bapt, 420.0))
+			{
+				Add(TEXT("LM_Baptistery"), FVector(Bapt.X, Bapt.Y, Height.HeightCm(Bapt.X, Bapt.Y)), FRotator(0.0, FrontYaw, 0.0));
+				++Dressed;
+			}
+			UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: cathedral at (%.0f, %.0f): dome %.0f m across, campanile %s, baptistery %s"), C.X, C.Y,
+				2.0 * DomeR / 100.0, Clear(Tower, 470.0) ? TEXT("placed") : TEXT("no room"), Clear(Bapt, 420.0) ? TEXT("placed") : TEXT("no room"));
+		}
 		++Buildings;
 	}
+
+	// The inhabited footbridge (Passerella): two rows of small shop houses hung outside the parapets on
+	// timber corbels, an open view in the middle of the span, each house its own colour.
+	int32 BridgeShops = 0;
+	if (const TSharedPtr<FJsonObject>* RoadsObj = nullptr; Root->TryGetObjectField(TEXT("roads"), RoadsObj))
+	{
+		const TArray<TSharedPtr<FJsonValue>>& Nodes = (*RoadsObj)->GetArrayField(TEXT("nodes"));
+		const TArray<FLinearColor>& Pal = Styles->WallPalettes.IsValidIndex(0) ? Styles->WallPalettes[0].Colours : TArray<FLinearColor>();
+		FRandomStream Rb(Seed + 404);
+		for (const TSharedPtr<FJsonValue>& SegV : (*RoadsObj)->GetArrayField(TEXT("segments")))
+		{
+			const TSharedPtr<FJsonObject>& Seg = SegV->AsObject();
+			FString Bridge;
+			if (!Seg->TryGetStringField(TEXT("bridge"), Bridge) || Bridge != TEXT("Passerella") || Pal.IsEmpty())
+			{
+				continue;
+			}
+			const TArray<TSharedPtr<FJsonValue>>& Na = Nodes[int32(Seg->GetNumberField(TEXT("a")))]->AsArray();
+			const TArray<TSharedPtr<FJsonValue>>& Nb = Nodes[int32(Seg->GetNumberField(TEXT("b")))]->AsArray();
+			const FVector Pa = FOCRoadGraph::LayoutToWorld(Na[0]->AsNumber(), Na[1]->AsNumber(), Na[2]->AsNumber());
+			const FVector Pb = FOCRoadGraph::LayoutToWorld(Nb[0]->AsNumber(), Nb[1]->AsNumber(), Nb[2]->AsNumber());
+			const double Len = FVector::Dist2D(Pa, Pb), HalfW = Seg->GetNumberField(TEXT("width")) * 50.0;
+			const FVector Dir = (Pb - Pa).GetSafeNormal2D();
+			for (const double SideSign : { -1.0, 1.0 })
+			{
+				const FVector Out = FVector::CrossProduct(FVector::UpVector, Dir) * SideSign;   // from the deck centre outward
+				const FVector Facing = -Out;                                                     // shop fronts look at the deck
+				const FVector Along = FVector::CrossProduct(-Facing, FVector::UpVector).GetSafeNormal();
+				const FRotator Rot = FRotationMatrix::MakeFromXY(Along, -Facing).Rotator();
+				for (double S = 900.0; S + 420.0 < Len - 900.0; S += 420.0)
+				{
+					if (FMath::Abs(S + 210.0 - Len * 0.5) < 700.0)
+					{
+						continue;   // the open middle of the span
+					}
+					const double T = (S + 210.0) / Len;
+					const FVector Mid = FMath::Lerp(Pa, Pb, T) + Out * (HalfW + 30.0);
+					const FVector At = Mid - Along * 200.0;
+					FInstance I;
+					I.Mesh = Pieces.Get(TEXT("BridgeShop_400"));
+					if (!I.Mesh)
+					{
+						break;
+					}
+					I.Transform = FTransform(Rot, At);
+					const FLinearColor Wall = Pal[Rb.RandRange(0, Pal.Num() - 1)] * Rb.FRandRange(0.95f, 1.05f);
+					const FLinearColor Wood = Styles->WoodColours.Colours.Num() > 0 ? Styles->WoodColours.Colours[Rb.RandRange(0, FMath::Min(3, Styles->WoodColours.Colours.Num() - 1))] : FLinearColor::Gray;
+					I.Data[0] = Wall.R; I.Data[1] = Wall.G; I.Data[2] = Wall.B;
+					I.Data[3] = Wood.R; I.Data[4] = Wood.G; I.Data[5] = Wood.B;
+					I.Data[6] = Rb.FRand() * 0.6f;
+					Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(At.X / ChunkSizeCm), FMath::FloorToInt32(At.Y / ChunkSizeCm))).Add(I);
+					++BridgeShops;
+				}
+			}
+		}
+	}
+	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: %d shop houses on the Passerella"), BridgeShops);
 
 	int32 Count = 0;
 	for (const TPair<FIntPoint, TArray<FInstance>>& Pair : Chunks)

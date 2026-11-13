@@ -1089,6 +1089,20 @@ namespace OCLayout
 				}
 			}
 		}
+		auto LocalRelief = [&T](double X, double Y)
+		{
+			double Lo = 1e18, Hi = -1e18;
+			for (const double Dx : { -6.0, 0.0, 6.0 })
+			{
+				for (const double Dy : { -6.0, 0.0, 6.0 })
+				{
+					const int32 r = FMath::Clamp(int32(Y + Dy - YMin), 0, NY - 1), c = FMath::Clamp(int32(X + Dx), 0, NX - 1);
+					Lo = FMath::Min(Lo, T(r, c));
+					Hi = FMath::Max(Hi, T(r, c));
+				}
+			}
+			return Hi - Lo;
+		};
 		auto NearPiazza = [&Piazzas](double X, double Y)
 		{
 			return Piazzas.ContainsByPredicate([X, Y](const FPiazza& P) { return std::hypot(P.X - X, P.Y - Y) < P.R + 18.0; });
@@ -1214,6 +1228,7 @@ namespace OCLayout
 					const FCityFields Fl = FieldsAt(Mx, My, Districts[Di].Name, Seed);
 					const FArchetype* ArchP = &PickArchetype(Style, Fl, Rng);
 					const double Override = Rng.Random();
+					const double SteepDraw = Rng.Random();
 					if (Style == TEXT("grid90") && (bArcadeSide || NearPiazza(Mx, My)))
 					{
 						ArchP = FindArchetype(Style, TEXT("arcadeblock"));   // arcaded main streets and piazza fronts
@@ -1221,6 +1236,10 @@ namespace OCLayout
 					else if (Style == TEXT("oldtown") && NearPiazza(Mx, My) && Override < 0.4)
 					{
 						ArchP = FindArchetype(Style, TEXT("palazzo"));
+					}
+					else if (Style == TEXT("oldtown") && SteepDraw < 0.45 && LocalRelief(Mx, My) > 2.0)
+					{
+						ArchP = FindArchetype(Style, TEXT("tower"));   // Cinque Terre: tall narrow houses stacked up steep ground
 					}
 					const FArchetype& Arch = *ArchP;
 					// Footprints snap to the facade kit's 2 m bay grid, min 4 m.

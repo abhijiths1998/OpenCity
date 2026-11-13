@@ -21,9 +21,10 @@ namespace
 void UOCBuildingStyleSet::FillDefaults()
 {
 	WallPalettes = {
-		// 0: Ligurian colour wash: ochre yellow, Genoa red, rose, pale green, cream, apricot, salmon, sand.
-		{ { { 1.00f, 0.80f, 0.45f }, { 0.86f, 0.42f, 0.32f }, { 0.98f, 0.70f, 0.62f }, { 0.80f, 0.88f, 0.72f }, { 1.00f, 0.94f, 0.80f }, { 0.98f, 0.72f, 0.50f },
-			{ 0.95f, 0.62f, 0.50f }, { 0.96f, 0.84f, 0.66f } } },
+		// 0: Ligurian colour wash, saturated as on the Cinque Terre: ochre yellow, Genoa red, salmon pink, orange,
+		// pale green, cream, rose, terracotta, lemon.
+		{ { { 1.00f, 0.78f, 0.32f }, { 0.86f, 0.32f, 0.24f }, { 1.00f, 0.60f, 0.55f }, { 1.00f, 0.62f, 0.30f }, { 0.72f, 0.86f, 0.62f }, { 1.00f, 0.93f, 0.76f },
+			{ 0.95f, 0.55f, 0.62f }, { 0.88f, 0.48f, 0.32f }, { 1.00f, 0.88f, 0.45f } } },
 		{ { { 1.00f, 0.82f, 0.76f }, { 0.86f, 0.92f, 0.90f }, { 1.00f, 0.95f, 0.80f }, { 0.84f, 0.88f, 0.96f }, { 1.00f, 1.00f, 0.97f }, { 0.98f, 0.86f, 0.66f } } },
 		{ { { 0.80f, 0.78f, 0.74f }, { 0.86f, 0.80f, 0.70f }, { 0.72f, 0.70f, 0.68f }, { 0.88f, 0.70f, 0.56f }, { 0.78f, 0.76f, 0.70f }, { 0.82f, 0.74f, 0.64f } } },
 		{ { { 1.00f, 0.95f, 0.86f }, { 0.95f, 0.88f, 0.74f }, { 0.98f, 0.92f, 0.82f }, { 0.92f, 0.80f, 0.64f }, { 1.00f, 0.98f, 0.93f }, { 0.90f, 0.84f, 0.74f } } },
@@ -33,6 +34,7 @@ void UOCBuildingStyleSet::FillDefaults()
 	WoodColours = { { { 0.14f, 0.30f, 0.18f }, { 0.30f, 0.52f, 0.36f }, { 0.55f, 0.60f, 0.64f }, { 0.40f, 0.28f, 0.18f },
 		{ 0.42f, 0.55f, 0.66f }, { 0.92f, 0.92f, 0.88f }, { 0.62f, 0.24f, 0.20f } } };
 	WoodWeights = { 5.f, 2.f, 2.f, 2.f, 1.f, 0.5f, 0.3f };
+	Version = CurrentVersion;
 
 	auto Plaster = [](const TCHAR* Name) { FOCBuildingArchetype A; A.Name = Name; A.Crowns = W({ { TEXT("Cornice"), 1.f } }); return A; };
 	Archetypes.Reset();
@@ -219,6 +221,7 @@ void UOCBuildingStyleSet::FillDefaults()
 	for (FOCBuildingArchetype& A : Archetypes)
 	{
 		const FString N = A.Name.ToString();
+		if (N == TEXT("church")) { A.Material = TEXT("Marble"); A.Door = TEXT("MarblePortal"); A.bLesene = false; }
 		if (A.Material == TEXT("Plaster")) { A.Pitch = 0.33f; }
 		if (N == TEXT("townhouse"))
 		{
