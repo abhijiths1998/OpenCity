@@ -23,15 +23,17 @@ uint32 OCSubSeed(uint32 Seed, uint32 Part, uint32 Purpose)
 	return uint32(H ^ (H >> 32));
 }
 
-TArray<double> OCFacadeBays(double LengthCm, bool bSymmetric, int32 TwoAt)
+TArray<double> OCFacadeBays(double LengthCm, bool bSymmetric, int32 TwoAt, bool bCentreFour)
 {
 	const int32 Units = FMath::Max(2, FMath::RoundToInt32(LengthCm / 200.0));   // 2 m units
 	TArray<double> Out;
 	if (bSymmetric && Units > 2)
 	{
-		// Mirror halves round an optional 2 m centre bay; an odd half ends in a 2 m bay at the corner.
-		const bool bCentre = Units % 2 == 1;
-		const int32 Half = (Units - (bCentre ? 1 : 0)) / 2;
+		// Mirror halves round an optional centre bay (2 m, or 4 m when asked and the count is even); an odd
+		// half ends in a 2 m bay at the corner.
+		const bool bFourCentre = bCentreFour && Units % 2 == 0 && Units >= 4;
+		const bool bCentre = Units % 2 == 1 || bFourCentre;
+		const int32 Half = (Units - (bFourCentre ? 2 : (bCentre ? 1 : 0))) / 2;
 		TArray<double> HalfSeq;
 		for (int32 i = 0; i < Half / 2; ++i)
 		{
@@ -47,7 +49,7 @@ TArray<double> OCFacadeBays(double LengthCm, bool bSymmetric, int32 TwoAt)
 		}
 		if (bCentre)
 		{
-			Out.Add(200.0);
+			Out.Add(bFourCentre ? 400.0 : 200.0);
 		}
 		Out.Append(HalfSeq);
 		return Out;
@@ -73,7 +75,7 @@ FOCFacadePlan OCPlanFacade(const FOCFacadeIn& In, const FOCFacadeStyle& Style, u
 	// Asymmetric: a lone 2 m bay goes to an end (a townhouse's door bay) more often than the middle.
 	const int32 Fours = Units / 2;
 	const int32 TwoAt = R.FRand() < 0.7f ? (R.FRand() < 0.5f ? 0 : Fours) : R.RandRange(0, Fours);
-	const TArray<double> Widths = OCFacadeBays(Units * 200.0, Plan.bSymmetric, TwoAt);
+	const TArray<double> Widths = OCFacadeBays(Units * 200.0, Plan.bSymmetric, TwoAt, In.bWideDoor && In.bDoor);
 	double Offset = 0.0;
 	for (const double W : Widths)
 	{
@@ -118,9 +120,9 @@ FOCFacadePlan OCPlanFacade(const FOCFacadeIn& In, const FOCFacadeStyle& Style, u
 	}
 	else if (Plan.bSymmetric)
 	{
-		if (N % 2 == 1 && !Plan.Columns[N / 2].IsFour())
+		if (N % 2 == 1 && (!Plan.Columns[N / 2].IsFour() || In.bWideDoor))
 		{
-			Plan.DoorColumn = N / 2;
+			Plan.DoorColumn = N / 2;   // the centre bay: 2 m, or the 4 m one a wide door asked for
 		}
 		else if (!Plan.Columns[0].IsFour())
 		{

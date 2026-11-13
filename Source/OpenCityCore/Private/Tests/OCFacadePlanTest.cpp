@@ -134,6 +134,21 @@ bool FOCFacadePlanSeedTest::RunTest(const FString& Parameters)
 	const FOCFacadePlan L = OCPlanFacade(Lm, Shops, 9);
 	TestTrue(TEXT("landmark has no shops"), L.Columns.FindByPredicate([](const FOCBayColumn& C) { return C.Ground == EOCBay::Shop; }) == nullptr);
 	TestEqual(TEXT("landmark door on the axis"), L.DoorColumn, L.Columns.Num() / 2);
+
+	// A wide door: an even facade gets a 4 m centre column, and the door is in it.
+	FOCFacadeStyle Sym;
+	Sym.Symmetric = 1.f;
+	for (int32 Units = 4; Units <= 24; Units += 2)
+	{
+		FOCFacadeIn Wide = In;
+		Wide.LengthCm = Units * 200.0;
+		Wide.bWideDoor = true;
+		const FOCFacadePlan P = OCPlanFacade(Wide, Sym, 5 + Units);
+		if (!TestTrue(FString::Printf(TEXT("%d m: 4 m door column on the axis"), Units * 2), P.DoorColumn == P.Columns.Num() / 2 && P.Columns.Num() % 2 == 1 && P.Columns[P.DoorColumn].WidthCm == 400.0))
+		{
+			break;
+		}
+	}
 	return true;
 }
 

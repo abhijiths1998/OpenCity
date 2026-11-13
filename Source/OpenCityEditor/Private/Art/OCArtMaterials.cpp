@@ -270,6 +270,10 @@ namespace OCArt
 				In.Add({ FString::Printf(TEXT("I%d"), i), Mt.InstanceData(i, 1.0f, -800, 350 + 70 * i) });
 			}
 			In.Add({ TEXT("I6"), Mt.InstanceData(6, 0.5f, -800, 350 + 70 * 6) });   // wear
+			In.Add({ TEXT("I8"), Mt.InstanceData(8, 0.0f, -800, 350 + 70 * 8) });   // kit: ground-floor piece (base band, splash)
+			In.Add({ TEXT("I9"), Mt.InstanceData(9, 0.0f, -800, 350 + 70 * 9) });   // kit: stone trim palette index (TintSlot 2)
+			In.Add({ TEXT("Rand"), E(Mt, UMaterialExpressionPerInstanceRandom::StaticClass(), -800, 1100) });
+			In.Add({ TEXT("LP"), E(Mt, UMaterialExpressionLocalPosition::StaticClass(), -800, 1180) });
 			UTexture* Grime = OCEd::Load<UTexture>(TEXT("/Game/Environment/Textures/Decals/Leaking012A/T_Leaking012A_Color"));
 			In.Add({ TEXT("GrimeT"), Mt.TexObject(TEXT("Grime"), SAMPLERTYPE_Color, Grime, -800, 900) });
 			In.Add({ TEXT("GrimeAmt"), Mt.Scalar(TEXT("GrimeAmount"), 0.0f, -800, 1000) });
@@ -301,7 +305,8 @@ namespace OCArt
 		{
 			OCEd::FMat Mt = FreshMaster(TEXT("M_Master_KitGlass"));
 			UMaterialExpressionCustom* N = Node(Mt, Hlsl::GLASS_HLSL,
-				{ { TEXT("Lit"), Mt.InstanceData(7, 0.0f, -800, 0) }, { TEXT("Night"), Mt.Collection(Mpc, TEXT("NightAmount"), -800, 100) },
+				{ { TEXT("LP"), E(Mt, UMaterialExpressionLocalPosition::StaticClass(), -800, 0) }, { TEXT("Rand"), E(Mt, UMaterialExpressionPerInstanceRandom::StaticClass(), -800, 300) },
+				  { TEXT("Night"), Mt.Collection(Mpc, TEXT("NightAmount"), -800, 100) },
 				  { TEXT("Strength"), Mt.Scalar(TEXT("WindowLight"), 3.0f, -800, 200) } },
 				{ { TEXT("Emis"), CMOT_Float3 } });
 			Mt.Output(N, FString(), MP_BaseColor);
@@ -633,10 +638,14 @@ namespace OCArt
 			return {
 				{ TEXT("MI_Kit_Wall"), TEXT("plastered_wall"), 2.5f, FLinearColor(1.0f, 0.97f, 0.92f), { { TEXT("TintSlot"), 0 }, { TEXT("Macro"), 0.6f }, { TEXT("RoughMul"), 1.0f }, { TEXT("RoughAdd"), 0.05f }, { TEXT("GrimeAmount"), 0.7f } } },
 				{ TEXT("MI_Kit_WallStucco"), TEXT("white_stucco"), 2.0f, FLinearColor(1.0f, 0.98f, 0.94f), { { TEXT("TintSlot"), 0 }, { TEXT("Macro"), 0.5f }, { TEXT("GrimeAmount"), 0.6f } } },
-				{ TEXT("MI_Kit_Trim"), TEXT("old_sandstone_02"), 1.5f, FLinearColor(1.0f, 0.98f, 0.93f), { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.3f }, { TEXT("GrimeAmount"), 0.3f } } },
+				{ TEXT("MI_Kit_Trim"), TEXT("old_sandstone_02"), 1.5f, FLinearColor(1.0f, 0.98f, 0.93f), { { TEXT("TintSlot"), 2 }, { TEXT("Macro"), 0.3f }, { TEXT("GrimeAmount"), 0.3f } } },
 				{ TEXT("MI_Kit_Wood"), TEXT("wood_peeling_paint_weathered"), 1.2f, White, { { TEXT("TintSlot"), 1 }, { TEXT("Macro"), 0.2f } } },
 				// Ribbed painted shutter metal: the tread plate used before read wrong on shop shutters (QA 2026-11-09).
 				{ TEXT("MI_Kit_Metal"), TEXT("painted_metal_shutter"), 1.0f, FLinearColor(0.85f, 0.87f, 0.88f), { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.2f } } },
+				// Port sheds (painted corrugated sheet, wall tint), brick warehouses (natural brick), awnings and laundry (linen, shutter colour).
+				{ TEXT("MI_Kit_Corrugated"), TEXT("corrugated_iron_02"), 2.7f, FLinearColor(0.95f, 0.95f, 0.95f), { { TEXT("TintSlot"), 0 }, { TEXT("Macro"), 0.4f }, { TEXT("GrimeAmount"), 0.5f } } },
+				{ TEXT("MI_Kit_Brick"), TEXT("red_brick_03"), 1.0f, FLinearColor(1.0f, 0.97f, 0.95f), { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.4f }, { TEXT("GrimeAmount"), 0.5f } } },
+				{ TEXT("MI_Kit_Fabric"), TEXT("rough_linen"), 0.6f, FLinearColor(1.2f, 1.2f, 1.2f), { { TEXT("TintSlot"), 1 }, { TEXT("Macro"), 0.1f } } },
 				{ TEXT("MI_Kit_Roof"), TEXT("clay_roof_tiles"), 2.0f, White, { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.5f }, { TEXT("ProjectionMode"), 1 } } },
 				{ TEXT("MI_Kit_Concrete"), TEXT("brushed_concrete"), 2.0f, FLinearColor(0.95f, 0.94f, 0.92f), { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.5f }, { TEXT("PuddleAmount"), 0.3f }, { TEXT("WetGround"), 1 } } },
 				{ TEXT("MI_Road_Asphalt"), TEXT("asphalt_02"), 4.0f, White, { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.7f }, { TEXT("WetGround"), 1 } } },

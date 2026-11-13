@@ -234,6 +234,45 @@
    "author": "Poly Haven",
    "license": "CC0",
    "notes": "Road paving: strade bianche, tinted pale (MI_Road_Gravel)"
+  },
+  {
+   "slug": "corrugated_iron_02",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/corrugated_iron_02",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: port sheds and kiln workshops (MI_Kit_Corrugated)"
+  },
+  {
+   "slug": "red_brick_03",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/red_brick_03",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: Le Fornaci and port brick warehouses (MI_Kit_Brick)"
+  },
+  {
+   "slug": "rough_linen",
+   "size": 1024,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/rough_linen",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: shop awnings and laundry, tinted per building (MI_Kit_Fabric)"
   }
  ],
  "models": [

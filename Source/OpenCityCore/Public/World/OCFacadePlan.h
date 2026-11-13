@@ -39,6 +39,7 @@ struct OPENCITYCORE_API FOCFacadeIn
 	bool bStreet = true;        // faces a street: door, shops, balconies, all columns glazed
 	bool bLandmark = false;     // church, town hall...: symmetric, central door, no shops or balconies
 	bool bDoor = true;          // a street facade gets the street door (a corner building has one front)
+	bool bWideDoor = false;     // symmetric with an even bay count: a 4 m centre column for a portone or entrance
 };
 
 struct OPENCITYCORE_API FOCBayColumn
@@ -68,7 +69,7 @@ struct OPENCITYCORE_API FOCFacadePlan
 OPENCITYCORE_API FOCFacadePlan OCPlanFacade(const FOCFacadeIn& In, const FOCFacadeStyle& Style, uint32 Seed);
 
 /** Bay widths (cm) for a facade: 4 m bays and at most two 2 m bays, laid out as OCPlanFacade does. */
-OPENCITYCORE_API TArray<double> OCFacadeBays(double LengthCm, bool bSymmetric, int32 TwoAt);
+OPENCITYCORE_API TArray<double> OCFacadeBays(double LengthCm, bool bSymmetric, int32 TwoAt, bool bCentreFour = false);
 
 /**
  * A seed for one purpose of one part of a building (bays, colours, roof, props, lit windows...): hashed,

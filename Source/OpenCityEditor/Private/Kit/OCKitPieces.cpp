@@ -10,12 +10,13 @@
 
 namespace OCKit
 {
-	const TCHAR* const MatOrder[12] = { TEXT("Wall"), TEXT("Trim"), TEXT("Wood"), TEXT("Glass"), TEXT("Metal"), TEXT("Roof"), TEXT("Concrete"),
-		TEXT("PaintRed"), TEXT("PaintWhite"), TEXT("PaintBlack"), TEXT("PaintBlue"), TEXT("Paint") };
+	const TCHAR* const MatOrder[NumMats] = { TEXT("Wall"), TEXT("Trim"), TEXT("Wood"), TEXT("Glass"), TEXT("Metal"), TEXT("Roof"), TEXT("Concrete"),
+		TEXT("PaintRed"), TEXT("PaintWhite"), TEXT("PaintBlack"), TEXT("PaintBlue"), TEXT("Paint"),
+		TEXT("Brick"), TEXT("Corrugated"), TEXT("Fabric") };
 
 	void FPiece::Add(FSoup S, const TCHAR* Mat)
 	{
-		for (int32 i = 0; i < 12; ++i)
+		for (int32 i = 0; i < NumMats; ++i)
 		{
 			if (FCString::Strcmp(MatOrder[i], Mat) == 0)
 			{
@@ -271,7 +272,7 @@ namespace OCKit
 			FPiece P;
 			P.Name = (FCString::Strcmp(Kind, TEXT("shutters")) == 0 ? TEXT("Window_") : TEXT("WindowPlain_")) + Cm(W);
 			TArray<FCut> Cuts;
-			for (const double C : (W < 3 ? TArray<double>{ 1.0 } : TArray<double>{ 1.0, 3.0 })) { Cuts.Add(WindowUnit(P, C, Kind)); }
+			for (const double C : (W < 3 ? TArray<double>{ W / 2 } : TArray<double>{ 1.0, 3.0 })) { Cuts.Add(WindowUnit(P, C, Kind)); }
 			WallSlab(P, W, Cuts);
 			RenderBand(P, 0, W);
 			P.Box(0, W, 0, T, 0, H);
@@ -1319,11 +1320,881 @@ namespace OCKit
 			P.Box(0, 1, -0.01, 0.01, 0, 0.016);
 			return P;
 		}
+
+		// ==== Buildings plan phase 3: piece families ====================================================
+
+		/** Points of a half circle (centre Cx, Zs, radius R) from angle 0 (right) over the top to pi (left). */
+		TArray<V2> HalfCircle(double Cx, double Zs, double R, int32 Seg = 12)
+		{
+			TArray<V2> Out;
+			for (int32 k = 0; k <= Seg; ++k)
+			{
+				const double A = UE_PI * k / Seg;
+				Out.Add(V2(Cx + R * FMath::Cos(A), Zs + R * FMath::Sin(A)));
+			}
+			return Out;
+		}
+
+		/** An arched opening's cutter (rectangle up to the spring line Zs, half circle above), Y from -0.10 to Depth. */
+		FSoup ArchCutter(double X0, double X1, double Zb, double Zs, double Depth)
+		{
+			TArray<V2> Pts = { V2(X0, Zb), V2(X1, Zb) };
+			Pts.Append(HalfCircle((X0 + X1) / 2, Zs, (X1 - X0) / 2, 16));
+			return PolyY(Pts, -0.10, Depth);
+		}
+
+		TPair<FCut, double> ArchOf(const FCut& C, double Zs) { return TPair<FCut, double>(C, Zs); }
+
+		/** A wall slab with rectangular cuts and arched cuts. */
+		void WallSlabArch(FPiece& P, double W, const TArray<FCut>& Rects, const TArray<TPair<FCut, double>>& Arches, double Z1 = H, const TCHAR* Mat = TEXT("Wall"))
+		{
+			FSoup S = Box(0, W, 0, T, 0.0, Z1);
+			FSoup Cb;
+			for (const FCut& C : Rects) { AddBox(Cb, C.X0, C.X1, -0.10, C.Depth, C.Zb > Eps ? C.Zb : -0.10, C.Zt); }
+			for (const TPair<FCut, double>& A : Arches) { Append(Cb, ArchCutter(A.Key.X0, A.Key.X1, A.Key.Zb > Eps ? A.Key.Zb : -0.10, A.Value, A.Key.Depth)); }
+			if (!Cb.V.IsEmpty())
+			{
+				S = BoolDiff(S, Cb);
+			}
+			DelPlane(S, AX, 0.0);
+			DelPlane(S, AX, W);
+			Bevel(S, 0.02, 2, { { AX, 0.0 }, { AX, W }, { AZ, 0.0 }, { AZ, Z1 }, { AY, T } });
+			P.Add(MoveTemp(S), Mat);
+		}
+
+		/** A ring segment between angles A0..A1 (radians) round (Cx, Zs) in the XZ plane, Y0..Y1. */
+		void ArcBlocks(FSoup& S, double Cx, double Zs, double R0, double R1, double Y0, double Y1, double A0 = 0.0, double A1 = UE_PI, int32 Seg = 12)
+		{
+			for (int32 k = 0; k < Seg; ++k)
+			{
+				const double Ta = A0 + (A1 - A0) * k / Seg, Tb = A0 + (A1 - A0) * (k + 1) / Seg;
+				TArray<V2> Q = { V2(Cx + R1 * FMath::Cos(Ta), Zs + R1 * FMath::Sin(Ta)), V2(Cx + R1 * FMath::Cos(Tb), Zs + R1 * FMath::Sin(Tb)),
+					V2(Cx + R0 * FMath::Cos(Tb), Zs + R0 * FMath::Sin(Tb)), V2(Cx + R0 * FMath::Cos(Ta), Zs + R0 * FMath::Sin(Ta)) };
+				Append(S, PolyY(Q, Y0, Y1));
+			}
+		}
+
+		/** Glass in an arch head: one polygon facing -Y (half circle over the spring line). */
+		void ArchGlass(FPiece& P, double Cx, double Zs, double R, double Y)
+		{
+			FSoup G;
+			const int32 Sh = G.NewShell();
+			TArray<int32> Idx;
+			for (const V2& Pt : HalfCircle(Cx, Zs, R, 12)) { Idx.Add(G.Add(V3(Pt.X, Y, Pt.Y))); }
+			G.Face(Sh, Idx);
+			P.Add(MoveTemp(G), TEXT("Glass"));
+		}
+
+		enum class EShut : uint8 { None, Open, Closed, Half };
+
+		/** A window of any size: sill, surround (or arch), casement, shutters open / closed / half; Blind = a
+		 *  shallow painted-over recess with no joinery. Returns the cut (Zs > 0: arched, spring line Zs). */
+		TPair<FCut, double> WindowAny(FPiece& P, double Cx, double Zb, double Ww, double Wh, EShut Shut, bool bArch, bool bBlind = false, bool bKeystone = false)
+		{
+			const double Ox0 = Cx - Ww / 2, Ox1 = Cx + Ww / 2, Zt = Zb + Wh;
+			const double Zs = bArch ? Zt - Ww / 2 : 0.0;
+			SillPart(P, Ox0, Ox1, Zb + 0.02);
+			if (bArch)
+			{
+				for (const V2 A : { V2(Ox0 - 0.10, Ox0), V2(Ox1, Ox1 + 0.10) })   // jambs to the spring line
+				{
+					P.Add(Bev(Box(A.X, A.Y, -0.03, 0.0, Zb + 0.02, Zs), 0.01, 2, { { AY, 0.0 } }), TEXT("Trim"));
+				}
+				FSoup Ring;
+				ArcBlocks(Ring, Cx, Zs, Ww / 2, Ww / 2 + 0.12, -0.035, 0.0);
+				P.Add(MoveTemp(Ring), TEXT("Trim"));
+				if (bKeystone)
+				{
+					P.Add(Bev(Box(Cx - 0.07, Cx + 0.07, -0.05, 0.0, Zt - 0.02, Zt + 0.16), 0.01, 2, { { AY, 0.0 } }), TEXT("Trim"));
+				}
+			}
+			else
+			{
+				Surround(P, Ox0, Ox1, Zb + 0.02, Zt, 0.10, 0.03, 0.20, true, bKeystone);
+			}
+			if (bBlind)
+			{
+				return ArchOf({ Ox0, Ox1, Zb, Zt, 0.04 }, Zs);
+			}
+			Casement(P, Ox0, Ox1, Zb + 0.015, bArch ? Zs : Zt, Ww < 0.9 ? 1 : 2, 2);
+			if (bArch)
+			{
+				FSoup F;   // frame round the head, glass behind
+				ArcBlocks(F, Cx, Zs, Ww / 2 - 0.06, Ww / 2 + 0.01, 0.145, 0.205);
+				P.Add(MoveTemp(F), TEXT("Wood"));
+				ArchGlass(P, Cx, Zs, Ww / 2 - 0.06, GlassY);
+			}
+			const double Sw = 0.195 * Ww / WinW;   // folded shutter stack, in proportion to the opening
+			const double Top = (bArch ? Zs : Zt) + 0.02;
+			if (Shut == EShut::Open || Shut == EShut::Half)
+			{
+				ShutterStack(P, Ox1 + 0.005, Ox1 + Sw, Zb + 0.02, Top, -0.03, Ox1 + 0.005);
+			}
+			if (Shut == EShut::Open)
+			{
+				ShutterStack(P, Ox0 - Sw, Ox0 - 0.005, Zb + 0.02, Top, -0.03, Ox0 - 0.005);
+			}
+			if (Shut == EShut::Closed || Shut == EShut::Half)
+			{
+				// Closed leaves sit in the outer reveal, louvres to the street.
+				LouvredLeaf(P, Ox0 + 0.005, Cx - 0.003, Zb + 0.03, Top - 0.01, 0.075, 0.032);
+				if (Shut == EShut::Closed)
+				{
+					LouvredLeaf(P, Cx + 0.003, Ox1 - 0.005, Zb + 0.03, Top - 0.01, 0.075, 0.032);
+				}
+			}
+			return ArchOf({ Ox0, Ox1, Zb, Zt, Recess }, Zs);
+		}
+
+		/** Window families (KIT_SPEC): Name_200 has one window, Name_400 two on the 2 m pitch. */
+		FPiece MakeWindowFamily(const TCHAR* Family, double W)
+		{
+			FPiece P;
+			P.Name = FString(Family) + TEXT("_") + Cm(W);
+			const FString F(Family);
+			TArray<FCut> Rects;
+			TArray<TPair<FCut, double>> Arches;
+			const TArray<double> Centres = W < 3 ? TArray<double>{ W / 2 } : TArray<double>{ 1.0, 3.0 };
+			for (const double C : Centres)
+			{
+				TPair<FCut, double> Cut;
+				if (F == TEXT("WindowTall")) { Cut = WindowAny(P, C, 0.55, 1.10, 1.95, EShut::Open, false, false, true); }
+				else if (F == TEXT("WindowArch")) { Cut = WindowAny(P, C, 0.80, 1.10, 1.85, EShut::None, true, false, true); }
+				else if (F == TEXT("WindowSmall")) { Cut = WindowAny(P, C, 1.35, 0.80, 0.80, EShut::None, false); }
+				else if (F == TEXT("WindowClosed")) { Cut = WindowAny(P, C, Sill, WinW, WinH, EShut::Closed, false); }
+				else if (F == TEXT("WindowHalf")) { Cut = WindowAny(P, C, Sill, WinW, WinH, EShut::Half, false); }
+				else if (F == TEXT("WindowBlind")) { Cut = WindowAny(P, C, Sill, WinW, WinH, EShut::None, false, true); }
+				if (Cut.Value > 0.0) { Arches.Add(Cut); }
+				else { Rects.Add(Cut.Key); }
+			}
+			WallSlabArch(P, W, Rects, Arches);
+			RenderBand(P, 0, W);
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		FPiece MakeStringCourse(double W)
+		{
+			FPiece P;
+			P.Name = TEXT("StringCourse_") + Cm(W);
+			P.Kind = TEXT("trim");
+			FSoup S = PrismX({ V2(0.0, -0.06), V2(-0.05, -0.06), V2(-0.07, -0.03), V2(-0.07, 0.07), V2(-0.05, 0.10), V2(0.0, 0.10) }, 0.0, W);
+			DelPlane(S, AY, 0.0);
+			Bevel(S, 0.008, 2, { { AX, 0.0 }, { AX, W } });
+			P.Add(MoveTemp(S), TEXT("Trim"));
+			P.Box(0, W, -0.07, 0.0, -0.06, 0.10);
+			return P;
+		}
+
+		/** French door with a railing flush in front (no slab). */
+		FPiece MakeJuliet()
+		{
+			FPiece P;
+			P.Name = TEXT("Juliet_400");
+			const double W = 4.0, Cx = 2.0, Ox0 = Cx - FdW / 2, Ox1 = Cx + FdW / 2, Zb = 0.19, Zt = Zb + FdH - 0.02;
+			P.Add(Bev(Box(Ox0 - 0.12, Ox1 + 0.12, -0.10, 0.17, Zb - 0.06, Zb), 0.01, 1), TEXT("Trim"));   // stone threshold, lip out
+			Surround(P, Ox0, Ox1, Zb, Zt + 0.02, 0.10, 0.03, 0.20, true, false);
+			Casement(P, Ox0, Ox1, Zb - 0.005, Zt + 0.02, 2, 2, 0.55);
+			const double Sw = 0.195;
+			ShutterStack(P, Ox0 - Sw, Ox0 - 0.005, Zb, Zt + 0.04, -0.03, Ox0 - 0.005);
+			ShutterStack(P, Ox1 + 0.005, Ox1 + Sw, Zb, Zt + 0.04, -0.03, Ox1 + 0.005);
+			Railing(P, Ox0 - 0.08, Ox1 + 0.08, -0.09, Zb, 0.95);
+			WallSlab(P, W, { { Ox0, Ox1, Zb - 0.02, Zt + 0.02, Recess } });
+			RenderBand(P, 0, W);
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Balcony whose slab spans the whole bay, so neighbouring bays join into one long balcony. */
+		FPiece MakeBalconyLong()
+		{
+			FPiece P;
+			P.Name = TEXT("BalconyLong_400");
+			const double W = 4.0, Cx = 2.0, Ox0 = Cx - FdW / 2, Ox1 = Cx + FdW / 2;
+			const double Zs = 0.17, Zb = Zs + 0.02, Zt = Zs + 0.02 + FdH - 0.02, Sd = 0.95;
+			P.Add(Bev(Box(0.0, W, -Sd, 0.01, 0.035, Zs), 0.02, 2, { { AY, 0.01 }, { AX, 0.0 }, { AX, W } }), TEXT("Concrete"));
+			P.Add(Bev(Box(Ox0 - 0.02, Ox1 + 0.02, -0.02, 0.17, Zs - 0.02, Zb), 0.008, 1), TEXT("Trim"));
+			Surround(P, Ox0, Ox1, Zb, Zt + 0.02, 0.10, 0.03, 0.20, true, false);
+			Casement(P, Ox0, Ox1, Zb - 0.005, Zt + 0.02, 2, 2, 0.55);
+			const double Sw = 0.195;
+			ShutterStack(P, Ox0 - Sw, Ox0 - 0.005, Zb, Zt + 0.04, -0.03, Ox0 - 0.005);
+			ShutterStack(P, Ox1 + 0.005, Ox1 + Sw, Zb, Zt + 0.04, -0.03, Ox1 + 0.005);
+			// Front rail only: posts and rails run on into the next bay's.
+			FSoup M;
+			const double Yf = -Sd + 0.05, Zr0 = Zs + 0.08, Zr1 = Zs + 0.86;
+			AddBox(M, 0.0, W, Yf - 0.006, Yf + 0.006, Zr0, Zr0 + 0.025);
+			AddBox(M, 0.0, W, Yf - 0.006, Yf + 0.006, Zr1, Zr1 + 0.018);
+			for (int32 k = 0; k < 34; ++k) { AddBar(M, (k + 0.5) * W / 34, Yf, Zr0, Zs + 0.97, 0.008); }
+			P.Add(MoveTemp(M), TEXT("Metal"));
+			P.Add(Bev(Box(0.0, W, Yf - 0.025, Yf + 0.025, Zs + 0.97, Zs + 1.0), 0.008, 1, { { AX, 0.0 }, { AX, W } }), TEXT("Metal"));
+			WallSlab(P, W, { { Ox0, Ox1, Zs - 0.02, Zt + 0.02, Recess } });
+			RenderBand(P, 0, W);
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Metal roller curtain (corrugated) from Zb to Zt across X0..X1 at depth Y. */
+		void RollerCurtain(FPiece& P, double X0, double X1, double Zb, double Zt, double Y)
+		{
+			const double Pitch = 0.07;
+			const int32 N = FMath::Max(1, int32((Zt - Zb - 0.07) / Pitch));
+			const double Z0 = Zb + 0.07;
+			TArray<V2> Prof;
+			for (int32 k = 0; k <= N; ++k)
+			{
+				const double Z = Z0 + k * Pitch;
+				Prof.Add(V2(Y + 0.010, Z));
+				if (k < N) { Prof.Add(V2(Y, Z + Pitch * 0.35)); Prof.Add(V2(Y, Z + Pitch * 0.65)); }
+			}
+			Prof.Add(V2(Y + 0.024, Z0 + N * Pitch));
+			Prof.Add(V2(Y + 0.024, Z0));
+			P.Add(PrismX(Prof, X0, X1), TEXT("Metal"));
+			P.Add(Bev(Box(X0, X1, Y - 0.008, Y + 0.03, Zb, Z0 + 0.002), 0.006, 1), TEXT("Metal"));
+		}
+
+		/** Shopfront family: half-open shutter (Shopfront), fully down (ShopClosed), up under an awning (ShopAwning). */
+		FPiece MakeShopVariant(const TCHAR* Name, double CurtainBottom, bool bAwning)
+		{
+			FPiece P = MakeShopfront();
+			P.Name = Name;
+			// Drop the stock curtain (the three Metal parts after the guides) and hang this one.
+			const double W = 4.0, Ox0 = (W - ShopW) / 2, Ox1 = (W + ShopW) / 2, Zt = ShopH;
+			int32 MetalSeen = 0;
+			for (int32 i = 0; i < P.Parts.Num(); ++i)
+			{
+				if (P.Parts[i].Value == 4 && ++MetalSeen >= 3)   // 1 handle bar, 2 guides, 3.. curtain, bottom bar, handles
+				{
+					P.Parts.RemoveAt(i--);
+				}
+			}
+			if (CurtainBottom < Zt - 0.1)
+			{
+				RollerCurtain(P, Ox0 + 0.02, Ox1 - 0.02, CurtainBottom, Zt + 0.01, 0.016);
+			}
+			if (bAwning)
+			{
+				// Canvas awning on two folding arms: 1.3 m out, falling 0.45 m, with a valance.
+				const double Ax0 = Ox0 - 0.05, Ax1 = Ox1 + 0.05, Zw = 3.05, Out = 1.3, Fall = 0.45;
+				FSoup Cv;
+				const int32 Sh = Cv.NewShell();
+				const int32 a = Cv.Add(V3(Ax0, -0.02, Zw)), b = Cv.Add(V3(Ax1, -0.02, Zw)), c = Cv.Add(V3(Ax1, -Out, Zw - Fall)), d = Cv.Add(V3(Ax0, -Out, Zw - Fall));
+				const int32 a2 = Cv.Add(V3(Ax0, -0.02, Zw - 0.012)), b2 = Cv.Add(V3(Ax1, -0.02, Zw - 0.012)), c2 = Cv.Add(V3(Ax1, -Out, Zw - Fall - 0.012)), d2 = Cv.Add(V3(Ax0, -Out, Zw - Fall - 0.012));
+				Cv.Face(Sh, { a, d, c, b });
+				Cv.Face(Sh, { a2, b2, c2, d2 });
+				Cv.Face(Sh, { d, d2, c2, c });
+				Cv.Face(Sh, { a, a2, d2, d });
+				Cv.Face(Sh, { b, c, c2, b2 });
+				Cv.Face(Sh, { a, b, b2, a2 });
+				P.Add(MoveTemp(Cv), TEXT("Fabric"));
+				P.Add(Box(Ax0, Ax1, -Out - 0.012, -Out, Zw - Fall - 0.22, Zw - Fall), TEXT("Fabric"));   // valance
+				FSoup M;
+				AddBox(M, Ax0, Ax1, -0.08, -0.02, Zw - 0.03, Zw + 0.04);   // roller box
+				for (const double Xa : { Ax0 + 0.15, Ax1 - 0.15 })
+				{
+					// Folding arm from the wall, 0.55 m under the roller, to the front bar.
+					Append(M, PolyY({ V2(Xa - 0.012, Zw - 0.55), V2(Xa + 0.012, Zw - 0.55), V2(Xa + 0.012, Zw - Fall), V2(Xa - 0.012, Zw - Fall) }, -Out, -0.02));
+				}
+				P.Add(MoveTemp(M), TEXT("Metal"));
+			}
+			return P;
+		}
+
+		/** Arched carriage door (portone): 2.4 x 3.0 m, stone surround with a keystone, studded leaves. */
+		FPiece MakePortone()
+		{
+			FPiece P;
+			P.Name = TEXT("Portone_400");
+			const double W = 4.0, Cx = 2.0, Ow = 2.4, Ox0 = Cx - Ow / 2, Ox1 = Cx + Ow / 2, Zs = 3.0 - Ow / 2, Sw = 0.22;
+			P.Add(Box(Ox0 - Sw, Ox1 + Sw, -0.06, T, -3.0, 0.0), TEXT("Trim"));   // skirt below the threshold
+			P.Add(Bev(Box(Ox0, Ox1, -0.04, Recess + 0.02, 0.0, 0.05), 0.01, 1, { { AZ, 0.0 } }), TEXT("Trim"));
+			PlinthBlock(P, 0.0, Ox0 - Sw, { 0.0 });
+			PlinthBlock(P, Ox1 + Sw, W, { W });
+			for (const V2 A : { V2(Ox0 - Sw, Ox0), V2(Ox1, Ox1 + Sw) })
+			{
+				P.Add(Bev(Box(A.X, A.Y, -0.06, 0.0, 0.0, Zs), 0.012, 2, { { AY, 0.0 }, { AZ, 0.0 } }), TEXT("Trim"));
+			}
+			FSoup Ring;
+			ArcBlocks(Ring, Cx, Zs, Ow / 2, Ow / 2 + Sw, -0.06, 0.0, 0.0, UE_PI, 14);
+			P.Add(MoveTemp(Ring), TEXT("Trim"));
+			P.Add(Bev(Box(Cx - 0.11, Cx + 0.11, -0.09, 0.0, Zs + Ow / 2 - 0.05, Zs + Ow / 2 + Sw + 0.03), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));
+			// Leaves: boarded, a rail every 0.6 m, studs; the arch head is a fixed boarded tympanum.
+			const double Ly0 = 0.15, Ly1 = 0.21;
+			P.Add(Bev(Box(Ox0, Cx - 0.004, Ly0, Ly1, 0.05, Zs), 0.008, 1), TEXT("Wood"));
+			P.Add(Bev(Box(Cx + 0.004, Ox1, Ly0, Ly1, 0.05, Zs), 0.008, 1), TEXT("Wood"));
+			FSoup Head;
+			ArcBlocks(Head, Cx, Zs, 0.002, Ow / 2, Ly0, Ly1, 0.0, UE_PI, 14);
+			P.Add(MoveTemp(Head), TEXT("Wood"));
+			FSoup Rails;
+			for (double Z = 0.35; Z < Zs; Z += 0.6) { AddBox(Rails, Ox0 + 0.04, Ox1 - 0.04, Ly0 - 0.02, Ly0, Z, Z + 0.09); }
+			P.Add(MoveTemp(Rails), TEXT("Wood"));
+			FSoup Studs;
+			for (double Z = 0.38; Z < Zs; Z += 0.6)
+			{
+				for (double X = Ox0 + 0.18; X < Ox1 - 0.1; X += 0.36) { AddBox(Studs, X - 0.012, X + 0.012, Ly0 - 0.03, Ly0 - 0.02, Z + 0.03, Z + 0.054); }
+			}
+			AddCyl(Studs, V3(Cx - 0.12, Ly0 - 0.02, 1.25), 0.05, 0.02, 10, 'Y');   // knocker rings
+			AddCyl(Studs, V3(Cx + 0.12, Ly0 - 0.02, 1.25), 0.05, 0.02, 10, 'Y');
+			P.Add(MoveTemp(Studs), TEXT("Metal"));
+			WallSlabArch(P, W, {}, { ArchOf({ Ox0, Ox1, 0.0, Zs, Recess }, Zs) });
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Garage: a 2.6 x 2.4 m opening closed by a roller door, plinth either side. */
+		FPiece MakeGarage()
+		{
+			FPiece P;
+			P.Name = TEXT("Garage_400");
+			const double W = 4.0, Ox0 = 0.7, Ox1 = 3.3, Zt = 2.4;
+			P.Add(Box(Ox0 - 0.1, Ox1 + 0.1, -0.03, T, -3.0, 0.0), TEXT("Trim"));
+			PlinthBlock(P, 0.0, Ox0 - 0.1, { 0.0 });
+			PlinthBlock(P, Ox1 + 0.1, W, { W });
+			for (const V2 A : { V2(Ox0 - 0.1, Ox0), V2(Ox1, Ox1 + 0.1) }) { P.Add(Bev(Box(A.X, A.Y, -0.03, 0.0, 0.0, Zt + 0.1), 0.01, 2, { { AY, 0.0 }, { AZ, 0.0 } }), TEXT("Trim")); }
+			P.Add(Bev(Box(Ox0 - 0.1, Ox1 + 0.1, -0.035, 0.0, Zt, Zt + 0.14), 0.01, 2, { { AY, 0.0 } }), TEXT("Trim"));
+			RollerCurtain(P, Ox0 + 0.02, Ox1 - 0.02, 0.0, Zt + 0.01, 0.10);
+			WallSlab(P, W, { { Ox0, Ox1, 0.0, Zt, Recess } });
+			RenderBand(P, 0, W);
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Bracketed eaves: a deep stone eave on carved wooden brackets every half metre. */
+		FPiece MakeCorniceBracket(double W)
+		{
+			FPiece P;
+			P.Name = TEXT("CorniceBracket_") + Cm(W);
+			P.Add(Bev(Box(0.0, W, -0.50, T, 0.22, 0.32), 0.01, 2, { { AX, 0.0 }, { AX, W }, { AY, T } }), TEXT("Trim"));
+			P.Add(Bev(Box(0.0, W, -0.06, T, 0.0, 0.06), 0.008, 1, { { AX, 0.0 }, { AX, W }, { AY, T } }), TEXT("Trim"));   // bed moulding
+			FSoup B;
+			for (int32 k = 0; 0.25 + 0.5 * k < W; ++k)
+			{
+				const double Xc = 0.25 + 0.5 * k;
+				Append(B, PrismX({ V2(0.0, 0.02), V2(-0.12, 0.02), V2(-0.16, 0.08), V2(-0.40, 0.17), V2(-0.44, 0.22), V2(0.0, 0.22) }, Xc - 0.045, Xc + 0.045));
+			}
+			P.Add(MoveTemp(B), TEXT("Wood"));
+			P.Box(0, W, -0.50, T, 0, 0.32);
+			return P;
+		}
+
+		// ---- port sheds and brick warehouses ----
+
+		FPiece MakeShedWall(double W, int32 Kind)   // 0 plain, 1 high window strip, 2 roller door
+		{
+			FPiece P;
+			P.Name = FString(Kind == 0 ? TEXT("Shed_Wall_") : (Kind == 1 ? TEXT("Shed_WindowStrip_") : TEXT("Shed_RollerDoor_"))) + Cm(W);
+			TArray<FCut> Cuts;
+			if (Kind == 1)
+			{
+				const double X0 = 0.2, X1 = W - 0.2, Z0 = 2.2, Z1 = 2.9;
+				Cuts.Add({ X0, X1, Z0, Z1, 0.12 });
+				FSoup M;
+				AddBox(M, X0, X1, 0.04, 0.09, Z0, Z0 + 0.05);
+				AddBox(M, X0, X1, 0.04, 0.09, Z1 - 0.05, Z1);
+				for (double X = X0; X <= X1 + 1e-6; X += (X1 - X0) / 6) { AddBox(M, X - 0.02, X + 0.02, 0.04, 0.09, Z0, Z1); }
+				AddBox(M, X0, X1, 0.05, 0.08, (Z0 + Z1) / 2 - 0.012, (Z0 + Z1) / 2 + 0.012);
+				P.Add(MoveTemp(M), TEXT("Metal"));
+				FSoup G;
+				AddQuadY(G, X0, X1, 0.08, Z0, Z1);
+				P.Add(MoveTemp(G), TEXT("Glass"));
+			}
+			else if (Kind == 2)
+			{
+				const double X0 = 0.2, X1 = W - 0.2, Zt = 3.0;
+				Cuts.Add({ X0, X1, 0.0, Zt, 0.20 });
+				RollerCurtain(P, X0 + 0.02, X1 - 0.02, 0.0, Zt, 0.08);
+				P.Add(Bev(Box(X0 - 0.02, X1 + 0.02, -0.12, 0.02, Zt - 0.02, Zt + 0.18), 0.01, 1), TEXT("Metal"));   // roller housing
+				P.Add(Box(X0, X1, -0.02, T, -3.0, 0.0), TEXT("Concrete"));
+			}
+			// Concrete kerb under the sheeting (3 m below ground on slopes), sheeting above.
+			P.Add(Bev(Box(0.0, W, -0.03, T, -3.0, 0.30), 0.01, 1, { { AX, 0.0 }, { AX, W }, { AZ, -3.0 } }), TEXT("Concrete"));
+			FSoup S = Box(0, W, 0, 0.12, 0.30, H);
+			if (!Cuts.IsEmpty())
+			{
+				FSoup Cb;
+				for (const FCut& C : Cuts) { AddBox(Cb, C.X0, C.X1, -0.1, 0.3, FMath::Max(C.Zb, 0.25), C.Zt); }
+				S = BoolDiff(S, Cb);
+			}
+			DelPlane(S, AX, 0.0);
+			DelPlane(S, AX, W);
+			P.Add(MoveTemp(S), TEXT("Corrugated"));
+			P.Box(0, W, -0.03, T, 0, H);
+			return P;
+		}
+
+		FPiece MakeBrick(double W, int32 Kind)   // 0 wall, 1 arched windows, 2 goods door, 3 corbel crown
+		{
+			FPiece P;
+			P.Name = FString(Kind == 0 ? TEXT("Brick_Wall_") : (Kind == 1 ? TEXT("Brick_WindowArch_") : (Kind == 2 ? TEXT("Brick_GoodsDoor_") : TEXT("Brick_Corbel_")))) + Cm(W);
+			if (Kind == 3)
+			{
+				P.Kind = TEXT("trim");
+				for (int32 k = 0; k < 3; ++k)   // three stepped courses
+				{
+					P.Add(Bev(Box(0.0, W, -0.06 * (k + 1), T, 0.09 * k, 0.09 * (k + 1)), 0.006, 1, { { AX, 0.0 }, { AX, W }, { AY, T } }), TEXT("Brick"));
+				}
+				P.Box(0, W, -0.18, T, 0, 0.27);
+				return P;
+			}
+			TArray<FCut> Rects;
+			TArray<TPair<FCut, double>> Arches;
+			if (Kind == 1)
+			{
+				for (const double C : (W < 3 ? TArray<double>{ W / 2 } : TArray<double>{ 1.0, 3.0 }))
+				{
+					const double Ww = 1.3, Zb = 0.7, Zs = 2.35, Ox0 = C - Ww / 2, Ox1 = C + Ww / 2;
+					Arches.Add(ArchOf({ Ox0, Ox1, Zb, Zs + Ww / 2, 0.20 }, Zs));
+					FSoup Ring;
+					ArcBlocks(Ring, C, Zs, Ww / 2, Ww / 2 + 0.23, -0.02, 0.0, 0.0, UE_PI, 10);
+					P.Add(MoveTemp(Ring), TEXT("Brick"));
+					P.Add(Bev(Box(Ox0 - 0.06, Ox1 + 0.06, -0.06, 0.16, Zb - 0.08, Zb), 0.01, 1), TEXT("Concrete"));
+					FSoup M;   // steel multi-pane frame
+					for (int32 k = 0; k <= 4; ++k) { const double X = Ox0 + Ww * k / 4; AddBox(M, X - 0.015, X + 0.015, 0.12, 0.16, Zb, Zs + (k == 0 || k == 4 ? 0.0 : FMath::Sqrt(FMath::Max(0.0, FMath::Square(Ww / 2) - FMath::Square(X - C))))); }
+					for (double Z = Zb; Z <= Zs + 1e-6; Z += (Zs - Zb) / 4) { AddBox(M, Ox0, Ox1, 0.12, 0.16, Z - 0.012, Z + 0.012); }
+					P.Add(MoveTemp(M), TEXT("Metal"));
+					FSoup G;
+					AddQuadY(G, Ox0, Ox1, 0.15, Zb, Zs);
+					P.Add(MoveTemp(G), TEXT("Glass"));
+					ArchGlass(P, C, Zs, Ww / 2, 0.15);
+				}
+			}
+			else if (Kind == 2)
+			{
+				const double Ox0 = 0.5, Ox1 = 3.5, Zs = 2.0;
+				Arches.Add(ArchOf({ Ox0, Ox1, 0.0, Zs + 1.5, 0.22 }, Zs));
+				FSoup Ring;
+				ArcBlocks(Ring, 2.0, Zs, 1.5, 1.73, -0.02, 0.0, 0.0, UE_PI, 14);
+				P.Add(MoveTemp(Ring), TEXT("Brick"));
+				P.Add(Box(Ox0, Ox1, -0.02, T, -3.0, 0.0), TEXT("Concrete"));
+				// Boarded doors to the spring line, glazed fan above.
+				P.Add(Bev(Box(Ox0, 1.996, 0.14, 0.20, 0.0, Zs), 0.008, 1), TEXT("Wood"));
+				P.Add(Bev(Box(2.004, Ox1, 0.14, 0.20, 0.0, Zs), 0.008, 1), TEXT("Wood"));
+				FSoup Rails;
+				for (const double Z : { 0.3, 1.0, 1.7 }) { AddBox(Rails, Ox0 + 0.05, Ox1 - 0.05, 0.12, 0.14, Z, Z + 0.1); }
+				P.Add(MoveTemp(Rails), TEXT("Wood"));
+				P.Add(Box(Ox0, Ox1, 0.12, 0.20, Zs, Zs + 0.08), TEXT("Metal"));
+				ArchGlass(P, 2.0, Zs + 0.08, 1.48, 0.16);
+			}
+			FSoup S = Box(0, W, 0, T, 0.0, H);
+			FSoup Cb;
+			for (const TPair<FCut, double>& A : Arches) { Append(Cb, ArchCutter(A.Key.X0, A.Key.X1, A.Key.Zb > Eps ? A.Key.Zb : -0.10, A.Value, A.Key.Depth)); }
+			if (!Cb.V.IsEmpty()) { S = BoolDiff(S, Cb); }
+			DelPlane(S, AX, 0.0);
+			DelPlane(S, AX, W);
+			P.Add(MoveTemp(S), TEXT("Brick"));
+			if (Kind != 2)   // brick footing reaching below ground on slopes
+			{
+				P.Add(Box(0.0, W, -0.02, T, -3.0, 0.0), TEXT("Brick"));
+			}
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		// ---- seafront hotels ----
+
+		FPiece MakeHotel(int32 Kind)   // 0 window, 1 balcony (continuous), 2 entrance with canopy
+		{
+			FPiece P;
+			P.Name = Kind == 0 ? TEXT("Hotel_Window_400") : (Kind == 1 ? TEXT("Hotel_Balcony_400") : TEXT("Hotel_Entrance_400"));
+			const double W = 4.0;
+			auto MetalFrame = [&P](double X0, double X1, double Z0, double Z1, int32 Mullions, double Y)
+			{
+				FSoup M;
+				AddBox(M, X0, X1, Y - 0.03, Y + 0.03, Z0, Z0 + 0.05);
+				AddBox(M, X0, X1, Y - 0.03, Y + 0.03, Z1 - 0.05, Z1);
+				for (int32 k = 0; k <= Mullions; ++k) { const double X = X0 + (X1 - X0) * k / Mullions; AddBox(M, X - 0.025, X + 0.025, Y - 0.03, Y + 0.03, Z0, Z1); }
+				P.Add(MoveTemp(M), TEXT("Metal"));
+				FSoup G;
+				AddQuadY(G, X0, X1, Y + 0.01, Z0, Z1);
+				P.Add(MoveTemp(G), TEXT("Glass"));
+			};
+			FCut Cut;
+			if (Kind == 0)
+			{
+				Cut = { 0.5, 3.5, 0.9, 2.4, 0.16 };
+				MetalFrame(0.5, 3.5, 0.9, 2.4, 3, 0.12);
+				P.Add(Bev(Box(0.45, 3.55, -0.04, 0.16, 0.86, 0.9), 0.006, 1), TEXT("Concrete"));
+			}
+			else if (Kind == 1)
+			{
+				Cut = { 0.5, 3.5, 0.2, 2.55, 0.16 };
+				MetalFrame(0.5, 3.5, 0.2, 2.55, 2, 0.12);
+				const double Sd = 1.3;
+				P.Add(Bev(Box(0.0, W, -Sd, 0.01, 0.0, 0.18), 0.015, 2, { { AY, 0.01 }, { AX, 0.0 }, { AX, W } }), TEXT("Concrete"));
+				FSoup M;   // glass balustrade between a base channel and a flat top rail, posts every bay
+				AddBox(M, 0.0, W, -Sd + 0.03, -Sd + 0.09, 0.18, 0.24);
+				AddBox(M, 0.0, W, -Sd + 0.03, -Sd + 0.09, 1.08, 1.12);
+				for (const double X : { 0.04, 2.0 }) { AddBox(M, X - 0.02, X + 0.02, -Sd + 0.04, -Sd + 0.08, 0.18, 1.08); }
+				P.Add(MoveTemp(M), TEXT("Metal"));
+				FSoup G;
+				AddQuadY(G, 0.0, W, -Sd + 0.06, 0.24, 1.08);
+				P.Add(MoveTemp(G), TEXT("Glass"));
+			}
+			else
+			{
+				Cut = { 0.4, 3.6, 0.0, 2.7, 0.18 };
+				MetalFrame(0.4, 3.6, 0.0, 2.7, 4, 0.12);
+				FSoup M;   // door push bars
+				AddBox(M, 1.75, 1.78, 0.04, 0.06, 0.9, 1.5);
+				AddBox(M, 2.22, 2.25, 0.04, 0.06, 0.9, 1.5);
+				P.Add(MoveTemp(M), TEXT("Metal"));
+				P.Add(Bev(Box(0.0, W, -1.6, 0.01, 2.85, 3.05), 0.015, 2, { { AY, 0.01 }, { AX, 0.0 }, { AX, W } }), TEXT("Concrete"));   // canopy
+				P.Add(Box(0.0, W, -0.04, T, -3.0, 0.0), TEXT("Concrete"));
+				P.Add(Bev(Box(0.3, 3.7, -0.5, 0.0, -0.02, 0.06), 0.01, 1), TEXT("Concrete"));   // entrance step
+			}
+			WallSlab(P, W, { Cut });
+			RenderBand(P, 0, W);
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		// ---- landmark fronts ----
+
+		/** Church portal: two storeys (6.4 m), arched doorway 2.4 x 4.2 m between pilasters, a small pediment. */
+		FPiece MakeChurchPortal()
+		{
+			FPiece P;
+			P.Name = TEXT("Church_Portal_400");
+			const double W = 4.0, Ht = 2 * H, Cx = 2.0, Ow = 2.2, Zs = 4.2 - Ow / 2;
+			for (const V2 A : { V2(0.15, 0.55), V2(3.45, 3.85) })   // pilasters with plinths and capitals
+			{
+				P.Add(Bev(Box(A.X, A.Y, -0.12, 0.0, 0.0, 4.9), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));
+				P.Add(Bev(Box(A.X - 0.05, A.Y + 0.05, -0.17, 0.0, 0.0, 0.45), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));
+				P.Add(Bev(Box(A.X - 0.06, A.Y + 0.06, -0.19, 0.0, 4.9, 5.1), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));
+			}
+			P.Add(Bev(Box(0.05, 3.95, -0.20, 0.0, 5.1, 5.35), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));   // entablature
+			P.Add(PolyY({ V2(0.05, 5.35), V2(3.95, 5.35), V2(Cx, 6.25) }, -0.18, 0.0), TEXT("Trim"));      // pediment
+			FSoup Ring;
+			ArcBlocks(Ring, Cx, Zs, Ow / 2, Ow / 2 + 0.25, -0.08, 0.0, 0.0, UE_PI, 14);
+			P.Add(MoveTemp(Ring), TEXT("Trim"));
+			for (const V2 A : { V2(Cx - Ow / 2 - 0.25, Cx - Ow / 2), V2(Cx + Ow / 2, Cx + Ow / 2 + 0.25) })
+			{
+				P.Add(Bev(Box(A.X, A.Y, -0.08, 0.0, 0.0, Zs), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));
+			}
+			for (int32 k = 0; k < 3; ++k)   // three steps out to 0.9 m
+			{
+				P.Add(Bev(Box(Cx - Ow / 2 - 0.4 - 0.15 * k, Cx + Ow / 2 + 0.4 + 0.15 * k, -0.9 + 0.3 * k, 0.05, -1.0, -0.15 * (2 - k)), 0.012, 1), TEXT("Trim"));
+			}
+			P.Add(Box(0.0, W, -0.05, T, -3.0, 0.0), TEXT("Trim"));
+			P.Add(Bev(Box(Cx - Ow / 2, Cx - 0.004, 0.15, 0.21, 0.0, Zs), 0.008, 1), TEXT("Wood"));
+			P.Add(Bev(Box(Cx + 0.004, Cx + Ow / 2, 0.15, 0.21, 0.0, Zs), 0.008, 1), TEXT("Wood"));
+			FSoup Head;
+			ArcBlocks(Head, Cx, Zs, 0.002, Ow / 2, 0.15, 0.21, 0.0, UE_PI, 14);
+			P.Add(MoveTemp(Head), TEXT("Wood"));
+			WallSlabArch(P, W, {}, { ArchOf({ Cx - Ow / 2, Cx + Ow / 2, 0.0, Zs, Recess }, Zs) }, Ht);
+			P.Box(0, W, 0, T, 0, Ht);
+			return P;
+		}
+
+		/** Rose window: a 2.2 m round window in a stone ring, with radiating bars. */
+		FPiece MakeChurchRose()
+		{
+			FPiece P;
+			P.Name = TEXT("Church_Rose_400");
+			const double W = 4.0, Cx = 2.0, Zc = 1.65, R = 1.1;
+			FSoup Ring;
+			ArcBlocks(Ring, Cx, Zc, R, R + 0.2, -0.08, 0.0, 0.0, 2 * UE_PI, 24);
+			P.Add(MoveTemp(Ring), TEXT("Trim"));
+			FSoup M;
+			ArcBlocks(M, Cx, Zc, 0.25, 0.32, 0.10, 0.16, 0.0, 2 * UE_PI, 16);
+			for (int32 k = 0; k < 12; ++k)
+			{
+				const double A = 2 * UE_PI * k / 12;
+				FSoup Bar = Box(0.3, R, -0.025, 0.025, -0.02, 0.02);
+				Transform(Bar, FM4::Translation(V3(Cx, 0.13, Zc)) * FM4::Rotation(-A, AY));
+				Append(M, Bar);
+			}
+			P.Add(MoveTemp(M), TEXT("Trim"));
+			FSoup G;
+			const int32 Sh = G.NewShell();
+			TArray<int32> Idx;
+			for (int32 k = 0; k < 24; ++k) { const double A = 2 * UE_PI * k / 24; Idx.Add(G.Add(V3(Cx + R * FMath::Cos(A), GlassY, Zc + R * FMath::Sin(A)))); }
+			G.Face(Sh, Idx);
+			P.Add(MoveTemp(G), TEXT("Glass"));
+			FSoup S = Box(0, W, 0, T, 0.0, H);
+			FSoup Cb;
+			TArray<V2> Circle;
+			for (int32 k = 0; k < 24; ++k) { const double A = 2 * UE_PI * k / 24; Circle.Add(V2(Cx + R * FMath::Cos(A), Zc + R * FMath::Sin(A))); }
+			Append(Cb, PolyY(Circle, -0.1, Recess));
+			S = BoolDiff(S, Cb);
+			DelPlane(S, AX, 0.0);
+			DelPlane(S, AX, W);
+			Bevel(S, 0.02, 2, { { AX, 0.0 }, { AX, W }, { AZ, 0.0 }, { AZ, H }, { AY, T } });
+			P.Add(MoveTemp(S), TEXT("Wall"));
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Triangular gable front (unit: 1 m wide, 1 m tall, apex at x 0.5), scaled per building. */
+		FPiece MakePediment()
+		{
+			FPiece P;
+			P.Name = TEXT("Pediment");
+			P.Kind = TEXT("trim");
+			P.Add(PolyY({ V2(0.0, 0.0), V2(1.0, 0.0), V2(0.5, 1.0) }, -0.05, T), TEXT("Wall"));
+			// Raking cornice along both slopes.
+			P.Add(PolyY({ V2(0.0, 0.0), V2(0.5, 1.0), V2(0.5, 1.08), V2(-0.04, 0.0) }, -0.12, 0.0), TEXT("Trim"));
+			P.Add(PolyY({ V2(1.0, 0.0), V2(1.04, 0.0), V2(0.5, 1.08), V2(0.5, 1.0) }, -0.12, 0.0), TEXT("Trim"));
+			P.Box(0, 1, -0.12, T, 0, 1);
+			return P;
+		}
+
+		/** Civic entrance: steps, two pilasters, a double door with a fanlight, an entablature. */
+		FPiece MakeCivicEntrance()
+		{
+			FPiece P;
+			P.Name = TEXT("Civic_Entrance_400");
+			const double W = 4.0, Ox0 = 1.25, Ox1 = 2.75, Zt = 2.9;
+			for (const V2 A : { V2(0.25, 0.65), V2(3.35, 3.75) })
+			{
+				P.Add(Bev(Box(A.X, A.Y, -0.14, 0.0, 0.0, 2.95), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));
+			}
+			P.Add(Bev(Box(0.15, 3.85, -0.20, 0.0, 2.95, 3.2), 0.012, 2, { { AY, 0.0 } }), TEXT("Trim"));
+			for (int32 k = 0; k < 3; ++k)
+			{
+				P.Add(Bev(Box(Ox0 - 0.5 - 0.15 * k, Ox1 + 0.5 + 0.15 * k, -0.9 + 0.3 * k, 0.05, -1.0, -0.15 * (2 - k)), 0.012, 1), TEXT("Trim"));
+			}
+			P.Add(Box(0.0, W, -0.05, T, -3.0, 0.0), TEXT("Trim"));
+			Surround(P, Ox0, Ox1, 0.17, Zt, 0.12, 0.05, 0.0, false, true);
+			Casement(P, Ox0, Ox1, 2.25, Zt, 2, 1);
+			P.Add(Bev(Box(Ox0, 1.996, 0.15, 0.21, 0.17, 2.25), 0.008, 1), TEXT("Wood"));
+			P.Add(Bev(Box(2.004, Ox1, 0.15, 0.21, 0.17, 2.25), 0.008, 1), TEXT("Wood"));
+			WallSlab(P, W, { { Ox0, Ox1, 0.17, Zt, Recess } });
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		FPiece MakePilaster()
+		{
+			FPiece P;
+			P.Name = TEXT("Pilaster_320");
+			P.Kind = TEXT("trim");
+			P.Add(Bev(Box(-0.25, 0.25, -0.08, 0.0, 0.0, H), 0.012, 2, { { AY, 0.0 }, { AZ, 0.0 }, { AZ, H } }), TEXT("Trim"));
+			P.Box(-0.25, 0.25, -0.08, 0.0, 0, H);
+			return P;
+		}
+
+		/** Station canopy: steel roof 3 m deep on two posts, for a 4 m bay. */
+		FPiece MakeCanopy()
+		{
+			FPiece P;
+			P.Name = TEXT("Canopy_400");
+			P.Kind = TEXT("fixture");
+			FSoup M;
+			for (const double X : { 0.2, 3.8 })
+			{
+				AddCyl(M, V3(X, -2.8, 0.0), 0.08, 3.1, 12);
+				FSoup Br = Box(-0.04, 0.04, 0.0, 2.8, -0.08, 0.0);
+				Transform(Br, FM4::Translation(V3(X, -2.8, 3.1)));
+				Append(M, Br);
+			}
+			AddBox(M, 0.0, 4.0, -3.0, 0.0, 3.1, 3.18);
+			AddBox(M, 0.0, 4.0, -3.05, -2.95, 2.95, 3.18);   // fascia
+			P.Add(MoveTemp(M), TEXT("Metal"));
+			P.Box(0, 4, -3.05, 0, 0, 3.18);
+			return P;
+		}
+
+		// ==== Phase 4: roofs from parts ===============================================================
+
+		/** Capping tile (half round) along a line. */
+		void Capping(FSoup& Caps, const V3& A, const V3& B, double Rad = 0.012)
+		{
+			const V3 D = (B - A).GetSafeNormal();
+			const V3 Side = D.Cross(V3(0, 0, 1)).GetSafeNormal();
+			V3 Up2 = Side.Cross(D).GetSafeNormal();
+			if (Up2.Z < 0) { Up2 = -Up2; }
+			const int32 Seg = 6;
+			const int32 Sh = Caps.NewShell();
+			TArray<int32> Ra, Rb;
+			for (int32 k = 0; k <= Seg; ++k)
+			{
+				const double An = UE_PI * k / Seg;
+				const V3 O = Side * (Rad * FMath::Cos(An)) + Up2 * (Rad * FMath::Sin(An));
+				Ra.Add(Caps.Add(A + O));
+				Rb.Add(Caps.Add(B + O));
+			}
+			for (int32 k = 0; k < Seg; ++k) { Caps.Face(Sh, { Ra[k], Ra[k + 1], Rb[k + 1], Rb[k] }); }
+		}
+
+		/** Hip end: the half pyramid at one end of a hip roof, plan x -0.5..0 by y -0.5..0.5, apex (0, 0, 1).
+		 *  Scaled uniformly in plan by the roof's width (with eaves) and in Z by its rise, so every slope of
+		 *  the roof has the same pitch at any length (RoofRidge fills the middle). */
+		FPiece MakeRoofHipEnd()
+		{
+			FPiece P;
+			P.Name = TEXT("RoofHipEnd");
+			P.Kind = TEXT("roof");
+			const double Tf = 0.04, Zr = 1.0;
+			FSoup S;
+			const int32 C0 = S.Add(V3(-0.5, -0.5, 0)), C1 = S.Add(V3(0, -0.5, 0)), C2 = S.Add(V3(0, 0.5, 0)), C3 = S.Add(V3(-0.5, 0.5, 0));
+			const int32 E0 = S.Add(V3(-0.5, -0.5, Tf)), E1 = S.Add(V3(0, -0.5, Tf)), E2 = S.Add(V3(0, 0.5, Tf)), E3 = S.Add(V3(-0.5, 0.5, Tf));
+			const int32 Ap = S.Add(V3(0, 0, Zr));
+			S.Face(0, { C3, C2, C1, C0 });               // soffit
+			S.Face(0, { C0, C1, E1, E0 });               // fascia, front
+			S.Face(0, { C3, C0, E0, E3 });               // fascia, end
+			S.Face(0, { C2, C3, E3, E2 });               // fascia, back
+			S.Face(0, { E0, E1, Ap });                   // front slope (half)
+			S.Face(0, { E3, E0, Ap });                   // hip end
+			S.Face(0, { E2, E3, Ap });                   // back slope (half)
+			S.Face(0, { C1, C2, E2, Ap, E1 });           // joint face to the ridge section (hidden)
+			S.NextShell = 1;
+			OrientOutward(S);
+			P.Add(MoveTemp(S), TEXT("Roof"));
+			FSoup Caps;
+			for (const double Sy : { -1.0, 1.0 })
+			{
+				const V3 A(-0.5, Sy * 0.5, Tf), B(0, 0, Zr - 0.008);
+				Capping(Caps, A + (B - A) * 0.04, B);
+			}
+			P.Add(MoveTemp(Caps), TEXT("Roof"));
+			P.Box(-0.5, 0, -0.5, 0.5, 0, 1);
+			return P;
+		}
+
+		/** Ridge section: x 0..1, y -0.5..0.5, slopes meeting at y = 0, z = 1; capped ends (gables). */
+		FPiece MakeRoofRidge()
+		{
+			FPiece P;
+			P.Name = TEXT("RoofRidge");
+			P.Kind = TEXT("roof");
+			const double Tf = 0.04;
+			FSoup S;
+			const int32 C0 = S.Add(V3(0, -0.5, 0)), C1 = S.Add(V3(1, -0.5, 0)), C2 = S.Add(V3(1, 0.5, 0)), C3 = S.Add(V3(0, 0.5, 0));
+			const int32 E0 = S.Add(V3(0, -0.5, Tf)), E1 = S.Add(V3(1, -0.5, Tf)), E2 = S.Add(V3(1, 0.5, Tf)), E3 = S.Add(V3(0, 0.5, Tf));
+			const int32 R0 = S.Add(V3(0, 0, 1)), R1 = S.Add(V3(1, 0, 1));
+			S.Face(0, { C3, C2, C1, C0 });
+			S.Face(0, { C0, C1, E1, E0 });
+			S.Face(0, { C2, C3, E3, E2 });
+			S.Face(0, { E0, E1, R1, R0 });
+			S.Face(0, { E2, E3, R0, R1 });
+			S.Face(0, { C0, E0, R0, E3, C3 });   // end caps (barge faces on a gable; hidden inside a hip end)
+			S.Face(0, { C1, C2, E2, R1, E1 });
+			S.NextShell = 1;
+			OrientOutward(S);
+			P.Add(MoveTemp(S), TEXT("Roof"));
+			FSoup Caps;
+			Capping(Caps, V3(0, 0, 1 - 0.008), V3(1, 0, 1 - 0.008));
+			P.Add(MoveTemp(Caps), TEXT("Roof"));
+			P.Box(0, 1, -0.5, 0.5, 0, 1);
+			return P;
+		}
+
+		/** Gable end wall: unit triangle in the facade plane (x 0..1, apex x 0.5 z 1), wall face at Y = 0. */
+		FPiece MakeGableEnd(const TCHAR* Mat)
+		{
+			FPiece P;
+			P.Name = FString(TEXT("GableEnd")) + (FCString::Strcmp(Mat, TEXT("Wall")) == 0 ? TEXT("") : Mat);
+			P.Kind = TEXT("trim");
+			P.Add(PolyY({ V2(0.0, 0.0), V2(1.0, 0.0), V2(0.5, 1.0) }, 0.0, T), Mat);
+			P.Box(0, 1, 0, T, 0, 1);
+			return P;
+		}
+
+		/** Half-round eaves gutter along X, hanging at the eave line 0.4-0.55 m out from the wall. */
+		FPiece MakeGutter(double W)
+		{
+			FPiece P;
+			P.Name = TEXT("Gutter_") + Cm(W);
+			P.Kind = TEXT("fixture");
+			FSoup M;
+			TArray<V2> Prof;   // half-round section in (y, z): outer arc, then the inner arc back
+			for (int32 k = 0; k <= 8; ++k) { const double A = UE_PI + UE_PI * k / 8; Prof.Add(V2(-0.47 + 0.075 * FMath::Cos(A), 0.075 * FMath::Sin(A))); }
+			for (int32 k = 8; k >= 0; --k) { const double A = UE_PI + UE_PI * k / 8; Prof.Add(V2(-0.47 + 0.065 * FMath::Cos(A), 0.065 * FMath::Sin(A))); }
+			Append(M, PrismX(Prof, 0.0, W, false));
+			for (double X = 0.25; X < W; X += 0.8) { AddBox(M, X - 0.01, X + 0.01, -0.56, -0.38, -0.08, -0.06); }
+			P.Add(MoveTemp(M), TEXT("Metal"));
+			P.Box(0, W, -0.56, -0.38, -0.08, 0.0);
+			return P;
+		}
+
+		// ==== Phase 6: dressing ======================================================================
+
+		/** Lettering for a shopfront's sign board (invented trade names, no brands). */
+		const TCHAR* const ShopNames[] = { TEXT("PANIFICIO"), TEXT("ALIMENTARI"), TEXT("FARMACIA"), TEXT("TABACCHI"), TEXT("MACELLERIA"), TEXT("FERRAMENTA"),
+			TEXT("BAR DEL SOLE"), TEXT("TRATTORIA"), TEXT("PESCHERIA"), TEXT("LIBRERIA"), TEXT("OTTICA"), TEXT("MERCERIA") };
+		constexpr int32 NumShopNames = UE_ARRAY_COUNT(ShopNames);
+
+		FPiece MakeShopSign(int32 Index)
+		{
+			FPiece P;
+			P.Name = FString::Printf(TEXT("ShopSign_%02d"), Index);
+			P.Kind = TEXT("fixture");
+			FSoup Txt = TextMesh(ShopNames[Index], 0.26, 0.0, 0.012, -0.061);
+			Transform(Txt, FM4::Translation(V3(2.0, 0.0, 2.865)));   // letters centred on the 2.70-3.12 m board
+			P.Add(MoveTemp(Txt), Index % 4 == 3 ? TEXT("PaintBlack") : TEXT("PaintWhite"));
+			P.Box(0.4, 3.6, -0.075, -0.06, 2.75, 3.08);
+			return P;
+		}
+
+		/** A hanging blade sign on an iron bracket, perpendicular to the wall; pivot at the wall plate. */
+		FPiece MakeShopBlade()
+		{
+			FPiece P;
+			P.Name = TEXT("Prop_ShopBlade");
+			P.Kind = TEXT("fixture");
+			FSoup M;
+			AddBox(M, -0.05, 0.05, -0.02, 0.0, 0.0, 0.25);
+			AddBox(M, -0.012, 0.012, -0.75, 0.0, 0.21, 0.24);
+			for (const double Y : { -0.65, -0.15 }) { AddBox(M, -0.004, 0.004, Y - 0.004, Y + 0.004, 0.13, 0.21); }
+			P.Add(MoveTemp(M), TEXT("Metal"));
+			P.Add(Bev(Box(-0.02, 0.02, -0.72, -0.08, -0.38, 0.13), 0.008, 1), TEXT("Wood"));
+			P.Add(Bev(Box(-0.024, 0.024, -0.64, -0.16, -0.30, 0.05), 0.004, 1), TEXT("PaintWhite"));
+			P.Box(-0.05, 0.05, -0.75, 0.0, -0.38, 0.25);
+			return P;
+		}
+
+		/** A split-system AC unit on wall brackets with its pipe running down; back against the wall at Y = 0. */
+		FPiece MakeWallAC()
+		{
+			FPiece P = MakeAcUnit();
+			P.Name = TEXT("Prop_WallAC");
+			P.Kind = TEXT("fixture");
+			for (TPair<FSoup, int32>& Part : P.Parts) { Transform(Part.Key, FM4::Translation(V3(0, -0.20, 0.0))); }
+			FSoup M;
+			for (const double X : { -0.30, 0.30 }) { AddBox(M, X - 0.02, X + 0.02, -0.40, 0.0, 0.06, 0.10); AddBox(M, X - 0.02, X + 0.02, -0.03, 0.0, -0.20, 0.10); }
+			AddCyl(M, V3(0.46, -0.03, -0.9), 0.02, 1.1, 8);
+			P.Add(MoveTemp(M), TEXT("Metal"));
+			P.Ucx.Reset();
+			P.Box(-0.45, 0.48, -0.41, 0.0, -0.9, 0.7);
+			return P;
+		}
+
+		/** Laundry line: 3 m of line on two wall brackets with a few pieces of washing (Fabric, shutter colour). */
+		FPiece MakeLaundry()
+		{
+			FPiece P;
+			P.Name = TEXT("Prop_Laundry");
+			P.Kind = TEXT("fixture");
+			FSoup M;
+			for (const double X : { 0.0, 3.0 }) { AddBox(M, X - 0.01, X + 0.01, -0.45, 0.0, -0.01, 0.01); }
+			AddBox(M, 0.0, 3.0, -0.43, -0.42, -0.004, 0.004);
+			P.Add(MoveTemp(M), TEXT("Metal"));
+			FSoup C;
+			const double Pieces[][2] = { { 0.25, 0.55 }, { 0.9, 0.35 }, { 1.35, 0.7 }, { 2.2, 0.45 } };   // x, width
+			const double Drops[] = { 0.6, 0.45, 0.8, 0.5 };
+			for (int32 k = 0; k < 4; ++k) { AddBox(C, Pieces[k][0], Pieces[k][0] + Pieces[k][1], -0.43, -0.425, -Drops[k], 0.0); }
+			P.Add(MoveTemp(C), TEXT("Fabric"));
+			P.Box(0, 3, -0.45, 0, -0.8, 0.01);
+			return P;
+		}
+
+		/** Window-sill planter trough (plants are the fern prop, added by the assembler). */
+		FPiece MakeFlowerBox()
+		{
+			FPiece P;
+			P.Name = TEXT("Prop_FlowerBox");
+			P.Kind = TEXT("fixture");
+			FSoup B = BoolDiff(Box(-0.5, 0.5, -0.24, -0.02, 0.0, 0.18), Box(-0.47, 0.47, -0.21, -0.05, 0.03, 0.25));
+			P.Add(Bev(B, 0.008, 1), TEXT("Wood"));
+			P.Add(Box(-0.47, 0.47, -0.21, -0.05, 0.03, 0.14), TEXT("Concrete"));   // soil line
+			P.Box(-0.5, 0.5, -0.24, -0.02, 0, 0.18);
+			return P;
+		}
 	}
 
 	TArray<TFunction<FPiece()>> Builders()
 	{
-		return {
+		TArray<TFunction<FPiece()>> Out = {
 			[] { return MakeWall(2.0); }, [] { return MakeWall(4.0); },
 			[] { return MakeWindow(2.0, TEXT("shutters")); }, [] { return MakeWindow(4.0, TEXT("shutters")); },
 			[] { return MakeWindow(2.0, TEXT("plain")); }, [] { return MakeWindow(4.0, TEXT("plain")); },
@@ -1337,6 +2208,28 @@ namespace OCKit
 			[] { return MakeSign(TEXT("Speed30")); }, [] { return MakeSign(TEXT("Speed50")); }, [] { return MakeSign(TEXT("Stop")); },
 			[] { return MakeSign(TEXT("GiveWay")); }, [] { return MakeSign(TEXT("NoEntry")); }, [] { return MakeSign(TEXT("ZTL")); }, MakeConvexMirror,
 			[] { return MakeBollard(TEXT("Stone")); }, [] { return MakeBollard(TEXT("Iron")); }, MakeWallLantern, MakeLedPole, MakeBin, MakeFountain,
-			MakeTrafficLight, MakeCableLamp, MakeCable };
+			MakeTrafficLight, MakeCableLamp, MakeCable,
+			// Buildings plan phase 3: families and district pieces.
+			[] { return MakeWall(1.0); }, [] { return MakePlinth(1.0); }, [] { return MakeStringCourse(2.0); }, [] { return MakeStringCourse(4.0); },
+			[] { return MakeWall(2.83); }, [] { return MakeWindow(2.83, TEXT("shutters")); }, [] { return MakeWindow(2.83, TEXT("plain")); },
+			[] { return MakePlinth(2.83); }, [] { return MakeCornice(2.83); }, [] { return MakeParapet(2.83); },
+			MakeJuliet, MakeBalconyLong, MakePortone, MakeGarage,
+			[] { return MakeShopVariant(TEXT("ShopClosed_400"), 0.035, false); }, [] { return MakeShopVariant(TEXT("ShopAwning_400"), 99.0, true); },
+			[] { return MakeCorniceBracket(2.0); }, [] { return MakeCorniceBracket(4.0); },
+			[] { return MakeShedWall(2.0, 0); }, [] { return MakeShedWall(4.0, 0); }, [] { return MakeShedWall(4.0, 1); }, [] { return MakeShedWall(4.0, 2); },
+			[] { return MakeBrick(2.0, 0); }, [] { return MakeBrick(4.0, 0); }, [] { return MakeBrick(2.0, 1); }, [] { return MakeBrick(4.0, 1); }, [] { return MakeBrick(4.0, 2); },
+			[] { return MakeBrick(2.0, 3); }, [] { return MakeBrick(4.0, 3); },
+			[] { return MakeHotel(0); }, [] { return MakeHotel(1); }, [] { return MakeHotel(2); },
+			MakeChurchPortal, MakeChurchRose, MakePediment, MakeCivicEntrance, MakePilaster, MakeCanopy,
+			// Phase 4 roofs and phase 6 dressing.
+			MakeRoofHipEnd, MakeRoofRidge, [] { return MakeGableEnd(TEXT("Wall")); }, [] { return MakeGableEnd(TEXT("Brick")); }, [] { return MakeGableEnd(TEXT("Corrugated")); },
+			[] { return MakeGutter(2.0); }, [] { return MakeGutter(4.0); },
+			MakeShopBlade, MakeWallAC, MakeLaundry, MakeFlowerBox };
+		for (const TCHAR* Family : { TEXT("WindowTall"), TEXT("WindowArch"), TEXT("WindowSmall"), TEXT("WindowClosed"), TEXT("WindowHalf"), TEXT("WindowBlind") })
+		{
+			for (const double W : { 2.0, 4.0 }) { Out.Add([Family, W] { return MakeWindowFamily(Family, W); }); }
+		}
+		for (int32 i = 0; i < NumShopNames; ++i) { Out.Add([i] { return MakeShopSign(i); }); }
+		return Out;
 	}
 }

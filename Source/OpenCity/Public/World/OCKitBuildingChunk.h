@@ -23,7 +23,7 @@ class OPENCITY_API AOCKitBuildingChunk : public AActor
 	GENERATED_BODY()
 
 public:
-	static constexpr int32 NumCustomData = 8;
+	static constexpr int32 NumCustomData = 10;
 
 	AOCKitBuildingChunk();
 

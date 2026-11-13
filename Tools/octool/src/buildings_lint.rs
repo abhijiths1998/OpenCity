@@ -22,6 +22,9 @@ struct Rect {
 }
 
 fn rect(b: &Value) -> Option<Rect> {
+    if b.get("on").is_some() {
+        return None; // a recessed top storey stands on its own building, not on the ground
+    }
     let pos = b.get("pos")?.as_array()?;
     let size = b.get("size")?.as_array()?;
     let (x, y) = (pos.first()?.as_f64()?, pos.get(1)?.as_f64()?);

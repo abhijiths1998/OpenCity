@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate the Marevia world plan (UOCLayoutCommandlet, C++): districts, roads, terrain, walls, buildings.
 # Writes marevia_layout.json, marevia_height.png and marevia_preview.png. CPU only, about a minute.
-# Usage: scripts/make_layout.sh [out_dir] [-compare=<dir>] [-selftest]
+# Usage: scripts/make_layout.sh [out_dir] [-compare=<dir>] [-selftest] [-seed=N]   (default seed 1974)
 #   out_dir defaults to SourceArt/World; -compare reports every difference from the plan in <dir>.
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 oc_require_engine

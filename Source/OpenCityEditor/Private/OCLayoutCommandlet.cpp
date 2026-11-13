@@ -91,6 +91,8 @@ int32 UOCLayoutCommandlet::Main(const FString& Params)
 	FString CompareDir;
 	FParse::Value(*Params, TEXT("out="), OutDir);
 	FParse::Value(*Params, TEXT("compare="), CompareDir);
+	int32 Seed = OCLayout::DefaultSeed;
+	FParse::Value(*Params, TEXT("seed="), Seed);
 	if (FPaths::IsRelative(OutDir)) { OutDir = Root / OutDir; }
 	if (FParse::Param(*Params, TEXT("selftest")) && !SelfTest())
 	{
@@ -99,7 +101,7 @@ int32 UOCLayoutCommandlet::Main(const FString& Params)
 	}
 	const double T0 = FPlatformTime::Seconds();
 	FString Error;
-	if (!OCLayout::GenerateMarevia(OutDir, Root / TEXT("SourceArt/Infra/road_profiles.json"), Error))
+	if (!OCLayout::GenerateMarevia(OutDir, Root / TEXT("SourceArt/Infra/road_profiles.json"), Error, Seed))
 	{
 		UE_LOG(LogOpenCity, Error, TEXT("OCLayout: %s"), *Error);
 		return 1;

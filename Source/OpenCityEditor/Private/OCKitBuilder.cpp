@@ -1,12 +1,12 @@
-// Assembles Marevia's buildings from the modular kit (Tools/kit/KIT_SPEC.md):
+// Assembles Marevia's buildings from the modular kit (Tools/kit/KIT_SPEC.md, BUILDINGS_PLAN.md):
 // UOCWorldBuilderLibrary::BuildKitBuildings.
 //
-// Each building record in the layout (footprint on the 2 m grid, storeys of 3.2 m, district style)
-// becomes: a stone plinth, a ground floor (shopfronts, a street door, barred windows) on the sides
-// that face a street, upper floors of shuttered windows and balconies, quoins on every corner,
-// a cornice, and either a tiled hip roof or a flat roof with a parapet and rooftop clutter.
-// Variation (wall and shutter colours, shop and balcony mix, lit windows, wear) is seeded per
-// building, so neighbours differ but every rebuild is identical.
+// Each building record in the layout (footprint on the 2 m grid, storeys of 3.2 m, archetype, city fields,
+// street character) is dressed by its archetype in DA_BuildingStyles: every facade is planned first
+// (OCFacadePlan: stacked columns, symmetric fronts, balcony patterns), then emitted as kit instances.
+// Walls behind neighbours are not built; roofs are hips (end caps + a stretched ridge), gables or flat
+// roofs with clutter; details (closed shutters, signs, AC units, laundry, flower boxes) follow upkeep and
+// wealth. Choices use hashed sub-seeds per purpose, so every rebuild is identical.
 
 #include "OCWorldBuilderLibrary.h"
 
@@ -17,10 +17,13 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Misc/FileHelper.h"
+#include "AssetRegistry/IAssetRegistry.h"
+#include "OCEditorHelpers.h"
 #include "OCHeightField.h"
 #include "OCLog.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "World/OCBuildingStyles.h"
 #include "World/OCFacadePlan.h"
 #include "World/OCKitBuildingChunk.h"
 #include "World/OCRoadGraph.h"
@@ -30,42 +33,6 @@ namespace OCKit
 	constexpr double StoreyCm = 320.0;
 	constexpr double StreetProbeCm = 500.0;   // a facade faces a street if a road edge is this close
 	constexpr double StreetGapCm = 700.0;
-
-	/** District look: what the street floors, upper floors and roofs are made of. */
-	struct FStyle
-	{
-		double PitchedRoof = 0.5;   // chance of a tiled hip roof (else flat roof + parapet), where one fits
-		double Shutters = 0.8;      // chance windows have shutters (per building)
-		bool bQuoins = true;        // stone quoins on the corners (old styles; grid90 up to 5 storeys)
-		bool bCornice = true;       // moulded cornice under the roof (not on sheds, warehouses, port offices)
-		int32 Palette = 0;          // 0 warm Mediterranean, 1 pastel seafront, 2 industrial, 3 pale stone
-		FOCFacadeStyle Facade;      // shops, balconies, side windows, symmetry
-	};
-
-	FStyle StyleFor(const FString& Name)
-	{
-		FStyle S;
-		FOCFacadeStyle& F = S.Facade;
-		if (Name == TEXT("oldtown")) { S.PitchedRoof = 0.7; S.Shutters = 0.85; F.Shop = 0.45f; F.Balcony = 0.35f; F.Symmetric = 0.6f; }
-		else if (Name == TEXT("grid90")) { S.PitchedRoof = 0.35; S.Shutters = 0.7; F.Shop = 0.55f; F.Balcony = 0.3f; F.Symmetric = 0.7f; }
-		else if (Name == TEXT("grid120")) { S.PitchedRoof = 0.0; S.Shutters = 0.3; S.bQuoins = false; S.bCornice = false; S.Palette = 2; F.Shop = 0.3f; F.Balcony = 0.05f; F.SideWindows = 0.3f; F.Symmetric = 0.3f; }
-		else if (Name == TEXT("beach")) { S.PitchedRoof = 0.1; S.Shutters = 0.4; S.bQuoins = false; S.Palette = 1; F.Shop = 0.7f; F.Balcony = 0.6f; F.Symmetric = 0.7f; }
-		else if (Name == TEXT("village")) { S.PitchedRoof = 0.8; S.Shutters = 0.9; F.Shop = 0.2f; F.Balcony = 0.2f; F.Symmetric = 0.3f; }
-		else if (Name == TEXT("terminal")) { S.PitchedRoof = 0.0; S.Shutters = 0.0; S.bQuoins = false; S.bCornice = false; S.Palette = 2; F.Shop = 0.2f; F.Balcony = 0.0f; F.SideWindows = 0.6f; F.Symmetric = 0.2f; }
-		else if (Name == TEXT("hills")) { S.PitchedRoof = 0.9; S.Shutters = 0.9; S.Palette = 3; F.Shop = 0.0f; F.Balcony = 0.35f; F.Symmetric = 0.7f; }
-		return S;
-	}
-
-	const FLinearColor WallPalettes[4][6] = {
-		{ {1.00f, 0.90f, 0.74f}, {0.96f, 0.76f, 0.48f}, {0.90f, 0.58f, 0.44f}, {1.00f, 0.86f, 0.62f}, {0.98f, 0.95f, 0.88f}, {0.94f, 0.72f, 0.60f} },
-		{ {1.00f, 0.82f, 0.76f}, {0.86f, 0.92f, 0.90f}, {1.00f, 0.95f, 0.80f}, {0.84f, 0.88f, 0.96f}, {1.00f, 1.00f, 0.97f}, {0.98f, 0.86f, 0.66f} },
-		{ {0.80f, 0.78f, 0.74f}, {0.86f, 0.80f, 0.70f}, {0.72f, 0.70f, 0.68f}, {0.88f, 0.70f, 0.56f}, {0.78f, 0.76f, 0.70f}, {0.82f, 0.74f, 0.64f} },
-		{ {1.00f, 0.95f, 0.86f}, {0.95f, 0.88f, 0.74f}, {0.98f, 0.92f, 0.82f}, {0.92f, 0.80f, 0.64f}, {1.00f, 0.98f, 0.93f}, {0.90f, 0.84f, 0.74f} },
-	};
-	const FLinearColor WoodColors[7] = {
-		{0.30f, 0.52f, 0.36f}, {0.30f, 0.46f, 0.68f}, {0.26f, 0.52f, 0.52f}, {0.52f, 0.36f, 0.24f},
-		{0.55f, 0.60f, 0.64f}, {0.92f, 0.92f, 0.88f}, {0.62f, 0.24f, 0.20f},
-	};
 
 	struct FPieces
 	{
@@ -143,6 +110,19 @@ namespace OCKit
 {
 	constexpr double CoverProbeCm = 50.0;     // a wall point is behind a neighbour if this far out is inside it
 	constexpr double PlinthBelowCm = 300.0;   // how far the plinth (and door/shop stubs) reach below the floor
+	constexpr double ChamferCm = 200.0;       // corner buildings: the corner cut (a 2.83 m facade piece)
+	const TCHAR* const StylesAsset = TEXT("/Game/Environment/Buildings/DA_BuildingStyles");
+
+	/** The look of one building, drawn once (and shared by every volume of a lot). */
+	struct FLook
+	{
+		int32 Colour = 0;
+		FLinearColor Wall, Wood;
+		float Wear = 0.f;
+		int32 Trim = 0;
+		bool bShutters = true;
+		FName Crown, Upper, UpperFirst, Top, Balcony, Shop, GroundOther;
+	};
 
 	/** One building record in world space, before anything is placed. */
 	struct FBld
@@ -150,12 +130,18 @@ namespace OCKit
 		FVector C, U, Vw;          // centre on the ground plane, unit width and depth axes
 		double W = 0.0, D = 0.0;   // cm, on the 2 m grid
 		int32 Storeys = 1;
-		FStyle Style;
+		FString StyleName, LmKind;
+		const FOCBuildingArchetype* Arch = nullptr;
 		bool bLandmark = false;
+		double Age = 0.5, Wealth = 0.5, Upkeep = 0.5;
+		int32 Street = 0, Lot = -1, On = -1, Chamfer = 0;
+		bool bLotMain = true;
 		double Z0 = 0.0, TopZ = 0.0;
 		struct FFacade { FVector Out; double Length; double Half; bool bStreet = false; double RoadDist = 0.0; };
 		FFacade F[4];
 		int32 Front = INDEX_NONE;  // the street facade with the door
+		FLook Look;
+		uint32 Signature = 0;
 
 		bool Contains(const FVector& P) const
 		{
@@ -187,17 +173,18 @@ namespace OCKit
 			}
 		}
 
-		/** The highest wall top (TopZ) of another building standing on P; lowest double if none. */
-		double CoverTop(const FVector& P, int32 Self) const
+		/** The highest wall top (TopZ) of another building standing on P (lowest double if none); Who = which. */
+		double CoverTop(const FVector& P, int32 Self, int32* Who = nullptr) const
 		{
 			double Top = TNumericLimits<double>::Lowest();
 			if (const TArray<int32>* List = Cells.Find(FIntPoint(FMath::FloorToInt32(P.X / CellCm), FMath::FloorToInt32(P.Y / CellCm))))
 			{
 				for (const int32 i : *List)
 				{
-					if (i != Self && (*All)[i].Contains(P))
+					if (i != Self && (*All)[i].Contains(P) && (*All)[i].TopZ > Top)
 					{
-						Top = FMath::Max(Top, (*All)[i].TopZ);
+						Top = (*All)[i].TopZ;
+						if (Who) { *Who = i; }
 					}
 				}
 			}
@@ -205,12 +192,39 @@ namespace OCKit
 		}
 	};
 
-	/** Height of the RoofHip piece's surface (0-1 of its rise) at unit-square point (X along the ridge, Y across). */
-	double HipRoofHeight(double X, double Y)
+	FName PickWeighted(const TArray<FOCPieceWeight>& List, FRandomStream& R, FName Fallback)
 	{
-		constexpr double Fascia = 0.04, HalfRidge = 0.15;   // MakeRoofHip
-		const double Side = (0.5 - FMath::Abs(Y)) / 0.5, End = (0.5 - FMath::Abs(X)) / (0.5 - HalfRidge);
-		return Fascia + (1.0 - Fascia) * FMath::Clamp(FMath::Min(Side, End), 0.0, 1.0);
+		float Sum = 0.f;
+		for (const FOCPieceWeight& P : List) { Sum += P.Weight; }
+		if (Sum <= 0.f)
+		{
+			return Fallback;
+		}
+		float X = R.FRand() * Sum;
+		for (const FOCPieceWeight& P : List)
+		{
+			X -= P.Weight;
+			if (X <= 0.f) { return P.Piece; }
+		}
+		return List.Last().Piece;
+	}
+
+	/** A default archetype per district style, for records written before archetypes existed. */
+	FName DefaultArchetype(const FString& Style)
+	{
+		static const TMap<FString, FName> M = { { TEXT("oldtown"), TEXT("townhouse") }, { TEXT("grid90"), TEXT("tenement") }, { TEXT("grid120"), TEXT("shed") },
+			{ TEXT("beach"), TEXT("slabhotel") }, { TEXT("village"), TEXT("cottage") }, { TEXT("terminal"), TEXT("shed") }, { TEXT("hills"), TEXT("villa") } };
+		const FName* Found = M.Find(Style);
+		return Found ? *Found : FName(TEXT("townhouse"));
+	}
+
+	/** Height (cm above the roof base) of a pitched roof's surface at (Along, Across) cm from its centre. */
+	double PitchedHeight(double Along, double Across, double Len, double Wid, double Rise, bool bHip)
+	{
+		constexpr double Fascia = 0.04;
+		const double Side = 1.0 - FMath::Abs(Across) / (Wid * 0.5);
+		const double End = bHip ? (Len * 0.5 - FMath::Abs(Along)) / (Wid * 0.5) : 1.0;
+		return Rise * (Fascia + (1.0 - Fascia) * FMath::Clamp(FMath::Min(Side, End), 0.0, 1.0));
 	}
 }
 
@@ -242,19 +256,31 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 	FRoadIndex RoadIndex;
 	RoadIndex.Build(Roads);
 
-	static const TCHAR* PieceNames[] = {
-		TEXT("Wall_200"), TEXT("Wall_400"), TEXT("Window_200"), TEXT("Window_400"), TEXT("WindowPlain_200"), TEXT("WindowPlain_400"),
-		TEXT("Balcony_400"), TEXT("Shopfront_400"), TEXT("Door_200"), TEXT("GroundWindow_400"), TEXT("Corner_320"),
-		TEXT("Plinth_200"), TEXT("Plinth_400"), TEXT("Cornice_200"), TEXT("Cornice_400"), TEXT("Parapet_200"), TEXT("Parapet_400"),
-		TEXT("RoofHip"), TEXT("RoofFlat"), TEXT("Prop_WaterTank"), TEXT("Prop_ACUnit"), TEXT("Prop_Dish"), TEXT("Prop_Chimney"),
-		TEXT("Prop_RoofHut"), TEXT("Drainpipe_320"), TEXT("CorniceCorner") };
-	FPieces Pieces;
-	for (const TCHAR* Name : PieceNames)
+	// The styles asset: made with the starting values the first time, the tuning source after that.
+	UOCBuildingStyleSet* Styles = OCEd::Load<UOCBuildingStyleSet>(StylesAsset);
+	if (!Styles)
 	{
-		const FString Path = FString::Printf(TEXT("%s/SM_Kit_%s.SM_Kit_%s"), *KitFolder, Name, Name);
-		if (UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, *Path))
+		Styles = CastChecked<UOCBuildingStyleSet>(OCEd::GetOrCreateDataAsset(TEXT("DA_BuildingStyles"), TEXT("/Game/Environment/Buildings"),
+			UOCBuildingStyleSet::StaticClass(), TEXT("oc_world")));
+		Styles->FillDefaults();
+		OCEd::Save(Styles);
+	}
+
+	// Every kit mesh in the folder, by piece name (SM_Kit_<Name>).
+	FPieces Pieces;
+	{
+		TArray<FAssetData> Assets;
+		IAssetRegistry::Get()->GetAssetsByPath(FName(*KitFolder), Assets, false);
+		for (const FAssetData& A : Assets)
 		{
-			Pieces.Meshes.Add(FName(Name), Mesh);
+			const FString Name = A.AssetName.ToString();
+			if (Name.StartsWith(TEXT("SM_Kit_")))
+			{
+				if (UStaticMesh* Mesh = Cast<UStaticMesh>(A.GetAsset()))
+				{
+					Pieces.Meshes.Add(FName(*Name.Mid(7)), Mesh);
+				}
+			}
 		}
 	}
 	if (!Pieces.Meshes.Contains(FName(TEXT("Wall_400"))))
@@ -262,6 +288,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		UE_LOG(LogOpenCity, Error, TEXT("BuildKitBuildings: no kit in %s (run scripts/run_commandlet.sh OCBuildArt -steps=kit)"), *KitFolder);
 		return 0;
 	}
+	auto Has = [&Pieces](const FString& Name) { return Pieces.Meshes.Contains(FName(*Name)); };
 
 	// Optional doorstep and shopfront clutter (OCArtImport.cpp (props)).
 	auto LoadProp = [](const TCHAR* Name) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/Environment/Props/%s/%s.%s"), Name, Name, Name)); };
@@ -277,10 +304,12 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		StyleNames.Add(V->AsString());
 	}
 
-	// Pass 1: every building's frame, storeys and top, so each facade can see its neighbours.
+	// ---- Pass 1: every building's frame, archetype, storeys and top, so each facade can see its neighbours.
 	const TArray<TSharedPtr<FJsonValue>>& List = Root->GetArrayField(TEXT("buildings"));
 	TArray<FBld> Blds;
 	Blds.SetNum(List.Num());
+	TSet<int32> LotsSeen;
+	int32 MissingArch = 0;
 	for (int32 i = 0; i < List.Num(); ++i)
 	{
 		const TSharedPtr<FJsonObject>& Rec = List[i]->AsObject();
@@ -288,13 +317,37 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		const TArray<TSharedPtr<FJsonValue>>& Size = Rec->GetArrayField(TEXT("size"));
 		FBld& B = Blds[i];
 		const int32 StyleIndex = static_cast<int32>(Rec->GetNumberField(TEXT("style")));
-		const FString StyleName = StyleNames.IsValidIndex(StyleIndex) ? StyleNames[StyleIndex] : FString();
-		B.Style = StyleFor(StyleName);
+		B.StyleName = StyleNames.IsValidIndex(StyleIndex) ? StyleNames[StyleIndex] : FString();
 		B.bLandmark = Rec->HasField(TEXT("landmark"));
+		Rec->TryGetStringField(TEXT("lmkind"), B.LmKind);
+		FString ArchName;
+		const FName Want = Rec->TryGetStringField(TEXT("archetype"), ArchName) ? FName(*ArchName) : DefaultArchetype(B.StyleName);
+		B.Arch = Styles->Find(Want);
+		if (!B.Arch)
+		{
+			++MissingArch;
+			B.Arch = Styles->Find(DefaultArchetype(B.StyleName));
+		}
+		if (!B.Arch && Styles->Archetypes.Num() > 0)
+		{
+			B.Arch = &Styles->Archetypes[0];
+		}
+		Rec->TryGetNumberField(TEXT("age"), B.Age);
+		Rec->TryGetNumberField(TEXT("wealth"), B.Wealth);
+		Rec->TryGetNumberField(TEXT("upkeep"), B.Upkeep);
+		Rec->TryGetNumberField(TEXT("street"), B.Street);
+		Rec->TryGetNumberField(TEXT("lot"), B.Lot);
+		Rec->TryGetNumberField(TEXT("on"), B.On);
+		Rec->TryGetNumberField(TEXT("chamfer"), B.Chamfer);
+		if (B.Lot >= 0)
+		{
+			bool bSeen = false;
+			LotsSeen.Add(B.Lot, &bSeen);
+			B.bLotMain = !bSeen;
+		}
 		double StoreysD = 0.0;
 		B.Storeys = Rec->TryGetNumberField(TEXT("storeys"), StoreysD) ? FMath::Max(1, static_cast<int32>(StoreysD))
 			: FMath::Max(1, FMath::RoundToInt32((Rec->GetNumberField(TEXT("top")) - Rec->GetNumberField(TEXT("base")) - 1.0) / 3.2));
-		B.Style.bQuoins &= !(StyleName == TEXT("grid90") && B.Storeys > 5);
 		// Building frame in world space (layout: x east, y north, yaw counter-clockwise; Unreal flips y).
 		const double YawRad = FMath::DegreesToRadians(Rec->GetNumberField(TEXT("yaw")));
 		B.U = FVector(FMath::Cos(YawRad), -FMath::Sin(YawRad), 0.0);   // along the width
@@ -309,6 +362,11 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 	}
 	FBldIndex Index;
 	Index.Build(Blds);
+	if (!Blds.IsEmpty() && !Blds[0].Arch)
+	{
+		UE_LOG(LogOpenCity, Error, TEXT("BuildKitBuildings: %s has no archetypes"), StylesAsset);
+		return 0;
+	}
 
 	// Which facades face a street (probed at a quarter, half and three quarters of their length, never
 	// through a neighbour), the front door's facade, and the ground floor level.
@@ -316,6 +374,13 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 	for (int32 i = 0; i < Blds.Num(); ++i)
 	{
 		FBld& B = Blds[i];
+		if (B.On >= 0 && Blds.IsValidIndex(B.On))
+		{
+			// A recessed top storey: on its building's roof, no street front.
+			B.Z0 = Blds[B.On].TopZ;
+			B.TopZ = B.Z0 + B.Storeys * StoreyCm;
+			continue;
+		}
 		double BestRoad = TNumericLimits<double>::Max();
 		int32 Nearest = 0;
 		for (int32 f = 0; f < 4; ++f)
@@ -330,8 +395,7 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 				{
 					continue;   // a neighbour stands against this part of the wall
 				}
-				const double Dist = RoadIndex.EdgeDistance(FVector2D(P + Fa.Out * StreetProbeCm));
-				Fa.RoadDist = FMath::Min(Fa.RoadDist, Dist);
+				Fa.RoadDist = FMath::Min(Fa.RoadDist, RoadIndex.EdgeDistance(FVector2D(P + Fa.Out * StreetProbeCm)));
 			}
 			Fa.bStreet = Fa.RoadDist < StreetGapCm;
 			StreetFacades += Fa.bStreet ? 1 : 0;
@@ -341,8 +405,15 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 				Nearest = f;
 			}
 		}
-		B.F[Nearest].bStreet = true;   // not near any road (rare): the facade closest to one is the front
-		B.Front = Nearest;
+		if (B.bLotMain)
+		{
+			B.F[Nearest].bStreet = true;   // not near any road (rare): the facade closest to one is the front
+			B.Front = Nearest;
+		}
+		else if (B.F[Nearest].bStreet)
+		{
+			B.Front = Nearest;   // a wing on a back street has its own door
+		}
 
 		// Ground floor level: the street side's ground, never burying the uphill side by > 1.2 m.
 		double Z0 = TNumericLimits<double>::Max(), MaxCorner = -TNumericLimits<double>::Max();
@@ -360,47 +431,122 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 			{
 				const FVector Corner = B.C + B.U * (sx * B.W * 0.5) + B.Vw * (sy * B.D * 0.5);
 				MaxCorner = FMath::Max(MaxCorner, Height.HeightCm(Corner.X, Corner.Y));
+				if (Z0 == TNumericLimits<double>::Max())
+				{
+					Z0 = Height.HeightCm(Corner.X, Corner.Y);
+				}
 			}
 		}
 		B.Z0 = FMath::Max(Z0, MaxCorner - 120.0) + 8.0;
 		B.TopZ = B.Z0 + B.Storeys * StoreyCm;
 	}
 
-	// Pass 2: plan every facade, then emit its pieces. Each choice has its own hashed seed (OCSubSeed), so
-	// a change to one kind of choice leaves the others where they were.
+	// ---- Pass 2: per building, its look, facade plans, pieces, roof and dressing.
 	TMap<FIntPoint, TArray<FInstance>> Chunks;
 	TMap<UStaticMesh*, int32> PieceUse;
+	TMap<FString, TMap<FName, int32>> CellsPerStyle;   // facade cells per district style and piece
+	TMap<int32, FLook> LotLooks;
+	TMap<FIntPoint, TArray<int32>> SigCells;           // 60 m cells: buildings with a street-front signature
 	int32 Buildings = 0, HiddenCells = 0, PartyBlank = 0, Basements = 0, FloatingDoors = 0, Symmetric = 0, Facades = 0;
+	int32 SigRerolls = 0, SigRepeats = 0, ColourRerolls = 0, Chamfers = 0, Dressed = 0;
+	int32 Hips = 0, Gables = 0, Flats = 0;
+	const double Lowest = TNumericLimits<double>::Lowest();
 	for (int32 BuildingIndex = 0; BuildingIndex < Blds.Num(); ++BuildingIndex)
 	{
-		const FBld& B = Blds[BuildingIndex];
-		const FStyle& Style = B.Style;
+		FBld& B = Blds[BuildingIndex];
+		const FOCBuildingArchetype& Arch = *B.Arch;
 		const FVector& C = B.C;
 		const FVector& U = B.U;
 		const FVector& Vw = B.Vw;
 		const double W = B.W, D = B.D, Z0 = B.Z0, TopZ = B.TopZ;
 		const int32 Storeys = B.Storeys;
 		const uint32 BSeed = OCSubSeed(uint32(Seed), uint32(BuildingIndex), OCSeedPurpose::Building);
-		FRandomStream Rc(int32(OCSubSeed(BSeed, 0, OCSeedPurpose::Colours) & 0x7fffffff));
-		FRandomStream Rr(int32(OCSubSeed(BSeed, 0, OCSeedPurpose::Roof) & 0x7fffffff));
-		FRandomStream Rp(int32(OCSubSeed(BSeed, 0, OCSeedPurpose::Props) & 0x7fffffff));
-		FRandomStream Rl(int32(OCSubSeed(BSeed, 0, OCSeedPurpose::LitWindows) & 0x7fffffff));
+		auto Stream = [BSeed](uint32 Purpose, uint32 Part = 0) { return FRandomStream(int32(OCSubSeed(BSeed, Part, Purpose) & 0x7fffffff)); };
+		FRandomStream Rr = Stream(OCSeedPurpose::Roof), Rp = Stream(OCSeedPurpose::Props), Rd = Stream(OCSeedPurpose::LitWindows);
+		const bool bPlaster = Arch.Material == TEXT("Plaster"), bBrick = Arch.Material == TEXT("Brick"), bShed = Arch.Material == TEXT("Shed");
 
-		// Per-building look.
-		float Data[AOCKitBuildingChunk::NumCustomData];
-		const FLinearColor WallTint = WallPalettes[Style.Palette][Rc.RandRange(0, 5)] * Rc.FRandRange(0.93f, 1.05f);
-		const FLinearColor WoodTint = WoodColors[Rc.RandRange(0, 6)];
-		Data[0] = WallTint.R; Data[1] = WallTint.G; Data[2] = WallTint.B;
-		Data[3] = WoodTint.R; Data[4] = WoodTint.G; Data[5] = WoodTint.B;
-		Data[6] = Rc.FRand();
-		const bool bShutters = Rc.FRand() < Style.Shutters;
-		// Pitched roofs only where a hip of this kit reads as one: short side up to 14 m, five storeys or fewer.
-		const bool bPitched = Rr.FRand() < Style.PitchedRoof && FMath::Min(W, D) <= 1400.0 && Storeys <= 5;
+		// Who stands against this building (for colour and window contrast): probe each facade's middle.
+		TSet<int32> Touching;
+		for (const FBld::FFacade& Fa : B.F)
+		{
+			int32 Who = INDEX_NONE;
+			if (Index.CoverTop(C + Fa.Out * (Fa.Half + CoverProbeCm), BuildingIndex, &Who) > Lowest && Who != INDEX_NONE && Blds[Who].Lot != B.Lot)
+			{
+				Touching.Add(Who);
+			}
+		}
+
+		// The look: one per lot. Wall colour from the street's two or three colours most of the time, never
+		// the colour or window family of a building it touches that is already dressed.
+		if (const FLook* Shared = B.Lot >= 0 ? LotLooks.Find(B.Lot) : nullptr)
+		{
+			B.Look = *Shared;
+		}
+		else
+		{
+			FRandomStream Rc = Stream(OCSeedPurpose::Colours);
+			FLook& L = B.Look;
+			const TArray<FLinearColor>& Pal = Styles->WallPalettes.IsValidIndex(Arch.Palette) && Styles->WallPalettes[Arch.Palette].Colours.Num() > 0
+				? Styles->WallPalettes[Arch.Palette].Colours : Styles->WallPalettes[0].Colours;
+			const int32 N = Pal.Num();
+			auto Taken = [&](int32 Colour, FName Window)
+			{
+				for (const int32 T : Touching)
+				{
+					if (T < BuildingIndex && ((Colour >= 0 && Blds[T].Look.Colour == Colour) || (!Window.IsNone() && Blds[T].Look.Upper == Window)))
+					{
+						return true;
+					}
+				}
+				return false;
+			};
+			for (int32 Try = 0; Try < 6; ++Try)
+			{
+				const bool bStreetColour = Rc.FRand() < 0.75f;
+				L.Colour = bStreetColour ? (B.Street + Rc.RandRange(0, 2) * 3) % N : Rc.RandRange(0, N - 1);
+				if (!Taken(L.Colour, NAME_None))
+				{
+					break;
+				}
+				++ColourRerolls;
+			}
+			L.Wall = Pal[L.Colour] * Rc.FRandRange(0.93f, 1.05f);
+			const TArray<FLinearColor>& Woods = Styles->WoodColours.Colours;
+			L.Wood = Woods.Num() > 0 ? Woods[(B.Street / 7 + Rc.RandRange(0, 1)) % Woods.Num()] : FLinearColor::Gray;
+			L.Wear = FMath::Clamp(float(1.0 - B.Upkeep) * 0.8f + Rc.FRand() * 0.3f, 0.f, 1.f);
+			L.Trim = (Arch.Trim == 0 && B.Wealth < 0.3 && Rc.FRand() < 0.5f) ? 1 : Arch.Trim;
+			L.bShutters = Rc.FRand() < Arch.Shutters;
+			L.Crown = PickWeighted(Arch.Crowns, Rc, TEXT("Cornice"));
+			for (int32 Try = 0; Try < 3; ++Try)
+			{
+				L.Upper = PickWeighted(Arch.Upper, Rc, TEXT("Window"));
+				if (!Taken(-1, L.Upper)) { break; }
+			}
+			L.UpperFirst = Arch.UpperFirst.IsEmpty() ? L.Upper : PickWeighted(Arch.UpperFirst, Rc, L.Upper);
+			L.Top = Arch.Top.IsEmpty() ? L.Upper : PickWeighted(Arch.Top, Rc, L.Upper);
+			L.Balcony = PickWeighted(Arch.Balconies, Rc, TEXT("Balcony"));
+			L.Shop = PickWeighted(Arch.Shops, Rc, TEXT("Shopfront"));
+			L.GroundOther = PickWeighted(Arch.GroundOther, Rc, TEXT("GroundWindow"));
+			if (B.Lot >= 0)
+			{
+				LotLooks.Add(B.Lot, L);
+			}
+		}
+		const FLook& Look = B.Look;
+		float Data[AOCKitBuildingChunk::NumCustomData] = {};
+		Data[0] = Look.Wall.R; Data[1] = Look.Wall.G; Data[2] = Look.Wall.B;
+		Data[3] = Look.Wood.R; Data[4] = Look.Wood.G; Data[5] = Look.Wood.B;
+		Data[6] = Look.Wear;
+		Data[9] = float(Look.Trim);
+		const FString CrownName = Look.Crown.ToString();
+		const bool bCrown = CrownName != TEXT("None") && Has(CrownName + TEXT("_400"));
+		const double CrownH = !bCrown ? 0.0 : (CrownName == TEXT("Brick_Corbel") ? 27.0 : (CrownName == TEXT("CorniceBracket") ? 32.0 : 35.0));
 
 		TArray<FInstance>& Out = Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(C.X / ChunkSizeCm), FMath::FloorToInt32(C.Y / ChunkSizeCm)));
-		auto Add = [&](const TCHAR* Name, const FVector& Loc, const FRotator& Rot, const FVector& Scale = FVector::OneVector)
+		FString CellStyle = B.StyleName;
+		auto Add = [&](const FString& Name, const FVector& Loc, const FRotator& Rot, const FVector& Scale = FVector::OneVector, bool bGround = false)
 		{
-			UStaticMesh* Mesh = Pieces.Get(Name);
+			UStaticMesh* Mesh = Pieces.Get(*Name);
 			if (!Mesh)
 			{
 				return;
@@ -409,54 +555,187 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 			I.Mesh = Mesh;
 			I.Transform = FTransform(Rot, Loc, Scale);
 			FMemory::Memcpy(I.Data, Data, sizeof(Data));
-			I.Data[7] = Rl.FRand() < 0.3f ? 1.f : 0.f;   // this window lit at night
+			I.Data[8] = bGround ? 1.f : 0.f;   // ground-floor walls: base band and rain splash (SURFACE_HLSL)
 			Out.Add(I);
 			++PieceUse.FindOrAdd(Mesh);
 		};
-		auto AddProp = [&](UStaticMesh* Mesh, const FVector& Loc, double YawDeg)
+		auto Cell = [&](const FString& Name, const FVector& Loc, const FRotator& Rot, bool bGround)
+		{
+			Add(Name, Loc, Rot, FVector::OneVector, bGround);
+			++CellsPerStyle.FindOrAdd(CellStyle).FindOrAdd(FName(*Name));
+		};
+		auto AddProp = [&](UStaticMesh* Mesh, const FVector& Loc, double YawDeg, double Scale = 1.0, bool bOnGround = true)
 		{
 			if (Mesh)
 			{
 				FInstance I;
 				I.Mesh = Mesh;
-				I.Transform = FTransform(FRotator(0.0, YawDeg, 0.0), FVector(Loc.X, Loc.Y, Height.HeightCm(Loc.X, Loc.Y) + 20.0));
+				I.Transform = FTransform(FRotator(0.0, YawDeg, 0.0), bOnGround ? FVector(Loc.X, Loc.Y, Height.HeightCm(Loc.X, Loc.Y) + 20.0) : Loc, FVector(Scale));
 				for (int32 k = 0; k < 6; ++k) { I.Data[k] = 1.f; }
 				Out.Add(I);
 			}
 		};
-		const bool bSeafront = Style.Palette == 1;
+		const bool bSeafront = Arch.Palette == 1;
+		auto Sized = [&](const FString& Family, bool bFour) { return Family + (bFour ? TEXT("_400") : TEXT("_200")); };
+		// The plain wall of this building's material.
+		auto Blank = [&](bool bFour) { return Sized(bBrick ? TEXT("Brick_Wall") : (bShed ? TEXT("Shed_Wall") : TEXT("Wall")), bFour); };
+		// A window family in a bay, with fallbacks when a family has no piece of that width.
+		auto WindowPiece = [&](FName Family, bool bFour) -> FString
+		{
+			if (bBrick) { return Sized(TEXT("Brick_WindowArch"), bFour); }
+			if (bShed) { return bFour ? FString(TEXT("Shed_WindowStrip_400")) : Blank(false); }
+			FString F = Family.ToString();
+			if (F == TEXT("Window") && !Look.bShutters) { F = TEXT("WindowPlain"); }
+			const FString Name = Sized(F, bFour);
+			return Has(Name) ? Name : Sized(Look.bShutters ? TEXT("Window") : TEXT("WindowPlain"), bFour);
+		};
 
+		// ---- Roof choice first: gable ends change what the facades carry.
+		const double Short = FMath::Min(W, D);
+		bool bPitched = B.On < 0 && B.Chamfer == 0 && Rr.FRand() < Arch.PitchedRoof && (Short <= 1400.0 || !bPlaster) && Storeys <= 6;
+		bool bHasTop = false;
+		for (int32 k = BuildingIndex + 1; k < FMath::Min(Blds.Num(), BuildingIndex + 4); ++k)
+		{
+			bHasTop |= Blds[k].On == BuildingIndex;
+		}
+		bPitched &= !bHasTop;
+		// Terraces (both side walls against neighbours) take a gable along the street; churches a gable front.
+		auto SideCovered = [&](int32 f)
+		{
+			const FBld::FFacade& Fa = B.F[f];
+			return Index.CoverTop(C + Fa.Out * (Fa.Half + CoverProbeCm), BuildingIndex) > Lowest;
+		};
+		const bool bTerrace = SideCovered(1) && SideCovered(3);
+		const bool bChurch = B.LmKind == TEXT("church");
+		bool bGable = bPitched && (bTerrace || bChurch || !bPlaster || Rr.FRand() < Arch.Gable);
+		// Ridge axis: along U (width) or Vw (depth).
+		bool bRidgeU = W >= D;
+		if (bGable && bTerrace) { bRidgeU = true; }
+		if (bChurch && B.Front >= 0) { bRidgeU = (B.Front == 1 || B.Front == 3); }   // ridge runs back from the front
+		const bool bHip = bPitched && !bGable;
+		if (bHip) { bRidgeU = W >= D; }
+		const double RoofZ = TopZ + CrownH;
+		const double RLen = (bRidgeU ? W : D) + 80.0, RWid = (bRidgeU ? D : W) + 80.0;
+		const double Rise = FMath::Clamp(RWid * 0.5 * Arch.Pitch, 60.0, 520.0);
+		auto IsGableFacade = [&](int32 f) { return bGable && (bRidgeU ? (f == 1 || f == 3) : (f == 0 || f == 2)); };
+
+		// ---- Facades: plan all four, check the street front's signature, then emit.
+		FOCFacadePlan Plans[4];
+		double Lengths[4];
+		FVector Starts[4], Alongs[4];
+		bool bChamferStart[4] = {}, bChamferEnd[4] = {};
+		const FVector ChamferCorner = C - U * (W * 0.5) - Vw * (D * 0.5);
 		for (int32 f = 0; f < 4; ++f)
 		{
 			const FBld::FFacade& Fa = B.F[f];
-			// Piece frame: X along the facade, Y = -outward (the outside face looks along -Y), Z up.
-			const FVector Along = FVector::CrossProduct(-Fa.Out, FVector::UpVector).GetSafeNormal();
-			const FRotator Rot = FRotationMatrix::MakeFromXY(Along, -Fa.Out).Rotator();
-			const FVector Start = C + Fa.Out * Fa.Half - Along * (Fa.Length * 0.5);
+			Alongs[f] = FVector::CrossProduct(-Fa.Out, FVector::UpVector).GetSafeNormal();
+			Starts[f] = C + Fa.Out * Fa.Half - Alongs[f] * (Fa.Length * 0.5);
+			Lengths[f] = Fa.Length;
+			if (B.Chamfer)
+			{
+				if (FVector::Dist2D(Starts[f], ChamferCorner) < 5.0)
+				{
+					bChamferStart[f] = true;
+					Starts[f] += Alongs[f] * ChamferCm;
+					Lengths[f] -= ChamferCm;
+				}
+				else if (FVector::Dist2D(Starts[f] + Alongs[f] * Fa.Length, ChamferCorner) < 5.0)
+				{
+					bChamferEnd[f] = true;
+					Lengths[f] -= ChamferCm;
+				}
+			}
+		}
+		auto PlanAll = [&](uint32 Variant)
+		{
+			for (int32 f = 0; f < 4; ++f)
+			{
+				const FBld::FFacade& Fa = B.F[f];
+				FOCFacadeIn In;
+				In.LengthCm = Lengths[f];
+				In.Storeys = Storeys;
+				In.bStreet = Fa.bStreet && B.On < 0;
+				In.bLandmark = B.bLandmark;
+				In.bDoor = f == B.Front;
+				In.bWideDoor = Arch.bWideDoor;
+				FOCFacadeStyle FS;
+				FS.Shop = Arch.Shop * float(0.6 + 0.8 * ((B.Street >> 4) % 100) / 100.0);   // street shop density
+				FS.Balcony = Arch.Balcony * float(0.6 + 0.8 * B.Wealth);
+				FS.SideWindows = Arch.SideWindows;
+				FS.Symmetric = Arch.Symmetric;
+				Plans[f] = OCPlanFacade(In, FS, OCSubSeed(BSeed, uint32(f) + 16 * Variant, OCSeedPurpose::Bays));
+			}
+			// Signature of the street front: archetype, bays, ground and balcony layout, windows, height, colour.
+			FString Sig = FString::Printf(TEXT("%s|%s|%d|%d|"), *Arch.Name.ToString(), *Look.Upper.ToString(), Storeys, Look.Colour);
+			if (B.Front >= 0)
+			{
+				for (const FOCBayColumn& Col : Plans[B.Front].Columns)
+				{
+					Sig += FString::Printf(TEXT("%d%d%d,"), int32(Col.WidthCm / 200), int32(Col.Ground), Col.BalconyTo - Col.BalconyFrom);
+				}
+			}
+			return FCrc::StrCrc32(*Sig);
+		};
+		auto SigClash = [&](uint32 Sig)
+		{
+			const FIntPoint Cell0(FMath::FloorToInt32(C.X / 6000.0), FMath::FloorToInt32(C.Y / 6000.0));
+			for (int32 dx = -1; dx <= 1; ++dx)
+			{
+				for (int32 dy = -1; dy <= 1; ++dy)
+				{
+					if (const TArray<int32>* L = SigCells.Find(Cell0 + FIntPoint(dx, dy)))
+					{
+						for (const int32 Other : *L)
+						{
+							if (Blds[Other].Signature == Sig && FVector::Dist2D(Blds[Other].C, C) < 6000.0 && Blds[Other].Lot != B.Lot)
+							{
+								return true;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		};
+		B.Signature = PlanAll(0);
+		if (B.Front >= 0 && SigClash(B.Signature))
+		{
+			++SigRerolls;
+			B.Signature = PlanAll(1);
+			SigRepeats += SigClash(B.Signature) ? 1 : 0;
+		}
+		if (B.Front >= 0)
+		{
+			SigCells.FindOrAdd(FIntPoint(FMath::FloorToInt32(C.X / 6000.0), FMath::FloorToInt32(C.Y / 6000.0))).Add(BuildingIndex);
+		}
 
-			FOCFacadeIn In;
-			In.LengthCm = Fa.Length;
-			In.Storeys = Storeys;
-			In.bStreet = Fa.bStreet;
-			In.bLandmark = B.bLandmark;
-			In.bDoor = f == B.Front;
-			const FOCFacadePlan Plan = OCPlanFacade(In, Style.Facade, OCSubSeed(BSeed, uint32(f), OCSeedPurpose::Bays));
+		FRandomStream Rw = Stream(OCSeedPurpose::Building, 99);   // per-window detail: shutter states, blind windows
+		const float ClosedChance = Styles->ClosedShutters * float(0.2 + 0.8 * (1.0 - B.Upkeep));
+		const float Dress = Styles->Dressing;
+		for (int32 f = 0; f < 4; ++f)
+		{
+			const FBld::FFacade& Fa = B.F[f];
+			const FOCFacadePlan& Plan = Plans[f];
+			const FVector Along = Alongs[f];
+			const FRotator Rot = FRotationMatrix::MakeFromXY(Along, -Fa.Out).Rotator();
+			const FVector Start = Starts[f];
+			const bool bGableFacade = IsGableFacade(f);
 			++Facades;
 			Symmetric += Plan.bSymmetric ? 1 : 0;
+			const bool bLanternDoor = B.StyleName == TEXT("oldtown") && Rp.FRand() < 0.4f * Dress;
 
 			for (const FOCBayColumn& Col : Plan.Columns)
 			{
 				const bool bFour = Col.IsFour();
 				const double Bw = Col.WidthCm;
 				const FVector BayStart = Start + Along * Col.OffsetCm;
-				const TCHAR* Wall = bFour ? TEXT("Wall_400") : TEXT("Wall_200");
-				const TCHAR* Plinth = bFour ? TEXT("Plinth_400") : TEXT("Plinth_200");
+				const FString Wall = Blank(bFour);
+				const FString Plinth = bPlaster ? Sized(TEXT("Plinth"), bFour) : FString();
 
 				// A neighbour against this bay: over its whole width (Full) the wall is hidden up to the
 				// neighbour's top; over part of it the wall stays, but blank, up to that height.
 				const double T1 = Index.CoverTop(BayStart + Along * (Bw * 0.25) + Fa.Out * CoverProbeCm, BuildingIndex);
 				const double T2 = Index.CoverTop(BayStart + Along * (Bw * 0.75) + Fa.Out * CoverProbeCm, BuildingIndex);
-				const double Lowest = TNumericLimits<double>::Lowest();
 				const bool bFull = T1 > Lowest && T2 > Lowest;
 				const double CoverZ = bFull ? FMath::Min(T1, T2) : FMath::Max(T1, T2);
 
@@ -465,22 +744,32 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 				const FVector Out10 = Fa.Out * 10.0;
 				const double Ground = FMath::Min(Height.HeightCm((BayStart + Out10).X, (BayStart + Out10).Y),
 					Height.HeightCm((BayStart + Along * Bw + Out10).X, (BayStart + Along * Bw + Out10).Y));
-				const double Drop = Z0 - Ground;
+				const double Drop = B.On >= 0 ? 0.0 : Z0 - Ground;
 				if (CoverZ <= Lowest && Drop > PlinthBelowCm - 20.0)
 				{
 					const int32 Lower = FMath::CeilToInt32((Drop - (PlinthBelowCm - 20.0)) / StoreyCm);
 					for (int32 j = 1; j <= Lower; ++j)
 					{
-						Add(Wall, BayStart + FVector(0, 0, Z0 - j * StoreyCm), Rot);
+						Add(Wall, BayStart + FVector(0, 0, Z0 - j * StoreyCm), Rot, FVector::OneVector, true);
 					}
-					Add(Plinth, BayStart + FVector(0, 0, Z0 - Lower * StoreyCm), Rot);
+					if (!Plinth.IsEmpty())
+					{
+						Add(Plinth, BayStart + FVector(0, 0, Z0 - Lower * StoreyCm), Rot);
+					}
 					++Basements;
 				}
 
+				bool bSkipNext = false;
 				for (int32 s = 0; s < Storeys; ++s)
 				{
 					const double Zs = Z0 + s * StoreyCm;
 					const FVector P = BayStart + FVector(0, 0, Zs);
+					const bool bGround = s == 0 && B.On < 0;
+					if (bSkipNext)
+					{
+						bSkipNext = false;
+						continue;
+					}
 					if (CoverZ > Lowest && Zs < CoverZ)
 					{
 						if (bFull && Zs + StoreyCm <= CoverZ + 5.0)
@@ -488,8 +777,8 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 							++HiddenCells;
 							continue;
 						}
-						Add(Wall, P, Rot);   // straddles the neighbour's roof line, or half behind it
-						if (s == 0)
+						Cell(Wall, P, Rot, bGround);   // straddles the neighbour's roof line, or half behind it
+						if (bGround && !Plinth.IsEmpty())
 						{
 							Add(Plinth, P, Rot);
 						}
@@ -497,37 +786,72 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 						continue;
 					}
 					EOCBay Type = Col.At(s);
-					if (s == 0 && (Type == EOCBay::Door || Type == EOCBay::Shop) && Drop > 120.0)
+					if (bGround && (Type == EOCBay::Door || Type == EOCBay::Shop) && Drop > 120.0)
 					{
-						// A door or shop would hang above the street: barred windows over a plinth instead.
+						// A door or shop would hang above the street: windows over a plinth instead.
 						Type = bFour ? EOCBay::GroundWindow : EOCBay::Blank;
 						++FloatingDoors;
 					}
-					if (s == 0)
+					if (bGround)
 					{
 						switch (Type)
 						{
 						case EOCBay::Door:
 						{
-							const FVector DoorAt = BayStart + Along * ((bFour && Col.bDoorAtEnd) ? 200.0 : 0.0);
-							Add(TEXT("Door_200"), DoorAt + FVector(0, 0, Z0), Rot);
-							if (bFour)
+							const FString Wide = Arch.Door.ToString() + TEXT("_400");
+							if (bBrick || bShed)
 							{
-								const FVector WallAt = BayStart + Along * (Col.bDoorAtEnd ? 0.0 : 200.0);
-								Add(TEXT("Wall_200"), WallAt + FVector(0, 0, Z0), Rot);
-								Add(TEXT("Plinth_200"), WallAt + FVector(0, 0, Z0), Rot);
+								Cell(bFour ? FString(bBrick ? TEXT("Brick_GoodsDoor_400") : TEXT("Shed_RollerDoor_400")) : Wall, P, Rot, true);
 							}
-							if (Rp.FRand() < 0.55f)  // potted plants either side of the step
+							else if (bFour && Arch.Door != TEXT("Door") && Has(Wide))
 							{
-								const FVector Step = DoorAt + Fa.Out * 60.0;
-								AddProp(Rp.FRand() < 0.5f ? Pot : Fern, Step + Along * 20.0, Rot.Yaw + Rp.FRandRange(0.f, 360.f));
-								AddProp(Pot, Step + Along * 180.0, Rot.Yaw + Rp.FRandRange(0.f, 360.f));
+								Cell(Wide, P, Rot, true);
+								bSkipNext = Arch.Door == TEXT("Church_Portal");   // the portal is two storeys tall
+							}
+							else
+							{
+								const FVector DoorAt = BayStart + Along * ((bFour && Col.bDoorAtEnd) ? 200.0 : 0.0);
+								Cell(TEXT("Door_200"), DoorAt + FVector(0, 0, Z0), Rot, true);
+								if (bFour)
+								{
+									const FVector WallAt = BayStart + Along * (Col.bDoorAtEnd ? 0.0 : 200.0);
+									Add(TEXT("Wall_200"), WallAt + FVector(0, 0, Z0), Rot, FVector::OneVector, true);
+									Add(TEXT("Plinth_200"), WallAt + FVector(0, 0, Z0), Rot);
+								}
+								if (Rp.FRand() < 0.55f)  // potted plants either side of the step
+								{
+									const FVector Step = DoorAt + Fa.Out * 60.0;
+									AddProp(Rp.FRand() < 0.5f ? Pot : Fern, Step + Along * 20.0, Rot.Yaw + Rp.FRandRange(0.f, 360.f));
+									AddProp(Pot, Step + Along * 180.0, Rot.Yaw + Rp.FRandRange(0.f, 360.f));
+								}
+								if (bLanternDoor)
+								{
+									Add(TEXT("Prop_WallLantern"), DoorAt + Along * 185.0 + FVector(0, 0, Z0 + 240.0), Rot);
+								}
 							}
 							break;
 						}
 						case EOCBay::Shop:
 						{
-							Add(TEXT("Shopfront_400"), P, Rot);
+							if (bBrick || bShed)
+							{
+								Cell(bBrick ? FString(TEXT("Brick_GoodsDoor_400")) : FString(TEXT("Shed_RollerDoor_400")), P, Rot, true);
+								break;
+							}
+							// Per shop: closed more often where upkeep is low, an awning more often where it is wealthy.
+							FString Shop = Look.Shop.ToString() + TEXT("_400");
+							if (Rw.FRand() < 0.35f * float(1.0 - B.Upkeep)) { Shop = TEXT("ShopClosed_400"); }
+							else if (Rw.FRand() < 0.25f * float(B.Wealth)) { Shop = TEXT("ShopAwning_400"); }
+							if (!Has(Shop)) { Shop = TEXT("Shopfront_400"); }
+							Cell(Shop, P, Rot, true);
+							if (Rp.FRand() < 0.8f)
+							{
+								Add(FString::Printf(TEXT("ShopSign_%02d"), Rp.RandRange(0, 11)), P, Rot);
+							}
+							if (Rp.FRand() < 0.15f * Dress)
+							{
+								Add(TEXT("Prop_ShopBlade"), BayStart + Along * 15.0 + FVector(0, 0, Z0 + 300.0), Rot);
+							}
 							const FVector Front = BayStart + Fa.Out * 90.0;
 							const float Pick = Rp.FRand();
 							if (bSeafront && Pick < 0.45f)
@@ -542,49 +866,122 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 							break;
 						}
 						case EOCBay::GroundWindow:
-							Add(TEXT("GroundWindow_400"), P, Rot);
-							Add(TEXT("Plinth_400"), P, Rot);
+						{
+							if (bBrick || bShed)
+							{
+								Cell(WindowPiece(Look.Upper, bFour), P, Rot, true);
+								break;
+							}
+							FString G = Look.GroundOther.ToString();
+							G = (G == TEXT("GroundWindow") || G == TEXT("Garage") || G == TEXT("Portone")) ? G + TEXT("_400") : Sized(G, bFour);
+							if (!Has(G)) { G = TEXT("GroundWindow_400"); }
+							Cell(G, P, Rot, true);
+							if (G != TEXT("Garage_400") && G != TEXT("Portone_400"))
+							{
+								Add(TEXT("Plinth_400"), P, Rot);
+							}
 							break;
+						}
 						default:
-							Add(Wall, P, Rot);
-							Add(Plinth, P, Rot);
+							Cell(Wall, P, Rot, true);
+							if (!Plinth.IsEmpty()) { Add(Plinth, P, Rot); }
 							break;
 						}
 						continue;
 					}
-					const bool bTop = s == Storeys - 1;
+					const bool bTop = Storeys >= 3 && s == Storeys - 1;
 					if (Type == EOCBay::Blank)
 					{
-						Add(Wall, P, Rot);
+						Cell(Wall, P, Rot, false);
+						// Wall dressing on blank bays: an AC unit, now and then.
+						if (bPlaster && Rd.FRand() < 0.07f * Dress)
+						{
+							Add(TEXT("Prop_WallAC"), BayStart + Along * (Bw * 0.5) + FVector(0, 0, Zs + 120.0), Rot);
+							++Dressed;
+						}
+						continue;
 					}
-					else if (Type == EOCBay::Balcony && bFour)
+					if (Type == EOCBay::Balcony && bFour && bPlaster)
 					{
-						Add(TEXT("Balcony_400"), P, Rot);
+						FString Bal = Look.Balcony.ToString() + TEXT("_400");
+						Cell(Has(Bal) ? Bal : FString(TEXT("Balcony_400")), P, Rot, false);
+						continue;
 					}
-					else if (bShutters && !(bTop && Plan.bPlainTop))
+					if (bChurch && f == B.Front && bFour && int32(&Col - Plan.Columns.GetData()) == Plan.DoorColumn && s == 2)
 					{
-						Add(bFour ? TEXT("Window_400") : TEXT("Window_200"), P, Rot);
+						Cell(TEXT("Church_Rose_400"), P, Rot, false);   // over the two-storey portal
+						continue;
 					}
-					else
+					FName Family = s == 1 ? Look.UpperFirst : (bTop ? Look.Top : Look.Upper);
+					if (bTop && Plan.bPlainTop && Family == Look.Upper && Family == TEXT("Window")) { Family = TEXT("WindowPlain"); }
+					FString Win = WindowPiece(Family, bFour);
+					if (bPlaster && Win.StartsWith(TEXT("Window_")))
 					{
-						Add(bFour ? TEXT("WindowPlain_400") : TEXT("WindowPlain_200"), P, Rot);
+						// Upkeep: closed and half-closed shutters, window by window.
+						const float X = Rw.FRand();
+						if (X < ClosedChance * 0.6f) { Win = Sized(TEXT("WindowClosed"), bFour); }
+						else if (X < ClosedChance) { Win = Sized(TEXT("WindowHalf"), bFour); }
+					}
+					if (bPlaster && !Fa.bStreet && Rw.FRand() < 0.10f * float(B.Age))
+					{
+						Win = Sized(TEXT("WindowBlind"), bFour);   // old houses: windows walled up on the side
+					}
+					Cell(Win, P, Rot, false);
+					// Window dressing: flower boxes in wealthier streets (two windows in a 4 m bay).
+					if (bPlaster && Win.StartsWith(TEXT("Window")) && !Win.StartsWith(TEXT("WindowBlind")) && Rd.FRand() < 0.10f * float(B.Wealth) * Dress)
+					{
+						const double Cx = bFour ? (Rd.FRand() < 0.5f ? 100.0 : 300.0) : Bw * 0.5;
+						const FVector Sill = BayStart + Along * Cx + FVector(0, 0, Zs + 92.0);
+						Add(TEXT("Prop_FlowerBox"), Sill, Rot);
+						AddProp(Fern, Sill - Fa.Out * 13.0 + FVector(0, 0, 10.0), Rot.Yaw + Rd.FRandRange(0.f, 360.f), 0.35, false);
+						++Dressed;
+					}
+					// Laundry on side and back walls of the old town and the village.
+					if (bPlaster && !Fa.bStreet && bFour && (B.StyleName == TEXT("oldtown") || B.StyleName == TEXT("village")) && Rd.FRand() < 0.06f * Dress)
+					{
+						Add(TEXT("Prop_Laundry"), BayStart + Along * 50.0 + FVector(0, 0, Zs + 255.0), Rot);
+						++Dressed;
 					}
 				}
+				// Under the roof: the crown (where not behind a taller neighbour), a parapet on flat roofs,
+				// a gutter on pitched eaves; a string course over the ground floor of street fronts.
 				const bool bRoofHidden = bFull && CoverZ >= TopZ - 5.0;
-				if (Style.bCornice && !bRoofHidden)
+				if (bCrown && !bRoofHidden)
 				{
-					Add(bFour ? TEXT("Cornice_400") : TEXT("Cornice_200"), BayStart + FVector(0, 0, TopZ), Rot);
+					Add(Sized(CrownName, bFour), BayStart + FVector(0, 0, TopZ), Rot);
 				}
 				if (!bPitched && !(bFull && CoverZ >= TopZ + 85.0))
 				{
-					Add(bFour ? TEXT("Parapet_400") : TEXT("Parapet_200"), BayStart + FVector(0, 0, TopZ + (Style.bCornice ? 35.0 : 0.0)), Rot);
+					Add(Sized(TEXT("Parapet"), bFour), BayStart + FVector(0, 0, TopZ + (bCrown ? CrownH : 0.0)), Rot);
+				}
+				if (bPitched && !bGableFacade && Fa.bStreet && !bRoofHidden)
+				{
+					Add(Sized(TEXT("Gutter"), bFour), BayStart + FVector(0, 0, RoofZ), Rot);
+				}
+				if (bPlaster && Arch.bStringCourse && Fa.bStreet && Storeys >= 2 && !(CoverZ > Lowest && CoverZ > Z0 + StoreyCm))
+				{
+					Add(Sized(TEXT("StringCourse"), bFour), BayStart + FVector(0, 0, Z0 + StoreyCm), Rot);
+				}
+				if (Arch.bCanopy && f == B.Front && bFour && CoverZ <= Lowest)
+				{
+					Add(TEXT("Canopy_400"), BayStart + FVector(0, 0, Z0), Rot);
 				}
 			}
 
-			// The corner this facade starts at: quoins, a downpipe on street fronts and the cornice mitre,
-			// each only above whatever neighbour stands against either side of the corner.
+			// A cable along the side walls at the first-floor line, now and then.
+			if (bPlaster && !Fa.bStreet && Storeys >= 2 && Rd.FRand() < 0.25f * Dress)
+			{
+				Add(TEXT("Prop_Cable"), Start - Fa.Out * 3.0 + FVector(0, 0, Z0 + StoreyCm - 20.0), Rot, FVector(Lengths[f] / 100.0, 1.0, 1.0));
+			}
+			// The corner this facade starts at: quoins or pilasters, a downpipe on street fronts and the cornice
+			// mitre, each only above whatever neighbour stands against either side of the corner.
+			if (bChamferStart[f])
+			{
+				continue;   // the chamfer pieces close this corner
+			}
 			const double CornerZ = FMath::Max(Index.CoverTop(Start + Fa.Out * CoverProbeCm + Along * 30.0, BuildingIndex),
 				Index.CoverTop(Start - Along * CoverProbeCm - Fa.Out * 30.0, BuildingIndex));
+			const bool bEdgeQuoins = Arch.bQuoins && bPlaster && !(B.StyleName == TEXT("grid90") && Storeys > 5);
 			for (int32 s = 0; s < Storeys; ++s)
 			{
 				const double Zs = Z0 + s * StoreyCm;
@@ -592,82 +989,148 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 				{
 					continue;
 				}
-				if (Style.bQuoins)
+				if (bEdgeQuoins)
 				{
 					Add(TEXT("Corner_320"), Start + FVector(0, 0, Zs), Rot);
 				}
-				if (Fa.bStreet && f % 2 == 0)
+				else if (Arch.bPilasters)
+				{
+					Add(TEXT("Pilaster_320"), Start + FVector(0, 0, Zs), Rot);
+				}
+				if (Fa.bStreet && f % 2 == 0 && bPlaster)
 				{
 					// The pipe's brackets reach Y = 0, so its pivot sits on the wall face.
 					Add(TEXT("Drainpipe_320"), Start + Along * 45.0 + FVector(0, 0, Zs), Rot);
 				}
 			}
-			if (Style.bCornice && CornerZ < TopZ - 5.0)
+			if (bCrown && CrownName == TEXT("Cornice") && CornerZ < TopZ - 5.0 && !bChamferEnd[(f + 3) % 4])
 			{
 				Add(TEXT("CorniceCorner"), Start + FVector(0, 0, TopZ), Rot);  // mitre block: closes the cornice at the corner
 			}
 		}
 
-		// Roof.
-		const FRotator Yaw(0.0, FMath::RadiansToDegrees(FMath::Atan2(U.Y, U.X)), 0.0); // yaw only: roofs stay upright
-		if (bPitched)
+		// The chamfered corner: one 2.83 m bay column from the end of one facade to the start of the next.
+		if (B.Chamfer)
 		{
-			// Ridge along the piece's X: turn it to run along the longer side; 0.4 m eaves all round,
-			// sitting on top of the cornice.
-			const double Rise = FMath::Clamp(FMath::Min(W, D) / 100.0 * 0.28, 1.4, 4.0);
-			const bool bTurn = D > W;
-			const FRotator RoofRot(0.0, Yaw.Yaw + (bTurn ? 90.0 : 0.0), 0.0);
-			const double RoofLen = (bTurn ? D : W) + 80.0, RoofWid = (bTurn ? W : D) + 80.0;
-			const FVector RoofScale(RoofLen / 100.0, RoofWid / 100.0, Rise);
-			const double RoofZ = TopZ + 35.0;
-			Add(TEXT("RoofHip"), C + FVector(0, 0, RoofZ), RoofRot, RoofScale);
-			if (Rr.FRand() < 0.5)
+			int32 Fe = INDEX_NONE, Fs = INDEX_NONE;
+			for (int32 f = 0; f < 4; ++f)
 			{
-				// On the roof surface: its base at the lowest point of the slope under it, 0.9 m clear above
-				// the highest (stretched to fit).
-				const FVector RAlong = bTurn ? Vw : U, RAcross = bTurn ? U : Vw;
-				const double Lx = Rr.FRandRange(-0.3f, 0.3f), Ly = Rr.FRandRange(-0.2f, 0.2f);
-				const double Half = 30.0;   // chimney half width (cm)
-				double Lo = TNumericLimits<double>::Max(), Hi = -TNumericLimits<double>::Max();
-				for (const double Dx : { -Half, Half })
+				if (bChamferEnd[f]) { Fe = f; }
+				if (bChamferStart[f]) { Fs = f; }
+			}
+			if (Fe != INDEX_NONE && Fs != INDEX_NONE)
+			{
+				FVector Pa = Starts[Fe] + Alongs[Fe] * Lengths[Fe], Pb = Starts[Fs];
+				FVector Along = (Pb - Pa).GetSafeNormal2D();
+				FVector OutDir = FVector::CrossProduct(Along, FVector::UpVector);
+				if (FVector::DotProduct(OutDir, (Pa + Pb) * 0.5 - C) < 0.0)
 				{
-					for (const double Dy : { -Half, Half })
-					{
-						const double H = HipRoofHeight(Lx + Dx / RoofLen, Ly + Dy / RoofWid) * Rise * 100.0;
-						Lo = FMath::Min(Lo, H);
-						Hi = FMath::Max(Hi, H);
-					}
+					Swap(Pa, Pb);
+					Along = -Along;
+					OutDir = -OutDir;
 				}
-				const FVector At = C + RAlong * (Lx * RoofLen) + RAcross * (Ly * RoofWid) + FVector(0, 0, RoofZ + Lo - 10.0);
-				Add(TEXT("Prop_Chimney"), At, Yaw, FVector(1.0, 1.0, (Hi - Lo + 100.0) / 100.0));
+				const FRotator Rot = FRotationMatrix::MakeFromXY(Along, -OutDir).Rotator();
+				for (int32 s = 0; s < Storeys; ++s)
+				{
+					const FVector P = Pa + FVector(0, 0, Z0 + s * StoreyCm);
+					Cell(s == 0 ? FString(TEXT("Wall_283")) : FString(Look.bShutters ? TEXT("Window_283") : TEXT("WindowPlain_283")), P, Rot, s == 0);
+					if (s == 0) { Add(TEXT("Plinth_283"), P, Rot); }
+				}
+				if (bCrown) { Add(TEXT("Cornice_283"), Pa + FVector(0, 0, TopZ), Rot); }
+				Add(TEXT("Parapet_283"), Pa + FVector(0, 0, TopZ + CrownH), Rot);
+				++Chamfers;
 			}
 		}
-		else
+
+		// ---- Roof.
+		const FRotator Yaw(0.0, FMath::RadiansToDegrees(FMath::Atan2(U.Y, U.X)), 0.0); // yaw only: roofs stay upright
+		const FVector RAlong = bRidgeU ? U : Vw, RAcross = bRidgeU ? Vw : U;
+		const FRotator RidgeRot(0.0, FMath::RadiansToDegrees(FMath::Atan2(RAlong.Y, RAlong.X)), 0.0);
+		if (bHip)
 		{
-			Add(TEXT("RoofFlat"), C + FVector(0, 0, TopZ), Yaw, FVector(W / 100.0, D / 100.0, 1.0));
+			// Two hip ends scaled uniformly by the roof's width and a ridge stretched between them: every
+			// slope has the same pitch whatever the building's proportions (BUILDINGS_PLAN.md phase 4).
+			const double Half = FMath::Max(0.0, (RLen - RWid) * 0.5);
+			const FVector Base = C + FVector(0, 0, RoofZ);
+			Add(TEXT("RoofHipEnd"), Base - RAlong * Half, RidgeRot, FVector(RWid / 100.0, RWid / 100.0, Rise / 100.0));
+			Add(TEXT("RoofHipEnd"), Base + RAlong * Half, RidgeRot + FRotator(0.0, 180.0, 0.0), FVector(RWid / 100.0, RWid / 100.0, Rise / 100.0));
+			if (Half > 1.0)
+			{
+				Add(TEXT("RoofRidge"), Base - RAlong * Half, RidgeRot, FVector(2.0 * Half / 100.0, RWid / 100.0, Rise / 100.0));
+			}
+			++Hips;
+		}
+		else if (bGable)
+		{
+			Add(TEXT("RoofRidge"), C - RAlong * (RLen * 0.5) + FVector(0, 0, RoofZ), RidgeRot, FVector(RLen / 100.0, RWid / 100.0, Rise / 100.0));
+			// Gable end walls in the building's material; a church front gets its pediment instead.
+			const FString Gable = bBrick ? TEXT("GableEndBrick") : (bShed ? TEXT("GableEndCorrugated") : TEXT("GableEnd"));
+			for (int32 f = 0; f < 4; ++f)
+			{
+				if (!IsGableFacade(f))
+				{
+					continue;
+				}
+				const FRotator Rot = FRotationMatrix::MakeFromXY(Alongs[f], -B.F[f].Out).Rotator();
+				const double GableH = Rise * (RWid - 80.0) / RWid;
+				if (bChurch && f == B.Front)
+				{
+					Add(TEXT("Pediment"), Starts[f] + FVector(0, 0, RoofZ), Rot, FVector(Lengths[f] / 100.0, 1.0, (GableH + 40.0) / 100.0));
+				}
+				else
+				{
+					Add(Gable, Starts[f] + FVector(0, 0, RoofZ), Rot, FVector(Lengths[f] / 100.0, 1.0, GableH / 100.0));
+				}
+			}
+			++Gables;
+		}
+		if (bPitched && bPlaster && Rr.FRand() < 0.55f)
+		{
+			// A chimney on the slope: its base at the lowest roof point under it, 0.9 m clear of the highest.
+			const double La = Rr.FRandRange(-0.3f, 0.3f) * RLen, Lc = Rr.FRandRange(-0.25f, 0.25f) * RWid;
+			double Lo = TNumericLimits<double>::Max(), Hi = -TNumericLimits<double>::Max();
+			for (const double Dx : { -30.0, 30.0 })
+			{
+				for (const double Dy : { -30.0, 30.0 })
+				{
+					const double H = PitchedHeight(La + Dx, Lc + Dy, RLen, RWid, Rise, bHip);
+					Lo = FMath::Min(Lo, H);
+					Hi = FMath::Max(Hi, H);
+				}
+			}
+			Add(TEXT("Prop_Chimney"), C + RAlong * La + RAcross * Lc + FVector(0, 0, RoofZ + Lo - 10.0), Yaw, FVector(1.0, 1.0, (Hi - Lo + 100.0) / 100.0));
+		}
+		if (!bPitched)
+		{
+			if (B.Chamfer)
+			{
+				// Two slabs that leave the cut corner open.
+				Add(TEXT("RoofFlat"), C + U * (ChamferCm * 0.5) + FVector(0, 0, TopZ), Yaw, FVector((W - ChamferCm) / 100.0, D / 100.0, 1.0));
+				Add(TEXT("RoofFlat"), C - U * ((W - ChamferCm) * 0.5) + Vw * (ChamferCm * 0.5) + FVector(0, 0, TopZ), Yaw, FVector(ChamferCm / 100.0, (D - ChamferCm) / 100.0, 1.0));
+			}
+			else
+			{
+				Add(TEXT("RoofFlat"), C + FVector(0, 0, TopZ), Yaw, FVector(W / 100.0, D / 100.0, 1.0));
+			}
+			++Flats;
 			// Clutter on a 3 m grid kept 1 m inside the parapet, so pieces never overlap; the hut first.
-			const int32 Nx = FMath::FloorToInt32((W - 200.0) / 300.0), Ny = FMath::FloorToInt32((D - 200.0) / 300.0);
+			const int32 Nx = bHasTop ? 0 : FMath::FloorToInt32((W - 200.0 - (B.Chamfer ? ChamferCm : 0.0)) / 300.0), Ny = FMath::FloorToInt32((D - 200.0) / 300.0);
 			if (Nx > 0 && Ny > 0)
 			{
-				TArray<int32> Cells;
-				for (int32 k = 0; k < Nx * Ny; ++k)
-				{
-					Cells.Add(k);
-				}
-				for (int32 k = Cells.Num() - 1; k > 0; --k)
-				{
-					Cells.Swap(k, Rp.RandRange(0, k));
-				}
-				const int32 Props = FMath::Min(Cells.Num(), FMath::Clamp(FMath::RoundToInt32(W * D / 1.0e4 / 70.0), 1, 5));
+				TArray<int32> CellsXY;
+				for (int32 k = 0; k < Nx * Ny; ++k) { CellsXY.Add(k); }
+				for (int32 k = CellsXY.Num() - 1; k > 0; --k) { CellsXY.Swap(k, Rp.RandRange(0, k)); }
+				const int32 Props = FMath::Min(CellsXY.Num(), FMath::Clamp(FMath::RoundToInt32(W * D / 1.0e4 / 70.0), 1, 5));
 				static const TCHAR* RoofProps[] = { TEXT("Prop_WaterTank"), TEXT("Prop_ACUnit"), TEXT("Prop_ACUnit"), TEXT("Prop_Dish") };
 				const bool bHut = Rp.FRand() < 0.5f;
+				const double Shift = B.Chamfer ? ChamferCm * 0.5 : 0.0;
 				for (int32 p = 0; p < Props; ++p)
 				{
-					const int32 Cx = Cells[p] % Nx, Cy = Cells[p] / Nx;
-					const double Lu = -0.5 * (Nx * 300.0) + (Cx + 0.5) * 300.0 + Rp.FRandRange(-30.f, 30.f);
+					const int32 Cx = CellsXY[p] % Nx, Cy = CellsXY[p] / Nx;
+					const double Lu = Shift - 0.5 * (Nx * 300.0) + (Cx + 0.5) * 300.0 + Rp.FRandRange(-30.f, 30.f);
 					const double Lv = -0.5 * (Ny * 300.0) + (Cy + 0.5) * 300.0 + Rp.FRandRange(-30.f, 30.f);
-					const TCHAR* What = (p == 0 && bHut) ? TEXT("Prop_RoofHut") : RoofProps[Rp.RandRange(0, 3)];
-					Add(What, C + U * Lu + Vw * Lv + FVector(0, 0, TopZ + 25.0), FRotator(0.0, Yaw.Yaw + 90.0 * Rp.RandRange(0, 3), 0.0));
+					Add((p == 0 && bHut) ? TEXT("Prop_RoofHut") : RoofProps[Rp.RandRange(0, 3)], C + U * Lu + Vw * Lv + FVector(0, 0, TopZ + 25.0),
+						FRotator(0.0, Yaw.Yaw + 90.0 * Rp.RandRange(0, 3), 0.0));
 				}
 			}
 		}
@@ -697,27 +1160,91 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 		Actor->SetActorLabel(FString::Printf(TEXT("Kit_Buildings_%d_%d"), Pair.Key.X, Pair.Key.Y));
 		Actor->SetFolderPath(TEXT("Buildings/Kit"));
 	}
+
+	// ---- Reports (BUILDINGS_PLAN.md 3.5): what was built, and how varied it is.
 	TArray<FString> Missing;
-	for (const FName& N : Pieces.Missing)
-	{
-		Missing.Add(N.ToString());
-	}
+	for (const FName& N : Pieces.Missing) { Missing.Add(N.ToString()); }
 	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: %d buildings, %d piece instances in %d chunks%s"), Buildings, Count, Chunks.Num(),
 		Missing.IsEmpty() ? TEXT("") : *FString::Printf(TEXT("; missing pieces skipped: %s"), *FString::Join(Missing, TEXT(", "))));
-	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: %d street facades of %d, %d symmetric; %d wall cells hidden by neighbours, %d blanked; %d bays on a lower storey (slope); %d doors/shops kept off a drop"),
-		StreetFacades, Facades, Symmetric, HiddenCells, PartyBlank, Basements, FloatingDoors);
-	// Piece share (KIT_SPEC / buildings plan: no single facade mesh should carry much over a quarter of the cells).
+	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: %d street facades of %d, %d symmetric; %d wall cells hidden by neighbours, %d blanked; %d bays on a lower storey (slope); %d doors/shops kept off a drop; %d chamfered corners; %d wall details"),
+		StreetFacades, Facades, Symmetric, HiddenCells, PartyBlank, Basements, FloatingDoors, Chamfers, Dressed);
+	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: roofs %d hip, %d gable, %d flat; %d records with an unknown archetype"), Hips, Gables, Flats, MissingArch);
+	// Neighbour contrast: touching buildings of different lots should differ in at least two of storeys,
+	// wall colour, window family and crown.
+	int32 Pairs = 0, Contrasted = 0;
+	for (int32 i = 0; i < Blds.Num(); ++i)
+	{
+		for (const FBld::FFacade& Fa : Blds[i].F)
+		{
+			int32 Who = INDEX_NONE;
+			if (Index.CoverTop(Blds[i].C + Fa.Out * (Fa.Half + CoverProbeCm), i, &Who) > Lowest && Who > i && Blds[Who].Lot != Blds[i].Lot)
+			{
+				const FLook& A = Blds[i].Look;
+				const FLook& Bk = Blds[Who].Look;
+				const int32 Diff = (Blds[i].Storeys != Blds[Who].Storeys) + (A.Colour != Bk.Colour || Blds[i].Arch->Palette != Blds[Who].Arch->Palette) + (A.Upper != Bk.Upper) + (A.Crown != Bk.Crown);
+				++Pairs;
+				Contrasted += Diff >= 2 ? 1 : 0;
+			}
+		}
+	}
+	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: variety: %d street fronts re-planned to avoid a repeat within 60 m (%d still repeat); neighbour contrast %d of %d touching pairs (%.0f%%) differ in 2+ of storeys, colour, windows, crown; %d colour re-draws"),
+		SigRerolls, SigRepeats, Contrasted, Pairs, 100.0 * Contrasted / FMath::Max(1, Pairs), ColourRerolls);
+	// Piece share of facade cells per district style (warn over 25%).
+	for (const TPair<FString, TMap<FName, int32>>& Style : CellsPerStyle)
+	{
+		int32 Total = 0;
+		TPair<FName, int32> Top(NAME_None, 0);
+		for (const TPair<FName, int32>& P : Style.Value)
+		{
+			Total += P.Value;
+			if (P.Value > Top.Value) { Top = P; }
+		}
+		const double Share = 100.0 * Top.Value / FMath::Max(1, Total);
+		UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: %s: %d facade cells, %d pieces, most used %s %.1f%%%s"), *Style.Key, Total, Style.Value.Num(),
+			*Top.Key.ToString(), Share, Share > 25.0 ? TEXT("  (over 25%)") : TEXT(""));
+	}
+	// Street contrast: a street's storey and colour mix should not just be its district's average.
+	{
+		TMap<FString, TMap<int32, TArray<int32>>> ByStyleStreet;
+		for (int32 i = 0; i < Blds.Num(); ++i)
+		{
+			if (Blds[i].On < 0 && Blds[i].bLotMain) { ByStyleStreet.FindOrAdd(Blds[i].StyleName).FindOrAdd(Blds[i].Street).Add(i); }
+		}
+		int32 Streets = 0, Flat = 0;
+		for (const TPair<FString, TMap<int32, TArray<int32>>>& S : ByStyleStreet)
+		{
+			TMap<int32, double> DistSt, DistCol;
+			int32 All = 0;
+			for (const TPair<int32, TArray<int32>>& St : S.Value) { for (const int32 i : St.Value) { DistSt.FindOrAdd(Blds[i].Storeys) += 1; DistCol.FindOrAdd(Blds[i].Look.Colour) += 1; ++All; } }
+			for (const TPair<int32, TArray<int32>>& St : S.Value)
+			{
+				if (St.Value.Num() < 5) { continue; }
+				TMap<int32, double> Hs, Hc;
+				for (const int32 i : St.Value) { Hs.FindOrAdd(Blds[i].Storeys) += 1; Hc.FindOrAdd(Blds[i].Look.Colour) += 1; }
+				double L1 = 0.0;
+				for (const TPair<int32, double>& P : DistSt) { L1 += FMath::Abs(P.Value / All - Hs.FindRef(P.Key) / St.Value.Num()); }
+				for (const TPair<int32, double>& P : DistCol) { L1 += FMath::Abs(P.Value / All - Hc.FindRef(P.Key) / St.Value.Num()); }
+				++Streets;
+				Flat += L1 * 0.25 < 0.2 ? 1 : 0;
+			}
+		}
+		UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: street contrast: %d of %d streets (5+ buildings) are within 0.2 of their district's storey and colour mix"), Flat, Streets);
+	}
+	// Overall piece share.
 	PieceUse.ValueSort([](int32 A, int32 B) { return A > B; });
 	int32 PieceTotal = 0;
 	for (const TPair<UStaticMesh*, int32>& P : PieceUse) { PieceTotal += P.Value; }
 	FString Share;
+	int32 Listed = 0;
 	for (const TPair<UStaticMesh*, int32>& P : PieceUse)
 	{
+		if (Listed++ >= 25) { break; }
 		Share += FString::Printf(TEXT(" %s %.1f%%"), *P.Key->GetName().Replace(TEXT("SM_Kit_"), TEXT("")), 100.0 * P.Value / FMath::Max(1, PieceTotal));
 	}
-	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: piece share:%s"), *Share);
+	UE_LOG(LogOpenCity, Display, TEXT("BuildKitBuildings: %d piece kinds; top 25:%s"), PieceUse.Num(), *Share);
 	return Count;
 }
+
 
 
 int32 UOCWorldBuilderLibrary::BuildStreetProps(UWorld* World, const FString& LayoutJsonPath, const FString& HeightmapPng,

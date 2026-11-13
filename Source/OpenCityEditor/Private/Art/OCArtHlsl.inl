@@ -62,15 +62,24 @@ float lumBig = dot(big, float3(0.3, 0.59, 0.11));
 float lumMean = max(dot(mean, float3(0.3, 0.59, 0.11)), 0.02);
 bc *= lerp(1.0, clamp(lumBig / lumMean, 0.65, 1.35), Macro);
 
-// Tints: material tint x per-instance tint (slot A = custom data 0-2, slot B = 3-5).
-float3 inst = Slot < -0.5 ? float3(1.0, 1.0, 1.0) : (Slot < 0.5 ? float3(I0, I1, I2) : float3(I3, I4, I5));
+// Tints: material tint x per-instance tint (slot A = custom data 0-2, slot B = 3-5, slot C = the stone
+// trim palette picked by custom data 9: pale limestone, grey stone, painted white, brick red).
+const float3 TrimPal[4] = { float3(1.0, 1.0, 1.0), float3(0.74, 0.76, 0.78), float3(1.28, 1.26, 1.2), float3(0.92, 0.55, 0.44) };
+float3 inst = Slot < -0.5 ? float3(1.0, 1.0, 1.0) : (Slot < 0.5 ? float3(I0, I1, I2) : (Slot < 1.5 ? float3(I3, I4, I5) : TrimPal[clamp((int)(I9 + 0.5), 0, 3)]));
 bc *= Tint * inst;
+// Kit walls on the ground floor (custom data 8 = 1): a darker, warmer base band and rain splash over
+// the lowest metre of the piece.
+if (Slot > -0.5 && Slot < 0.5 && I8 > 0.5)
+{
+    bc *= float3(0.86, 0.82, 0.78) * (1.0 - 0.22 * saturate(1.0 - LP.z / 110.0) * (0.4 + 0.6 * I6));
+}
 
 // Grime: scanned leak stains (ambientCG, oc_decals.py), one per 4 m bay and storey on kit walls,
 // shifted and scaled by the building's wear (custom data 6). No decal actors on buildings.
 if (GrimeAmt > 0.001 && Mode < 0.5)
 {
-    float2 g = UV / float2(4.0, 3.2) + float2(I6 * 0.37, 0.0);
+    // Each bay and storey (one instance) reads its own part of the stain scan.
+    float2 g = UV / float2(4.0, 3.2) + float2(I6 * 0.37 + Rand * 0.71, frac(Rand * 7.31) * 0.6);
     float stain = 1.0 - Texture2DSample(GrimeT, GrimeTSampler, frac(g)).r;
     bc *= 1.0 - saturate(stain * 1.4) * GrimeAmt * (0.35 + 0.65 * I6);
 }
@@ -88,9 +97,17 @@ return bc;
 )HLSL");
 
 const FString GLASS_HLSL = FString(R"HLSL(
-// Dark glass with a faint sky tint; lit windows glow warm (custom data 7 = lit, NightAmount from the day/night cycle).
-Emis = float3(1.0, 0.72, 0.42) * Lit * Night * Strength;
-return float3(0.02, 0.025, 0.03);
+// Kit glass, per window (LP = position in the piece; windows sit on a 2 m pitch, so floor(LP.x / 200)
+// numbers them; Rand = the instance): about 30% lit at night in warm or cool white, and by day a blind
+// or curtain drawn part way down from the head, so glass is not uniformly black.
+float win = floor(LP.x / 200.0);
+float h = frac(sin(Rand * 91.7 + win * 12.9898) * 43758.5453);
+float h2 = frac(h * 13.37 + 0.17);
+float lit = step(h, 0.3);
+Emis = lerp(float3(1.0, 0.72, 0.42), float3(0.78, 0.86, 1.0), step(0.75, h2)) * lit * Night * Strength;
+float blind = step(240.0 - (15.0 + 95.0 * h2), LP.z) * step(h2, 0.8);
+float3 cloth = lerp(float3(0.62, 0.56, 0.46), float3(0.42, 0.44, 0.48), step(0.5, frac(h * 5.1)));
+return lerp(float3(0.02, 0.025, 0.03), cloth, blind * (1.0 - Night * lit));
 )HLSL");
 
 const FString CHARACTER_HLSL = FString(R"HLSL(

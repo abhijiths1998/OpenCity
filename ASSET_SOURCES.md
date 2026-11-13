@@ -19,6 +19,9 @@ CC0 originals are **not committed**. `SourceArt/manifest.json` lists them and `o
 | Marevia building kit (26 pieces, `SM_Kit_*`) | Own work: kit generator (C++, `Source/OpenCityEditor/Private/Kit/`, `OCBuildArt -steps=kit`) | n/a | OpenCity | Project-owned | All buildings (`BuildKitBuildings`) | 2026-11-09 |
 | `plastered_wall` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/plastered_wall | Poly Haven | CC0 | Kit: building walls (MI_Kit_Wall) | 2026-11-09 |
 | `white_stucco` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/white_stucco | Poly Haven | CC0 | Kit: Lungomare and Le Colline walls (alternate plaster) | 2026-11-09 |
+| `corrugated_iron_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/corrugated_iron_02 | Poly Haven | CC0 | Kit: port sheds and kiln workshops (MI_Kit_Corrugated) | 2026-11-13 |
+| `red_brick_03` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/red_brick_03 | Poly Haven | CC0 | Kit: Le Fornaci and port brick warehouses (MI_Kit_Brick) | 2026-11-13 |
+| `rough_linen` (BC, N, ORM, 1K) | Poly Haven | https://polyhaven.com/a/rough_linen | Poly Haven | CC0 | Kit: shop awnings and laundry, tinted per building (MI_Kit_Fabric) | 2026-11-13 |
 | `old_sandstone_02` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/old_sandstone_02 | Poly Haven | CC0 | Kit: stone trims, sills, cornices, quoins, plinths (MI_Kit_Trim) | 2026-11-09 |
 | `wood_peeling_paint_weathered` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/wood_peeling_paint_weathered | Poly Haven | CC0 | Kit: shutters, doors, frames, tinted per building (MI_Kit_Wood) | 2026-11-09 |
 | `metal_plate` (BC, N, ORM, 2K) | Poly Haven | https://polyhaven.com/a/metal_plate | Poly Haven | CC0 | Grey-box metal on landmarks (MI_Box_Metal) | 2026-11-09 |

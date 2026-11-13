@@ -30,6 +30,8 @@
 
 namespace OCWorldBuild
 {
+	int32 KitSeed = 1951;   // -kitseed=N: another look for the same layout (facades, colours, roofs, dressing)
+
 	namespace
 	{
 		// World Partition streaming: 128 m cells; cars reach ~50 m/s, so load 384 m around the player.
@@ -187,7 +189,7 @@ namespace OCWorldBuild
 				OCEd::Log(Tag, TEXT("kit not imported: buildings stay grey-box"));
 				return;
 			}
-			const int32 Pieces = UOCWorldBuilderLibrary::BuildKitBuildings(World, LayoutPath(), HeightPath(), KitPath, ChunkCm, 1951);
+			const int32 Pieces = UOCWorldBuilderLibrary::BuildKitBuildings(World, LayoutPath(), HeightPath(), KitPath, ChunkCm, KitSeed);
 			if (Pieces == 0)
 			{
 				UE_LOG(LogOpenCity, Fatal, TEXT("kit buildings failed (see LogOpenCity)"));
@@ -396,6 +398,7 @@ int32 UOCBuildWorldCommandlet::Main(const FString& Params)
 	{
 		OCWorldBuild::BuildDevMaterials();
 	}
+	FParse::Value(*Params, TEXT("kitseed="), OCWorldBuild::KitSeed);
 	if (FParse::Param(*Params, TEXT("materialsonly")))
 	{
 		UE_LOG(LogOpenCity, Display, TEXT("OCBuildWorld: materials done"));

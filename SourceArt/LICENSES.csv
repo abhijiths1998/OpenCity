@@ -50,3 +50,6 @@ SourceArt/Downloads/gravel_floor,https://polyhaven.com/a/gravel_floor,Poly Haven
 SourceArt/Downloads/Decals/ManholeCover009,https://ambientcg.com/view?id=ManholeCover009,ambientCG,CC0,2026-11-10,"Gutter gullies along kerbs (BuildRoadDecals, INFRA_DESIGN Phase 4)"
 SourceArt/Downloads/Decals/ManholeCover010,https://ambientcg.com/view?id=ManholeCover010,ambientCG,CC0,2026-11-10,"Manhole set in cobbles on sampietrini and porfido paving (BuildRoadDecals, Phase 4)"
 Engine/Content/Slate/Fonts/Roboto-Regular.ttf,https://fonts.google.com/specimen/Roboto,Google (shipped with Unreal Engine),Apache-2.0,2026-11-11,Glyph outlines for the lettering on the kit road signs (OCKitGeom TextMesh)
+SourceArt/Downloads/corrugated_iron_02,https://polyhaven.com/a/corrugated_iron_02,Poly Haven,CC0,2026-11-13,Kit: port sheds and kiln workshops (MI_Kit_Corrugated)
+SourceArt/Downloads/red_brick_03,https://polyhaven.com/a/red_brick_03,Poly Haven,CC0,2026-11-13,Kit: Le Fornaci and port brick warehouses (MI_Kit_Brick)
+SourceArt/Downloads/rough_linen,https://polyhaven.com/a/rough_linen,Poly Haven,CC0,2026-11-13,"Kit: shop awnings and laundry, tinted per building (MI_Kit_Fabric)"

@@ -17,7 +17,7 @@
 
 namespace OCLayout
 {
-	constexpr int32 Seed = 1974;
+	constexpr int32 DefaultSeed = 1974;   // scripts/make_layout.sh -seed=N picks another city
 	constexpr int32 W = 3024, H = 3024;   // metres; the landscape is 24 x 24 components of 126 quads at 1 m
 	constexpr int32 YMin = -300;          // the map starts 300 m out to sea, so the Molo Salvi pier is on it
 	constexpr int32 NX = W + 1, NY = H + 1;
@@ -177,6 +177,13 @@ namespace OCLayout
 		double PX, PY, SW, SD, Yaw, Base, Top;
 		int32 Storeys, Style;
 		FString District, Landmark;
+		// BUILDINGS_PLAN.md phase 2: what the assembler builds here.
+		FString Archetype, LmKind;            // e.g. townhouse, palazzo, slabhotel; landmark kind (church, civic...)
+		double Age = 0.5, Wealth = 0.5, Upkeep = 0.5;   // city fields at the lot, 0-1
+		int32 Street = 0;                     // character seed of the street it fronts
+		int32 Lot = -1;                       // volumes of one building share a lot
+		int32 On = -1;                        // a recessed top storey: index of the volume it stands on
+		int32 Chamfer = 0;                    // 1: the front corner at the start of the width is cut 2 m (corner building)
 	};
 	extern const TArray<FString> BuildingStyles;
 
@@ -190,7 +197,7 @@ namespace OCLayout
 	// Placement and metadata (OCMareviaPlace.cpp)
 	TArray<FWallRun> RetainingWalls(const FGridD& Terrain, const FRoadGraph& G);
 	TArray<FBuilding> PlaceBuildings(const FGridD& Terrain, const FGridF& Best, const FRoadGraph& G, FPyRandom& Rng,
-		const TArray<FLandmark>& Landmarks, FString& OutError);
+		const TArray<FLandmark>& Landmarks, FString& OutError, int32 Seed);
 	TArray<FBuilding> LandmarkBuildings(const FGridD& Terrain, const TArray<FLandmark>& Landmarks);
 	TArray<FWallRun> DropWallsInBuildings(const TArray<FWallRun>& Runs, const TArray<FBuilding>& Buildings, double Grow = 2.0);
 	struct FJunction { int32 Node; FString Type; };
@@ -209,7 +216,7 @@ namespace OCLayout
 	FRectMask RectMask(double CX, double CY, double W, double D, double Yaw, double Grow = 0.0);
 
 	/** The whole pipeline: writes marevia_layout.json, marevia_height.png and marevia_preview.png to OutDir. */
-	bool GenerateMarevia(const FString& OutDir, const FString& ProfilesPath, FString& OutError);
+	bool GenerateMarevia(const FString& OutDir, const FString& ProfilesPath, FString& OutError, int32 Seed = DefaultSeed);
 	/** Preview picture (OCMareviaPreview.cpp). */
 	bool RenderPreview(const FString& Path, const FGridD& Terrain, const FRoadGraph& G, const TArray<FBuilding>& Buildings,
 		const TArray<FLandmark>& Landmarks);
