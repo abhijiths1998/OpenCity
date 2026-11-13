@@ -163,6 +163,14 @@ void FOCTrafficSim::Remove(int32 Id)
 	Cars.RemoveAll([Id](const FOCTrafficCar& C) { return C.Id == Id; });
 }
 
+void FOCTrafficSim::SetObstacle(int32 Id, double GapCm)
+{
+	if (FOCTrafficCar* Car = Cars.FindByPredicate([Id](const FOCTrafficCar& C) { return C.Id == Id; }))
+	{
+		Car->ObstacleGap = GapCm;
+	}
+}
+
 const FOCTrafficCar* FOCTrafficSim::FindCar(int32 Id) const
 {
 	return Cars.FindByPredicate([Id](const FOCTrafficCar& C) { return C.Id == Id; });
@@ -324,6 +332,11 @@ void FOCTrafficSim::Step(double Dt, FRandomStream& Rng)
 		double Gap, LeaderV;
 		FindLeader(i, FMath::Max(5000.0, 3.0 * Stopping + 2000.0), Gap, LeaderV);
 		double A = Idm(V, V0, Gap, LeaderV);
+		if (Car.ObstacleGap >= 0.0)   // something outside the sim ahead (treated as standing still)
+		{
+			A = FMath::Min(A, Idm(V, V0, Car.ObstacleGap, 0.0));
+			Car.ObstacleGap = -1.0;
+		}
 		Car.bHolding = false;
 		if (Car.Link == INDEX_NONE)
 		{

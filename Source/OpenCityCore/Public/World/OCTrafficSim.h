@@ -20,6 +20,7 @@ struct OPENCITYCORE_API FOCTrafficCar
 	bool bReserved = false;         // NextLink is held for it (it is past the point where it could still stop)
 	double Driven = 0.0;            // cm since it was spawned (tests, stall detection)
 	double StoppedFor = 0.0;        // s at a standstill
+	double ObstacleGap = -1.0;      // cm to something not in the sim (the player's car, a person), set each frame; < 0 none
 };
 
 /** Where a car is, for the game layer to place its actor. Z follows the lane line (the road graph's node heights). */
@@ -63,6 +64,9 @@ public:
 	/** Add a car on a lane at S cm (clamped to the lane). Returns its id. */
 	int32 Spawn(int32 Lane, double S, double Speed, FRandomStream& Rng);
 	void Remove(int32 Id);
+
+	/** Something outside the sim is GapCm ahead of this car (bumper to it), for this step only. */
+	void SetObstacle(int32 Id, double GapCm);
 	void Reset();
 
 	/** Advance every car by Dt seconds (call with small steps, e.g. 1/30 s). */

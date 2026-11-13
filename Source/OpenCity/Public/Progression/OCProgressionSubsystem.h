@@ -57,6 +57,9 @@ public:
 	/** The road network (null if the settings don't name a valid road graph asset). */
 	const FOCRoadGraph* GetRoadGraph() const;
 
+	/** The road graph asset (lanes for traffic); null if the settings name none. */
+	const UOCRoadGraphAsset* GetRoadGraphAsset() const { return RoadGraph; }
+
 	/**
 	 * The road node nearest From that a new game's start can reach with the gates as they are now
 	 * (never inside a locked area). OutFacing looks away from From.
