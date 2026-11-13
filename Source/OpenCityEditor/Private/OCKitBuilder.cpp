@@ -762,7 +762,7 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		I.Data[7] = Mesh == Signal ? 0.f : 1.f;  // lamp glass lit at night (M_Master_KitGlass); signal lenses never
 		if (Mesh == Signal)
 		{
-			I.Data[0] = 0.85f; I.Data[1] = 0.62f; I.Data[2] = 0.03f;  // yellow push-button box (Paint)
+			I.Data[0] = 5.f;  // yellow push-button box: paint palette entry 5 (M_Master_Paint)
 		}
 		Chunks.FindOrAdd(FIntPoint(FMath::FloorToInt32(At.X / ChunkSizeCm), FMath::FloorToInt32(At.Y / ChunkSizeCm))).Add(I);
 		++Count;
@@ -899,14 +899,12 @@ int32 UOCWorldBuilderLibrary::BuildStreetFixtures(UWorld* World, const FString& 
 		// post-war pavements, side by side along the kerb.
 		if (bPostwar && Walk > 0.0)
 		{
-			static const FLinearColor Streams[5] = { FLinearColor(0.05f, 0.25f, 0.06f), FLinearColor(0.75f, 0.6f, 0.02f),
-				FLinearColor(0.03f, 0.12f, 0.45f), FLinearColor(0.22f, 0.12f, 0.05f), FLinearColor(0.25f, 0.25f, 0.25f) };
 			for (double D = From + R.FRandRange(600.f, 4000.f); D + 800.0 <= To; D += 15000.0)
 			{
 				const double SideSign = R.FRand() < 0.5 ? 1.0 : -1.0;
 				for (int32 b = 0; b < 5; ++b)
 				{
-					Put(Bin, At(D + b * 150.0, SideSign, Half + 95.0), FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)), 15.0, Streams[b]);
+					Put(Bin, At(D + b * 150.0, SideSign, Half + 95.0), FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)), 15.0, FLinearColor(float(b), 0.f, 0.f));   // paint palette entry b (M_Master_Paint)
 				}
 			}
 		}

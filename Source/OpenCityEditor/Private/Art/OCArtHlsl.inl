@@ -11,7 +11,9 @@ Opacity = op * Strength;
 float2 nxy = Texture2DSample(NM, NMSampler, UV).rg * 2.0 - 1.0;
 Normal = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
 Rough = RoughOverride >= 0.0 ? RoughOverride : Texture2DSample(RO, ROSampler, UV).r;
-return FromColor > 0.5 ? c.rgb * 0.6 : c.rgb;
+// Rain (MPC_World.Wetness): decals darken and gloss with the ground under them, or they read dry on a wet road.
+Rough = lerp(Rough, 0.12, Wet * 0.8);
+return (FromColor > 0.5 ? c.rgb * 0.6 : c.rgb) * lerp(1.0, 0.7, Wet);
 )HLSL");
 
 const FString SURFACE_HLSL = FString(R"HLSL(
@@ -91,6 +93,21 @@ Emis = float3(1.0, 0.72, 0.42) * Lit * Night * Strength;
 return float3(0.02, 0.025, 0.03);
 )HLSL");
 
+const FString CHARACTER_HLSL = FString(R"HLSL(
+// Characters (M4b): skin, cloth and simple hair cards from one subsurface master. Skin = 1 scatters
+// light under the surface (the Subsurface model's opacity) and tints it blood-red; cloth and hair use
+// Skin = 0 and shade as plain lit surfaces. Rain (MPC_World.Wetness) soaks cloth and hair darker and
+// glossier, and leaves skin with a wet sheen.
+float3 bc = Texture2DSample(BCTex, BCTexSampler, UV).rgb * Tint;
+float2 nxy = Texture2DSample(NTex, NTexSampler, UV).rg * 2.0 - 1.0;
+TangentNormal = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
+float soak = Wet * (1.0 - Skin);
+bc *= lerp(1.0, 0.55, soak);
+Rough = lerp(Roughness, lerp(0.3, 0.22, Skin), Wet * 0.75);
+Sss = float3(0.8, 0.25, 0.15) * Skin;
+SssAmount = Skin * 0.85;
+return bc;
+)HLSL");
 const FString LAMP_HLSL = FString(R"HLSL(
 // Street lamp glass and bulbs: dark by day, warm sodium glow at night (MPC_World.NightAmount).
 Emis = float3(1.0, 0.62, 0.30) * Night * Strength;
@@ -373,9 +390,12 @@ return float3(dir * bend * (0.4 + sway), 0.0) + VN * flutter;
 
 const FString PAINT_HLSL = FString(R"HLSL(
 // Painted street fixtures (INFRA_DESIGN.md Phase 5): sign faces, bins, railings. Flat paint colour
-// (or the instance's custom data 0-2 for bins coloured by recycling stream), roughened and dulled
+// (or a palette entry picked by the instance's custom data 0: recycling streams and the signal button box;
+// one value, not three, keeps the per-instance fetches cheap), roughened and dulled
 // by a scanned grime map; sign faces are retroreflective (a faint night glow). Wet paint is glossier.
-float3 col = UseInstance > 0.5 ? float3(I0, I1, I2) : Colour;
+const float3 Pal[6] = { float3(0.05, 0.25, 0.06), float3(0.75, 0.6, 0.02), float3(0.03, 0.12, 0.45),   // glass, plastic, paper
+                        float3(0.22, 0.12, 0.05), float3(0.25, 0.25, 0.25), float3(0.85, 0.62, 0.03) };  // organic, unsorted, button box
+float3 col = UseInstance > 0.5 ? Pal[clamp((int)(I0 + 0.5), 0, 5)] : Colour;
 float g = Texture2DSample(Grime, GrimeSampler, frac(WP.xz / 180.0 + WP.yz / 260.0)).r;
 float dirt = saturate((1.0 - g) * 1.6) * Dirt;
 float3 bc = lerp(col, col * float3(0.55, 0.5, 0.45), dirt);

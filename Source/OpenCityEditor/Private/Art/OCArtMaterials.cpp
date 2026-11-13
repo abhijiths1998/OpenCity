@@ -6,7 +6,7 @@
 //    1 roof planes aligned to the eaves, 2 world top-down, 3 world box projection), macro variation,
 //    per-instance tints from PerInstanceCustomData, roughness remap, normal strength, grime and wetness.
 // 3. M_Master_KitGlass, M_Master_LampGlow, M_Master_Road, M_Master_Landscape, M_Master_Water, M_PP_Rain,
-//    M_Master_CarGlass, M_Master_Foliage, M_Master_CarPaint, M_Master_Paint, M_Master_Decal.
+//    M_Master_CarGlass, M_Master_Foliage, M_Master_CarPaint, M_Master_Paint, M_Master_Character, M_Master_Decal.
 // 4. Material instances in /Game/Environment/Materials/. Everything is regenerated on each run.
 #include "Art/OCArt.h"
 
@@ -423,17 +423,14 @@ namespace OCArt
 			UTexture* Grime = OCEd::Load<UTexture>(TEXT("/Game/Environment/Textures/Decals/Leaking013A/T_Leaking013A_Color"));
 			FInputs In = {
 				{ TEXT("Colour"), Mt.Vector(TEXT("Colour"), FLinearColor(0.5f, 0.5f, 0.5f, 1.0f), -1100, -300) },
-				{ TEXT("UseInstance"), Mt.Scalar(TEXT("UseInstanceColour"), 0.0f, -1100, -200) },
-				{ TEXT("Reflect"), Mt.Scalar(TEXT("Retroreflective"), 0.0f, -1100, -120) },
+				{ TEXT("UseInstance"), Mt.StaticFlag(TEXT("UseInstanceColour"), false, -1100, -200) },   // static switches: each instance
+				{ TEXT("Reflect"), Mt.StaticFlag(TEXT("Retroreflective"), false, -1100, -120) },       // compiles only its own paths
 				{ TEXT("Dirt"), Mt.Scalar(TEXT("Dirt"), 0.35f, -1100, -40) },
 				{ TEXT("Grime"), Mt.TexObject(TEXT("Grime"), SAMPLERTYPE_Color, Grime, -1100, 40) },
 				{ TEXT("WP"), Mt.WorldPos(-1100, 160) },
 				{ TEXT("Night"), Mt.Collection(Mpc, TEXT("NightAmount"), -1100, 240) },
 				{ TEXT("Wet"), Mt.Collection(Mpc, TEXT("Wetness"), -1100, 320) } };
-			for (int32 i = 0; i < 3; ++i)
-			{
-				In.Add({ FString::Printf(TEXT("I%d"), i), Mt.InstanceData(i, 1.0f, -800, 300 + 70 * i) });
-			}
+			In.Add({ TEXT("I0"), Mt.InstanceData(0, 0.0f, -800, 300) });   // palette index (OCKitBuilder: recycling streams, signal box)
 			UMaterialExpressionCustom* N = Node(Mt, Hlsl::PAINT_HLSL, In, { { TEXT("Rough"), CMOT_Float1 }, { TEXT("Emis"), CMOT_Float3 } });
 			Mt.Output(N, FString(), MP_BaseColor);
 			Mt.Output(N, TEXT("Rough"), MP_Roughness);
@@ -450,11 +447,48 @@ namespace OCArt
 			{
 				UMaterialInstanceConstant* Mi = OCEd::FreshInstance(P.Name, MiRoot, Mt.M, Tag);
 				OCEd::SetVector(Mi, TEXT("Colour"), P.Colour);
-				OCEd::SetScalar(Mi, TEXT("Retroreflective"), P.Reflect);
-				OCEd::SetScalar(Mi, TEXT("UseInstanceColour"), P.Inst);
+				OCEd::SetSwitch(Mi, TEXT("Retroreflective"), P.Reflect > 0.5f);
+				OCEd::SetSwitch(Mi, TEXT("UseInstanceColour"), P.Inst > 0.5f);
 				OCEd::FinishInstance(Mi);
 			}
 			OCEd::Log(Tag, TEXT("paint instances: MI_Kit_PaintRed, MI_Kit_PaintWhite, MI_Kit_PaintBlack, MI_Kit_PaintBlue, MI_Kit_Paint"));
+		}
+
+		/** M_Master_Character (ART_PIPELINE.md target 450): skin, cloth and simple hair, and one instance of each. */
+		void BuildCharacterMaster(UMaterialParameterCollection* Mpc)
+		{
+			OCEd::FMat Mt = FreshMaster(TEXT("M_Master_Character"));
+			Mt.M->SetShadingModel(MSM_Subsurface);
+			OCEd::Usage(Mt.M, MATUSAGE_SkeletalMesh);
+			UMaterialExpressionCustom* N = Node(Mt, Hlsl::CHARACTER_HLSL,
+				{ { TEXT("BCTex"), Mt.TexObject(TEXT("BaseColor"), SAMPLERTYPE_Color, OCEd::Load<UTexture>(TEXT("/Engine/EngineMaterials/DefaultDiffuse")), -1100, -300) },
+				  { TEXT("NTex"), Mt.TexObject(TEXT("Normal"), SAMPLERTYPE_Normal, OCEd::Load<UTexture>(TEXT("/Engine/EngineMaterials/DefaultNormal")), -1100, -150) },
+				  { TEXT("UV"), Coord(Mt, 0, -1100, 0) },
+				  { TEXT("Tint"), Mt.Vector(TEXT("Tint"), FLinearColor(1.0f, 1.0f, 1.0f, 1.0f), -1100, 80) },
+				  { TEXT("Roughness"), Mt.Scalar(TEXT("Roughness"), 0.6f, -1100, 160) },
+				  { TEXT("Skin"), Mt.Scalar(TEXT("Skin"), 0.0f, -1100, 240) },
+				  { TEXT("Wet"), Mt.Collection(Mpc, TEXT("Wetness"), -1100, 320) } },
+				{ { TEXT("TangentNormal"), CMOT_Float3 }, { TEXT("Rough"), CMOT_Float1 }, { TEXT("Sss"), CMOT_Float3 }, { TEXT("SssAmount"), CMOT_Float1 } });
+			Mt.Output(N, FString(), MP_BaseColor);
+			Mt.Output(N, TEXT("TangentNormal"), MP_Normal);
+			Mt.Output(N, TEXT("Rough"), MP_Roughness);
+			Mt.Output(N, TEXT("Sss"), MP_SubsurfaceColor);
+			Mt.Output(N, TEXT("SssAmount"), MP_Opacity);   // the Subsurface model's scattering strength
+			Finish(Mt);
+			struct FPart { const TCHAR* Name; FLinearColor Tint; float Rough, Skin; };
+			const FPart Parts[] = {
+				{ TEXT("MI_Character_Skin"), FLinearColor(0.62f, 0.45f, 0.36f), 0.5f, 1.0f },
+				{ TEXT("MI_Character_Cloth"), FLinearColor(0.18f, 0.2f, 0.24f), 0.85f, 0.0f },
+				{ TEXT("MI_Character_Hair"), FLinearColor(0.05f, 0.035f, 0.025f), 0.45f, 0.0f } };
+			for (const FPart& P : Parts)
+			{
+				UMaterialInstanceConstant* Mi = OCEd::FreshInstance(P.Name, MiRoot, Mt.M, Tag);
+				OCEd::SetVector(Mi, TEXT("Tint"), P.Tint);
+				OCEd::SetScalar(Mi, TEXT("Roughness"), P.Rough);
+				OCEd::SetScalar(Mi, TEXT("Skin"), P.Skin);
+				OCEd::FinishInstance(Mi);
+			}
+			OCEd::Log(Tag, TEXT("character instances: MI_Character_Skin, MI_Character_Cloth, MI_Character_Hair"));
 		}
 
 		/** M_Master_CarPaint (ART_PIPELINE.md target 450) and one instance per car body. */
@@ -722,7 +756,8 @@ namespace OCArt
 				  { TEXT("Strength"), Mt.Scalar(TEXT("Strength"), 1.0f, -1100, 460) },
 				  { TEXT("RoughOverride"), Mt.Scalar(TEXT("RoughnessOverride"), -1.0f, -1100, 540) },
 				  { TEXT("ColorKey"), Mt.Scalar(TEXT("ColorKey"), 0.92f, -1100, 620) },
-				  { TEXT("ColorGain"), Mt.Scalar(TEXT("ColorGain"), 2.5f, -1100, 700) } },
+				  { TEXT("ColorGain"), Mt.Scalar(TEXT("ColorGain"), 2.5f, -1100, 700) },
+				  { TEXT("Wet"), Mt.Collection(BuildWorldParameters(), TEXT("Wetness"), -1100, 780) } },
 				{ { TEXT("Opacity"), CMOT_Float1 }, { TEXT("Normal"), CMOT_Float3 }, { TEXT("Rough"), CMOT_Float1 } });
 			Mt.Output(N, FString(), MP_BaseColor);
 			Mt.Output(N, TEXT("Normal"), MP_Normal);
@@ -794,6 +829,7 @@ namespace OCArt
 		BuildFoliageMaster(Mpc);
 		BuildCarPaint(Mpc);
 		BuildPaintMaster(Mpc);
+		BuildCharacterMaster(Mpc);
 		TArray<FString> Made;
 		for (const FInstanceSpec& S : Instances())
 		{

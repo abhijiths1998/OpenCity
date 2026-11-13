@@ -146,28 +146,31 @@ Limits per master: at most 3 static switches, at most 8 texture samples. Prefer 
 | `M_Master_CarPaint` | Clear Coat, flakes, dirt, scratches and damage | 450 |
 | `M_Master_Glass` (`M_Master_KitGlass`, `M_Master_CarGlass`) | Reflections, dirt, rain droplets. Opaque dark glass (vehicle and building shells have no interiors) | 400 |
 | `M_Master_Foliage` | Two-sided foliage model, subsurface, cheap wind | 400 |
-| `M_Master_Character` | Skin subsurface, cloth, simple hair | 450 |
 | `M_Master_Water` | Ocean, shoreline foam. Depends on the M3 Water decision | 440 |
 | `M_Master_Decal` | DBuffer decals | 400 |
+| `M_Master_Paint` | Street fixtures: flat sign and bin paint, grime, retroreflective sign faces at night, wet gloss; bins coloured per instance | 350 (proposed 2026-11-13, not yet approved: 190 fixed + about 80 for a per-instance custom data read, which costs that much however few values it fetches) |
+| `M_Master_Character` | Skin subsurface, cloth, simple hair, rain soaking (`MPC_World.Wetness`) | 450 |
 
 Targets raised 2026-11-09 (approved): the first set (120 to 250) was written before measuring and assumed no fixed cost, but on 5.8 SM6 a near-empty opaque master already counts ~190, and cutting instructions further (577 to 419 on walls) did not change frame time.
 
-**Measured (2026-11-09, `OCBuildArt -steps=stats`, SM6, base-pass pixel shader instructions):**
+**Measured (2026-11-09, re-measured 2026-11-13: road 503, landscape 582, car paint 415, the rest unchanged; `OC_RENDER=1 scripts/run_commandlet.sh OCBuildArt -steps=stats`, SM6, base-pass pixel shader instructions; without a renderer every count reads 0):**
 
 | Material (permutation) | Role | Measured | Target |
 |---|---|---:|---:|
 | `M_Master_Surface`, wall instances (`MI_Kit_Wall`, trim, wood, metal) | Building | 419 | 450 |
 | `M_Master_Surface`, roof instances (`MI_Kit_Roof`) | Building | 398 | 450 |
 | `M_Master_Surface`, ground instances (`MI_Sidewalk`, `MI_Box_Stone`: puddles, ripples, splashes) | Road | 504 to 520 | 550 |
-| `M_Master_Road` | Road | 461 | 550 |
-| `M_Master_Landscape` | Landscape | 571 | 600 |
+| `M_Master_Road` | Road (paving per segment, water held in stone joints) | 503 | 550 |
+| `M_Master_Landscape` | Landscape | 582 | 600 |
 | `M_Master_Water` | Water | 352 | 440 |
 | `M_Master_KitGlass` | Glass: building windows (opaque, lit per instance at night) | 267 | 400 |
 | `M_Master_CarGlass` | Glass: car windows with rain drops (opaque, glossy) | 358 | 400 |
-| `M_Master_CarPaint` | Car bodies: clear coat over the template body maps; paint colour, dirt and damage from custom primitive data (`AOCVehicle::ApplyPaint`), wet coat in rain | 414 | 450 |
+| `M_Master_CarPaint` | Car bodies: clear coat over the template body maps; paint colour, dirt and damage from custom primitive data (`AOCVehicle::ApplyPaint`), wet coat in rain | 415 | 450 |
 | `M_Master_Foliage` | Trees and plants: two-sided foliage, per-instance variation, wetness, wind (WPO, off beyond 60 m) | 266 | 400 |
 | `M_Master_LampGlow` | Lamp glass (near-empty opaque master) | 192 | - |
-| `M_Master_Decal` | DBuffer decals | 383 | 400 |
+| `M_Master_Character` | Characters: skin (subsurface), cloth and hair instances (`MI_Character_*`), wet soaking; C++ since 2026-11-13 (the Python-era asset had no generator) | 238 | 450 |
+| `M_Master_Paint` | Street fixtures; static switches since 2026-11-13: plain paint 224, retroreflective signs (`MI_Kit_PaintRed`) 227, bins by palette index (`MI_Kit_Paint`) 303 (was 319 for all) | 224 to 303 | 350 |
+| `M_Master_Decal` | DBuffer decals, darkened and glossier with `Wetness` | 388 | 400 |
 | `M_PP_Rain` | Screen rain post-process | 69 | - |
 
 Projection mode and wet ground are static switches (`ProjectionBit0/1`, `WetGround`) that feed the Custom node compile-time constants, so each instance compiles only its own paths: walls went from 577 to 419. Only ground instances, roads and terrain compile puddles, ripples and splash rings (+42 for the splashes); the whole wet block is a uniform branch and free when dry. **The cut did not show up in frame time** (Medium 79.8 and 77.2 FPS afterwards vs 83.3 before, within heat noise): the base pass is not what limits Medium. Car glass is opaque: the vehicle bodies are shells with no interior, so see-through glass would show an empty car, and the translucent versions measured 3,093 (forward shading), 1,869 (surface lighting) and 486 (volumetric, no reflections). The coupe's windows were UV islands of its paint slot; `OCMilestone -steps=m2` (`MakeCoupeBody`) moves them into a `Glass` slot of a copy, `SM_SportsCar_Body`.

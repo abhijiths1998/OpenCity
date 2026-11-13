@@ -100,7 +100,7 @@ namespace OCArt
 			{ TEXT("M_Master_Surface"), 450 }, { TEXT("M_Master_SurfaceTwoSided"), 450 }, { TEXT("M_Master_Road"), 550 },
 			{ TEXT("M_Master_Landscape"), 600 }, { TEXT("M_Master_Water"), 440 }, { TEXT("M_Master_KitGlass"), 400 },
 			{ TEXT("M_Master_CarGlass"), 400 }, { TEXT("M_Master_CarPaint"), 450 }, { TEXT("M_Master_Foliage"), 400 },
-			{ TEXT("M_Master_Character"), 450 }, { TEXT("M_Master_LampGlow"), 0 }, { TEXT("M_Master_Paint"), 300 },
+			{ TEXT("M_Master_Character"), 450 }, { TEXT("M_Master_LampGlow"), 0 }, { TEXT("M_Master_Paint"), 350 },
 			{ TEXT("M_Master_Decal"), 400 }, { TEXT("M_PP_Rain"), 0 } };
 		TArray<FString> Over;
 		for (const auto& B : Budgets)
@@ -121,7 +121,8 @@ namespace OCArt
 			}
 		}
 		// Static switches make one shader per instance permutation: report the ones that cover the city.
-		const TPair<const TCHAR*, int32> InstanceBudgets[] = { { TEXT("MI_Kit_Wall"), 450 }, { TEXT("MI_Kit_Roof"), 450 }, { TEXT("MI_Sidewalk"), 550 }, { TEXT("MI_Box_Stone"), 550 } };
+		const TPair<const TCHAR*, int32> InstanceBudgets[] = { { TEXT("MI_Kit_Wall"), 450 }, { TEXT("MI_Kit_Roof"), 450 }, { TEXT("MI_Sidewalk"), 550 }, { TEXT("MI_Box_Stone"), 550 },
+			{ TEXT("MI_Kit_PaintRed"), 350 }, { TEXT("MI_Kit_Paint"), 350 } };   // retroreflective sign paint, bins by instance colour
 		for (const auto& B : InstanceBudgets)
 		{
 			if (UMaterialInterface* Mi = OCEd::Load<UMaterialInterface>(FString(TEXT("/Game/Environment/Materials/")) + B.Key))
