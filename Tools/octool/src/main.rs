@@ -17,6 +17,7 @@ use std::process::ExitCode;
 
 use serde_json::Value;
 
+mod buildings_lint;
 mod gltf_combine;
 
 const USER_AGENT: &str = "OpenCity-asset-fetch";
@@ -289,10 +290,11 @@ fn main() -> ExitCode {
         Some("fetch-textures") => fetch_textures(&root, args.iter().any(|a| a == "--dry-run")),
         Some("fetch-decals") => fetch_decals(&root),
         Some("fetch-models") => fetch_models(&root),
+        Some("buildings-lint") => buildings_lint::lint(&args.get(1).map(std::path::PathBuf::from).unwrap_or_else(|| root.join("SourceArt/World/marevia_layout.json"))),
         Some("combine-gltf") if args.len() >= 3 => {
             gltf_combine::combine(Path::new(&args[1]), Path::new(&args[2]), args.get(3).map(String::as_str)).map(|msg| println!("{msg}"))
         }
-        _ => Err("usage: octool fetch-textures [--dry-run] | fetch-decals | fetch-models | combine-gltf <in.gltf> <out.glb> [keep-regex]".into()),
+        _ => Err("usage: octool fetch-textures [--dry-run] | fetch-decals | fetch-models | combine-gltf <in.gltf> <out.glb> [keep-regex] | buildings-lint [layout.json]".into()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

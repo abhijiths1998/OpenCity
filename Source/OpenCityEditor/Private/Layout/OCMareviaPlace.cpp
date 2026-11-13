@@ -613,18 +613,93 @@ namespace OCLayout
 
 	namespace
 	{
-		struct FBuildParams { double W0, W1, D0, D1, H0, H1, Gap0, Gap1, Slope, Set0, Set1, Extra; };
+		constexpr double AlleyMin = 2.5;     // m: narrowest gap between two buildings that don't share a wall
+		constexpr double FootTouch = 0.05;   // m: closer than this counts as a shared wall
+		constexpr double FootCell = 25.0;    // m: footprint hash cell
+
+		/** A building footprint as an oriented rectangle (layout metres, yaw counter-clockwise). */
+		struct FFootprint
+		{
+			double Cx = 0.0, Cy = 0.0, Radius = 0.0;
+			double Cn[4][2] = {};
+		};
+
+		FFootprint MakeFootprint(double Cx, double Cy, double Wd, double Dp, double YawDeg)
+		{
+			FFootprint F;
+			F.Cx = Cx;
+			F.Cy = Cy;
+			F.Radius = 0.5 * std::hypot(Wd, Dp);
+			const double Yr = FMath::DegreesToRadians(YawDeg), Cs = std::cos(Yr), Sn = std::sin(Yr);
+			static constexpr double Sg[4][2] = { { -1, -1 }, { 1, -1 }, { 1, 1 }, { -1, 1 } };
+			for (int32 i = 0; i < 4; ++i)
+			{
+				const double U = Sg[i][0] * Wd / 2, V = Sg[i][1] * Dp / 2;
+				F.Cn[i][0] = Cx + Cs * U - Sn * V;
+				F.Cn[i][1] = Cy + Sn * U + Cs * V;
+			}
+			return F;
+		}
+
+		/** Gap between two footprints (> 0), or minus the smallest push that separates them (< 0). */
+		double FootSeparation(const FFootprint& A, const FFootprint& B)
+		{
+			if (std::hypot(A.Cx - B.Cx, A.Cy - B.Cy) > A.Radius + B.Radius + AlleyMin)
+			{
+				return AlleyMin * 4.0;
+			}
+			double Sep = -1e18;
+			for (const FFootprint* R : { &A, &B })
+			{
+				for (int32 e = 0; e < 2; ++e)
+				{
+					const double Ex = R->Cn[e + 1][0] - R->Cn[e][0], Ey = R->Cn[e + 1][1] - R->Cn[e][1];
+					const double Len = std::hypot(Ex, Ey), Nx = -Ey / Len, Ny = Ex / Len;
+					double A0 = 1e18, A1 = -1e18, B0 = 1e18, B1 = -1e18;
+					for (int32 i = 0; i < 4; ++i)
+					{
+						const double Pa = A.Cn[i][0] * Nx + A.Cn[i][1] * Ny, Pb = B.Cn[i][0] * Nx + B.Cn[i][1] * Ny;
+						A0 = FMath::Min(A0, Pa); A1 = FMath::Max(A1, Pa);
+						B0 = FMath::Min(B0, Pb); B1 = FMath::Max(B1, Pb);
+					}
+					Sep = FMath::Max(Sep, FMath::Max(B0 - A1, A0 - B1));
+				}
+			}
+			if (Sep < 0.0)
+			{
+				return Sep;
+			}
+			double Best = 1e18;
+			for (const auto& [P, Q] : { TPair<const FFootprint*, const FFootprint*>(&A, &B), TPair<const FFootprint*, const FFootprint*>(&B, &A) })
+			{
+				for (int32 c = 0; c < 4; ++c)
+				{
+					for (int32 e = 0; e < 4; ++e)
+					{
+						const double* Pa = Q->Cn[e];
+						const double* Pb = Q->Cn[(e + 1) % 4];
+						const double Abx = Pb[0] - Pa[0], Aby = Pb[1] - Pa[1];
+						const double Tt = FMath::Clamp(((P->Cn[c][0] - Pa[0]) * Abx + (P->Cn[c][1] - Pa[1]) * Aby) / FMath::Max(Abx * Abx + Aby * Aby, 1e-12), 0.0, 1.0);
+						Best = FMath::Min(Best, std::hypot(P->Cn[c][0] - (Pa[0] + Abx * Tt), P->Cn[c][1] - (Pa[1] + Aby * Tt)));
+					}
+				}
+			}
+			return Best;
+		}
+
+		struct FBuildParams { double W0, W1, D0, D1, H0, H1, Gap0, Gap1, Slope, Set0, Set1, Extra, SharedWall; };
 		const FBuildParams& Params(const FString& Style)
 		{
-			// w, d, h ranges (m), gap range along the road, slope limit (m), setback from the pavement edge, extra
+			// w, d, h ranges (m), gap range along the road when not sharing a wall (at least AlleyMin), slope limit (m),
+			// setback from the pavement edge, extra, chance a building shares its wall with the next one
 			static const TMap<FString, FBuildParams> P = {
-				{ TEXT("oldtown"), { 7, 12, 9, 14, 9, 18, 0, 0.3, 8, 0.2, 0.4, 0 } },
-				{ TEXT("grid90"), { 10, 20, 12, 20, 10, 24, 0, 1.0, 5, 0.2, 0.6, 0 } },
-				{ TEXT("grid120"), { 20, 45, 20, 35, 7, 14, 3, 8, 4, 1.0, 3, 0 } },
-				{ TEXT("beach"), { 15, 30, 12, 20, 12, 30, 1, 4, 5, 0.3, 1.0, 0 } },
-				{ TEXT("village"), { 6, 10, 8, 12, 6, 10, 0, 1.5, 6, 0.2, 0.8, 0 } },
-				{ TEXT("terminal"), { 25, 50, 15, 30, 8, 16, 6, 15, 3, 1.5, 3, 0 } },
-				{ TEXT("hills"), { 12, 20, 10, 16, 6, 9, 25, 60, 6, 1.5, 3, 6 } },
+				{ TEXT("oldtown"), { 7, 12, 9, 14, 9, 18, 2.5, 3.5, 8, 0.2, 0.4, 0, 0.85 } },
+				{ TEXT("grid90"), { 10, 20, 12, 20, 10, 24, 2.5, 4.0, 5, 0.2, 0.6, 0, 0.70 } },
+				{ TEXT("grid120"), { 20, 45, 20, 35, 7, 14, 3, 8, 4, 1.0, 3, 0, 0.0 } },
+				{ TEXT("beach"), { 15, 30, 12, 20, 12, 30, 2.5, 4, 5, 0.3, 1.0, 0, 0.3 } },
+				{ TEXT("village"), { 6, 10, 8, 12, 6, 10, 2.5, 4.0, 6, 0.2, 0.8, 0, 0.70 } },
+				{ TEXT("terminal"), { 25, 50, 15, 30, 8, 16, 6, 15, 3, 1.5, 3, 0, 0.0 } },
+				{ TEXT("hills"), { 12, 20, 10, 16, 6, 9, 25, 60, 6, 1.5, 3, 6, 0.0 } },
 			};
 			return P[Style];
 		}
@@ -730,7 +805,48 @@ namespace OCLayout
 				}
 			}
 		}
-		FGridB Occ(NX, NY, 0);
+		// Exact footprints of what is placed, in a 25 m hash. Two buildings either share a wall (touching
+		// within FootTouch) or leave an alley of at least AlleyMin: a slit narrower than that reads as a dark
+		// crack, and windows and quoins collide across it (octool buildings-lint checks the result).
+		TArray<FFootprint> Feet;
+		TMap<FIntPoint, TArray<int32>> FootHash;
+		auto FootCells = [](const FFootprint& Fp, TFunctionRef<void(FIntPoint)> Visit)
+		{
+			const double Reach = Fp.Radius + AlleyMin;
+			for (int32 gx = FMath::FloorToInt32((Fp.Cx - Reach) / FootCell); gx <= FMath::FloorToInt32((Fp.Cx + Reach) / FootCell); ++gx)
+			{
+				for (int32 gy = FMath::FloorToInt32((Fp.Cy - Reach) / FootCell); gy <= FMath::FloorToInt32((Fp.Cy + Reach) / FootCell); ++gy)
+				{
+					Visit(FIntPoint(gx, gy));
+				}
+			}
+		};
+		auto Fits = [&](const FFootprint& Fp)
+		{
+			bool bFits = true;
+			TSet<int32> Seen;
+			FootCells(Fp, [&](FIntPoint Cell)
+			{
+				if (const TArray<int32>* List = bFits ? FootHash.Find(Cell) : nullptr)
+				{
+					for (const int32 Other : *List)
+					{
+						bool bDup = false;
+						Seen.Add(Other, &bDup);
+						if (bDup || !bFits) { continue; }
+						const double Sep = FootSeparation(Fp, Feet[Other]);
+						bFits = Sep >= -FootTouch && (Sep <= FootTouch || Sep >= AlleyMin);
+					}
+				}
+			});
+			return bFits;
+		};
+		auto AddFoot = [&](const FFootprint& Fp)
+		{
+			const int32 Index = Feet.Add(Fp);
+			FootCells(Fp, [&](FIntPoint Cell) { FootHash.FindOrAdd(Cell).Add(Index); });
+		};
+
 		TArray<FBuilding> Out;
 		for (const FSeg& Seg : G.Segments)
 		{
@@ -762,73 +878,86 @@ namespace OCLayout
 			const double YawDeg = PyRound(Degrees(std::atan2(Uy, Ux)), 1);
 			const double Yaw = Radians(YawDeg);
 			const double Edge = Seg.Width / 2 + (SidewalkKinds.Contains(Seg.Kind) ? SidewalkW : 0.0) + 0.3;
+			const int32 MinStoreys = FMath::Max<int32>(1, int32(PyRoundInt(P.H0 / StoreyH)));
+			const int32 MaxStoreys = FMath::Max<int32>(MinStoreys, int32(PyRoundInt(P.H1 / StoreyH)));
+			const bool bTerrace = P.SharedWall >= 0.5;
 			for (const int32 Side : { 1, -1 })
 			{
+				// Terraces keep one building line along a street side; detached styles step in and out.
+				const double RunSetback = Rng.Uniform(P.Set0, P.Set1);
 				double S = Rng.Uniform(0, 3);
+				int32 JoinStoreys = 0;   // storeys of the building this one shares a wall with (0 = none)
 				while (S < L)
 				{
 					// Footprints snap to the facade kit's 2 m bay grid, min 4 m.
-					const double Wb = FMath::Max(MinFootprint, Bay * PyRoundInt(Rng.Uniform(P.W0, P.W1) / Bay));
-					const double Db = FMath::Max(MinFootprint, Bay * PyRoundInt(Rng.Uniform(P.D0, P.D1) / Bay));
-					const double Gap = Rng.Uniform(P.Gap0, P.Gap1);
-					if (S + Wb > L)
+					const double Wb0 = FMath::Max(MinFootprint, Bay * PyRoundInt(Rng.Uniform(P.W0, P.W1) / Bay));
+					const double Db0 = FMath::Max(MinFootprint, Bay * PyRoundInt(Rng.Uniform(P.D0, P.D1) / Bay));
+					// The gap after this building: a shared wall, or an alley wide enough to walk down.
+					const bool bShareNext = Rng.Random() < P.SharedWall;
+					const double Gap = bShareNext ? 0.0 : Rng.Uniform(FMath::Max(AlleyMin + 0.2, P.Gap0), FMath::Max(AlleyMin + 1.5, P.Gap1));
+					const double Setback = bTerrace ? RunSetback : Rng.Uniform(P.Set0, P.Set1);
+					const double Drift = Rng.Random();
+					if (S + Wb0 > L)
 					{
 						break;
 					}
-					const double Off = Edge + Rng.Uniform(P.Set0, P.Set1) + P.Extra + Db / 2;
-					const double Cx = PyRound(A.X + Ux * (S + Wb / 2) - Uy * Off * Side, 2);
-					const double Cy = PyRound(A.Y + Uy * (S + Wb / 2) + Ux * Off * Side, 2);
-					bool bOk = Rect.X0 <= Cx && Cx <= Rect.X1 && Rect.Y0 <= Cy && Cy <= Rect.Y1;
+					// The drawn size first, then one or two 2 m bays narrower or shallower: a rear corner that
+					// would leave a slit against a building on the next street usually clears that way.
+					static constexpr int32 Shrink[][2] = { { 0, 0 }, { 0, 1 }, { 0, 2 }, { 1, 0 }, { 1, 1 }, { 2, 0 } };
+					bool bOk = false;
+					double Wb = Wb0, Db = Db0, Cx = 0.0, Cy = 0.0, GMin = 0.0;
 					FRectMask M;
-					double GMin = 0.0;
-					if (bOk)
+					for (const auto& Sh : Shrink)
 					{
+						Wb = Wb0 - Sh[0] * Bay;
+						Db = Db0 - Sh[1] * Bay;
+						if (Wb < MinFootprint || Db < MinFootprint)
+						{
+							continue;
+						}
+						const double Off = Edge + Setback + P.Extra + Db / 2;
+						Cx = PyRound(A.X + Ux * (S + Wb / 2) - Uy * Off * Side, 2);
+						Cy = PyRound(A.Y + Uy * (S + Wb / 2) + Ux * Off * Side, 2);
+						if (!(Rect.X0 <= Cx && Cx <= Rect.X1 && Rect.Y0 <= Cy && Cy <= Rect.Y1))
+						{
+							continue;
+						}
 						M = RectMask(Cx, Cy, Wb, Db, Yaw);
 						if (!M.Valid())
 						{
-							bOk = false;
+							continue;
 						}
-						else
+						bool bAny = false, bBlocked = false;
+						double GMax = -1e18;
+						GMin = 1e18;
+						for (int32 r = M.Y0; r < M.Y1; ++r)
 						{
-							bool bAny = false, bBlocked = false;
-							double GMax = -1e18;
-							GMin = 1e18;
-							for (int32 r = M.Y0; r < M.Y1; ++r)
+							for (int32 c = M.X0; c < M.X1; ++c)
 							{
-								for (int32 c = M.X0; c < M.X1; ++c)
+								if (M.At(r, c))
 								{
-									if (M.At(r, c))
-									{
-										bAny = true;
-										bBlocked |= Blocked(r, c) != 0;
-										GMax = FMath::Max(GMax, T(r, c));
-										GMin = FMath::Min(GMin, T(r, c));
-									}
-								}
-							}
-							if (!bAny || bBlocked || GMax - GMin > P.Slope)
-							{
-								bOk = false;
-							}
-							else
-							{
-								const double Gm = FMath::Min(Gap * 0.5, 1.0);
-								const FRectMask M2 = Gm > 0 ? RectMask(Cx, Cy, Wb, Db, Yaw, Gm) : M;
-								for (int32 r = M2.Y0; r < M2.Y1 && bOk; ++r)
-								{
-									for (int32 c = M2.X0; c < M2.X1 && bOk; ++c)
-									{
-										if (M2.At(r, c) && Occ(r, c)) { bOk = false; }
-									}
+									bAny = true;
+									bBlocked |= Blocked(r, c) != 0;
+									GMax = FMath::Max(GMax, T(r, c));
+									GMin = FMath::Min(GMin, T(r, c));
 								}
 							}
 						}
+						if (!bAny || bBlocked || GMax - GMin > P.Slope || !Fits(MakeFootprint(Cx, Cy, Wb, Db, YawDeg)))
+						{
+							continue;
+						}
+						bOk = true;
+						break;
 					}
 					if (bOk)
 					{
-						for (int32 r = M.Y0; r < M.Y1; ++r) { for (int32 c = M.X0; c < M.X1; ++c) { if (M.At(r, c)) { Occ(r, c) = 1; } } }
+						AddFoot(MakeFootprint(Cx, Cy, Wb, Db, YawDeg));
 						const double Ci = T(int32(PyRoundInt(Cy - YMin)), int32(PyRoundInt(Cx)));
-						const int32 Storeys = FMath::Max<int32>(1, int32(PyRoundInt(Rng.Uniform(P.H0, P.H1) / StoreyH)));
+						// Along a terrace the roofline steps by a storey at most; a detached building is drawn afresh.
+						const int32 Storeys = JoinStoreys > 0
+							? FMath::Clamp(JoinStoreys + (Drift < 0.3 ? -1 : (Drift < 0.7 ? 0 : 1)), MinStoreys, MaxStoreys)
+							: FMath::Max<int32>(1, int32(PyRoundInt(Rng.Uniform(P.H0, P.H1) / StoreyH)));
 						FBuilding Bd;
 						Bd.PX = PyRound(Cx, 2);
 						Bd.PY = PyRound(Cy, 2);
@@ -842,26 +971,41 @@ namespace OCLayout
 						Bd.District = Districts[Di].Name;
 						Out.Add(Bd);
 						S += Wb + Gap;
+						JoinStoreys = bShareNext ? Storeys : 0;
 					}
 					else
 					{
-						S += FMath::Max(3.0, Wb * 0.5);
+						S += FMath::Max(3.0, Wb0 * 0.5);
+						JoinStoreys = 0;
 					}
 				}
 			}
 		}
-		// Self-check: re-rasterise the stored (rounded) records.
+		// Self-check on the stored (rounded) records: no two footprints overlap (exact test), none is in a road.
 		TGrid<int16> Chk(NX, NY, 0);
-		for (const FBuilding& Bd : Out)
+		for (int32 i = 0; i < Out.Num(); ++i)
 		{
+			const FBuilding& Bd = Out[i];
+			const FFootprint Fp = MakeFootprint(Bd.PX, Bd.PY, Bd.SW, Bd.SD, Bd.Yaw);
+			FootCells(Fp, [&](FIntPoint Cell)
+			{
+				if (const TArray<int32>* List = FootHash.Find(Cell))
+				{
+					for (const int32 Other : *List)
+					{
+						if (Other != i && FootSeparation(Fp, Feet[Other]) < -FootTouch)
+						{
+							OutError = FString::Printf(TEXT("buildings overlap at (%.1f, %.1f)"), Bd.PX, Bd.PY);
+						}
+					}
+				}
+			});
 			const FRectMask M = RectMask(Bd.PX, Bd.PY, Bd.SW, Bd.SD, Radians(Bd.Yaw));
 			for (int32 r = M.Y0; r < M.Y1; ++r)
 			{
 				for (int32 c = M.X0; c < M.X1; ++c)
 				{
-					if (!M.At(r, c)) { continue; }
-					if (++Chk(r, c) > 1) { OutError = TEXT("buildings overlap"); }
-					if (Best(r, c) < -0.7f - 0.15f) { OutError = TEXT("building inside road clearance"); }
+					if (M.At(r, c) && Best(r, c) < -0.7f - 0.15f) { OutError = TEXT("building inside road clearance"); }
 				}
 			}
 		}
