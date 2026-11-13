@@ -1442,7 +1442,11 @@ namespace OCLayout
 				continue;
 			}
 			const double Cx = L.Pos.X + K->Ox * L.FW, Cy = L.Pos.Y + K->Oy * L.FD;
-			const double Wb = FMath::Max(MinFootprint, double(PyRoundInt(L.FW * K->Sx / Bay)) * Bay);
+			double Wb = FMath::Max(MinFootprint, double(PyRoundInt(L.FW * K->Sx / Bay)) * Bay);
+			if ((L.Kind == TEXT("church") || L.Kind == TEXT("civic") || L.Kind == TEXT("station")) && int32(PyRoundInt(Wb / Bay)) % 2 == 1)
+			{
+				Wb -= Bay;   // an even bay count, so the symmetric front has a 4 m centre column for its portal
+			}
 			const double Db = FMath::Max(MinFootprint, double(PyRoundInt(L.FD * K->Sy / Bay)) * Bay);
 			const int32 N = K->Storeys ? K->Storeys : FMath::Max<int32>(1, int32(PyRoundInt(L.Height / StoreyH)));
 			const int32 R0 = int32(Cy - Db / 2 - YMin), R1 = int32(Cy + Db / 2 - YMin) + 1;

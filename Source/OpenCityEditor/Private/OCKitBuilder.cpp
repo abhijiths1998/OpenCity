@@ -429,6 +429,13 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 			B.F[Nearest].bStreet = true;   // not near any road (rare): the facade closest to one is the front
 			B.Front = Nearest;
 		}
+		if (B.LmKind == TEXT("church"))
+		{
+			// A church fronts its short end on the square: the landmark volume sits at the south of its footprint
+			// (layout -y, facade 0), the apse end to the north.
+			B.Front = 0;
+			B.F[0].bStreet = true;
+		}
 		else if (B.F[Nearest].bStreet)
 		{
 			B.Front = Nearest;   // a wing on a back street has its own door
@@ -457,6 +464,12 @@ int32 UOCWorldBuilderLibrary::BuildKitBuildings(UWorld* World, const FString& La
 			}
 		}
 		B.Z0 = FMath::Max(Z0, MaxCorner - 120.0) + 8.0;
+		if (B.LmKind == TEXT("church") && B.Front >= 0)
+		{
+			// The cathedral meets its square: floor at the ground in front of the portal; the back sinks into the slope.
+			const FVector FrontMid = B.C + B.F[B.Front].Out * B.F[B.Front].Half;
+			B.Z0 = Height.HeightCm(FrontMid.X, FrontMid.Y) + 8.0;
+		}
 		B.TopZ = B.ZAt(B.Storeys);
 	}
 

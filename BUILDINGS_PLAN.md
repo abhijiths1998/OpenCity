@@ -65,6 +65,21 @@ Tuning lives in `/Game/Environment/Buildings/DA_BuildingStyles`; contract in `To
 | 4.5 Garden walls, gates | Done; no cypress rows (no CC0 cypress model in the ledger) |
 | 4.6 Volumes in the layout JSON | As records sharing `lot` with `on` and `feature` rather than nested lists |
 
+## Reference look (2026-11-14)
+
+From six reference photos (a domed cathedral with campanile, a round arcaded tower and cathedral square, an
+octagonal banded baptistery, a cliffside village in strong colours, shops on a bridge):
+
+- Santa Lucia (Città Alta) is a cathedral complex: marble cladding with dark inlay and blind-arcade galleries,
+  marble portal on the square, rose window, pediment with a bell gable, a 20 m ribbed dome on an oculus drum
+  over the crossing, a banded apse, a round arcaded campanile with a slight lean, an octagonal baptistery. The
+  grey-box apse and campanile are retired. The church fronts its short south end and sits on its square.
+- The Passerella carries 32 overhanging shop houses on corbels, open at mid-span.
+- Old town colours are saturated (ochre, Genoa red, salmon, orange, pale green, rose, terracotta, lemon), and
+  steep old-town ground takes tall narrow tower houses (688, was 349).
+- `DA_BuildingStyles` carries a defaults version; an older asset is refilled by the world build (logged).
+- Medium perf lap after this: 79.1 FPS average, 45.2 1% low, game VRAM 4,080 MiB (browser open).
+
 ## Measurements (2026-11-13, after section 4)
 
 - Build: 8,203 volumes, 814,288 kit instances, 130 piece kinds; roofs 2,202 hip, 3,674 gable and lean-to, 2,327 flat or vaulted.

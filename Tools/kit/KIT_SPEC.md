@@ -167,3 +167,20 @@ Storey heights: pieces are built at 3.2 m and scaled vertically per storey (2.9,
 3.2-4.2 m ground floors, from `storey_h` and `ground_h` in the layout); glass and openings scale with them.
 Trim palette (custom data 9): 0 limestone, 1 grey stone, 2 painted white, 3 brick red, 4 painted cream,
 5 painted in a darker shade of the wall colour.
+
+## Tuscan landmarks and the inhabited bridge (2026-11-14)
+
+Original designs in the manner of the references (domed cathedral, round arcaded campanile, octagonal
+banded baptistery, shops on a bridge); no replica of a real building.
+
+| Piece | Notes |
+|---|---|
+| `LM_Dome` | unit drum radius 1 m, scaled uniformly: octagonal drum with oculi, pointed eight-sided tiled dome with white ribs, lantern |
+| `LM_TowerRound` | 3.6 m radius, 30 m: blind-arcaded base, six open galleries, belfry; placed with a 2.5 degree lean |
+| `LM_Baptistery` | octagon, circumradius 4 m: dark banded pilasters, panelled lower order, blind arches above, white pyramid roof, portal on local +X |
+| `LM_Apse` | unit half-round apse (bulges to -Y), banded, half-cone roof |
+| `MarbleWall_*`, `MarbleWindow_*`, `MarbleArcade_400`, `MarblePortal_400` | cathedral cladding: inlay panels, framed arched windows, blind-arcade galleries, the portal in marble |
+| `BridgeShop_400` | two-storey shop house 4 x 3 m hung outside a bridge parapet on corbels; shop opens to the deck |
+
+Slots `Marble` and `MarbleDark` (`MI_Kit_Marble`, `MI_Kit_MarbleDark`: white_marble, box-projected; dark is the
+same marble tinted green-black). Pieces with NaN vertices fail the kit build.
