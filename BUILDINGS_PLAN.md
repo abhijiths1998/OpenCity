@@ -45,11 +45,38 @@ Tuning lives in `/Game/Environment/Buildings/DA_BuildingStyles`; contract in `To
 - [x] **5.** Per-window glass, grime per bay, trim palette, ground-floor band and splash.
 - [x] **6.** Shop signs, blade signs, awnings, wall AC units, cables, laundry, flower boxes, door lanterns.
 
+## Section 4: Italian character (2026-11-13)
+
+| Item | Status |
+|---|---|
+| 4.1 Height steps (storey height per lot 2.9/3.2/3.5 m, tall ground floors) | Done (layout `storey_h`, `ground_h`; pieces scaled) |
+| 4.1 Wings, lean-tos, torrette, recessed tops | Done (`lot`, `on`, `feature`) |
+| 4.1 Loggia, arcade (portico), external stair, bridge room, brace arches | Done |
+| 4.1 Roof terrace cut-out | Altana on pitched roofs and pergolas on flat roofs; the corner-bay cut-out is not built |
+| 4.1 Trapezoid lots on bending streets | Not done: needs a wedge filler piece |
+| 4.2 Pitched by default, 33% pitch, 0.75 m eaves (rafters or cove), forms by archetype, own roof per volume, eaves tile row | Done |
+| 4.2 Chimney pots, dormers, aerials, altane, bell gable on the church | Done |
+| 4.2 Ligurian slate, Campanian vaults | Done (roof_slates_02 CC0, `RoofVault`) |
+| 4.3 Portone, piano nobile, attic windows, persiane states, marcapiano, marcadavanzale, bugnato, lesene, cornicione on mensole, bracket balconies, edicola, arches, scarpa | Done; mezzanine windows over shops and the Ligurian shutter flap are not separate pieces |
+| 4.4 Ligurian palette, painted surrounds and quoins (tint, not 5 mm geometry), two-tone walls, weighted shutter colours, Campanian whites, weathering by upkeep | Done |
+| 4.5 Carruggi | Side alleys between houses are 2.5-4 m; the old-town road profile stays 5 m carriageway (M3, parked) |
+| 4.5 Piazzas | Done: 10 junction squares, fronted by arcades and palazzi; no special paving |
+| 4.5 Stepped lanes (scalinate) | Not done: needs pedestrian paths on the terrain (M5 pedestrians) |
+| 4.5 Garden walls, gates | Done; no cypress rows (no CC0 cypress model in the ledger) |
+| 4.6 Volumes in the layout JSON | As records sharing `lot` with `on` and `feature` rather than nested lists |
+
+## Measurements (2026-11-13, after section 4)
+
+- Build: 8,203 volumes, 814,288 kit instances, 130 piece kinds; roofs 2,202 hip, 3,674 gable and lean-to, 2,327 flat or vaulted.
+- Variety: 89% of touching pairs differ in 2+ of storeys, colour, windows, crown; 22 street fronts repeat within 60 m.
+- Medium perf lap: 84.5 FPS average, 48.4 1% low, game VRAM peak 4,073 MiB (budget 5,000); browser open.
+
 ## Open
 
 - Variety report of the 2026-11-13 build: hills `Wall_400` 35% of facade cells (villa side walls);
   28 street fronts still repeat within 60 m after one re-plan.
-- `WindowTall_400` is 3.5k triangles (KIT_SPEC budget ~3.3k): the louvres dominate.
+- `WindowTall_400` (3.5k) and `WindowNobile_400` (3.7k) are over the ~3.3k triangle budget: the louvres dominate.
 - Railing balusters are 7 mm: check for shimmer at distance in the editor.
-- Santa Lucia's kit volume reads dark-topped from the Città Alta elevated QA camera (seen before this work).
+- Fixed 2026-11-13: distant roofs vanished (and boxes read dark-topped, Santa Lucia included) because
+  `AOCKitBuildingChunk` culled unit roof meshes by their unscaled 1 m bounds at 120 m.
 - Gable end walls leave a thin wedge under the eaves at the wall corners (hidden by the crown on most).

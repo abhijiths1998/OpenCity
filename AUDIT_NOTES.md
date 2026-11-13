@@ -7,7 +7,7 @@ Source: your recording `~/Videos/Screencasts/Screencast_20261109_103339.webm` (7
 | 1 | Everything reads as cheap: plain boxes with painted-on windows, flat green ground right up to the walls, no sidewalks in alleys, no props, trees, parked cars or people | Nothing is final art yet. Buildings, roads, terrain and water are M3 grey-box (`M_Dev_*`, engine cubes) | The M4a/M4b pipeline below. No downloads have happened yet (`SourceArt/Downloads/` is empty) |
 | 2 | Windows smear into streaks at speed | Engine-default motion blur, no Post Process Volume in `L_Marevia` | P0-1 |
 | 3 | Pink "…HLOD…" text floating over the mountains | Not in the log. Probably an on-screen engine warning about HLODs. To check in the editor | P0-2 |
-| 4 | Distant buildings with flat dark-blue roofs | HLOD1 (merged mesh) drops the per-building colour (per-instance custom data) | P0-2 |
+| 4 | Distant buildings with flat dark-blue roofs | Fixed 2026-11-13: roof meshes are 1 m unit pieces scaled per building, and the chunk actor culled them by their unscaled size at 120 m (OCKitBuildingChunk.cpp) | P0-2 |
 | 5 | Sidewalk skirts stick up like ramps at some junction corners | Road-mesh skirts at junction polygons | P0-3 |
 | 6 | One black frame with the camera under the ground | The autopilot's recovery teleport (test tool, not gameplay): the camera lagged through terrain | P0-5 |
 | 7 | Buildings stand on bare slopes with no plinth or terrace | The blockout sinks each box 1 m; nothing grades or terraces the plot | Modular kit plinths (step 5); grade plots in the generator |

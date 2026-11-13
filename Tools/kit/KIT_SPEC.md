@@ -138,3 +138,32 @@ building), `on` (a recessed top: the volume it stands on) and `chamfer` (corner 
 roof (pitched share, gable share, pitch), crown, door, and weighted piece families for upper, first-floor,
 top-storey, balcony, shop and other ground bays. A building draws one of each; every volume of a lot shares it.
 Custom data on kit instances: 0-2 wall tint, 3-5 wood tint, 6 wear, 7 unused, 8 ground-floor piece, 9 trim palette.
+
+## Section 4 pieces: Italian character (BUILDINGS_PLAN.md section 4)
+
+| Piece | Notes |
+|---|---|
+| `EavesRafters_200/400`, `EavesCoved_200/400` | 0.75 m eaves under pitched roofs: stone-coloured rafter ends under terracotta boards, or a plastered cove; pivot at the wall top |
+| `EavesRow_200/400` | half-round pan tiles along a clay eave (fixture, placed at the roof base) |
+| `WindowNobile_*` | piano nobile: 1.1 x 2.1 m French window under a pediment on consoles |
+| `SillBand_200/400` | marcadavanzale, at sill height of each storey (trim) |
+| `RusticWall_200/400`, `RusticWindow_400` | bugnato ground floor: channelled joints every 0.4 m (Trim material) |
+| `BalconyBracket_400`, `BalconyBracketLong_400` | thin stone slab on scrolled brackets; the long one spans the bay |
+| `Edicola` | wall shrine niche with a tiled hood (fixture) |
+| `ShopArch_400` | round-headed glazed shop arch |
+| `Scarpa_200/400` | battered base, 1.4 m high, 0.25 m out at the foot |
+| `Arcade_400` | portico bay: arch on the street line, 3 m walk, shop on the back wall; collision on piers and back wall only |
+| `Loggia_400` | open arch at an upper storey, balustrade, 1.6 m deep, French door at the back |
+| `Archetto` | brace arch across an alley; unit span along -Y from the wall, scaled to the gap |
+| `Sottoportico` | bridge room spanning an alley on the first-floor line; unit 1 m along X (scaled to the gap), 4 m deep |
+| `ExtStair_400` | external stair along the wall to a first-floor landing |
+| `RoofMono` | lean-to: unit along the wall, -Y away from it, rise 1 at the wall |
+| `RoofVault` | rendered barrel vault (Campanian), unit footprint, rise 1 |
+| `RoofHipEndSlate`, `RoofRidgeSlate` | Ligurian slate (`Slate` slot, `MI_Kit_Slate`, roof_slates_02) |
+| `Prop_ChimneyPot`, `Dormer`, `Prop_Aerial`, `Altana`, `Pergola`, `BellGable` | roofscape |
+| `GardenWall_400`, `GatePier` | villa gardens: wall with a tiled coping, gate piers |
+
+Storey heights: pieces are built at 3.2 m and scaled vertically per storey (2.9, 3.2, 3.5 m upper storeys,
+3.2-4.2 m ground floors, from `storey_h` and `ground_h` in the layout); glass and openings scale with them.
+Trim palette (custom data 9): 0 limestone, 1 grey stone, 2 painted white, 3 brick red, 4 painted cream,
+5 painted in a darker shade of the wall colour.
