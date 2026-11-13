@@ -78,3 +78,20 @@ Street fixtures (kind `fixture`) keep their pivot at the post foot or wall attac
 - Shutters, sills, railings and cornices have real depth and silhouette.
 - Triangle budget per facade piece: up to ~3k (pieces are Nanite in UE).
 - Collision: one simple box per facade piece (`UCX_<Piece>_00` in FBX) covering the wall slab only.
+
+## Assembly rules (BuildKitBuildings + OCFacadePlan)
+
+- A facade is planned before anything is placed (`OCPlanFacade`): a row of 2 m and 4 m columns, each with
+  one ground use (door, shop, barred windows, wall) and one upper use (windows or blank) kept all the way
+  up; balconies are runs of storeys on 4 m columns, laid out by pattern (centre, ends, alternate, all).
+- Street fronts are mirror-symmetric by default (style chance), with the door on the axis when the facade
+  has an odd number of 2 m units, else in a 2 m corner bay or beside the axis. One door per building, on
+  the street facade nearest a road.
+- Party walls: each column is probed 0.5 m outside at a quarter and three quarters of its width. Covered
+  at both, its cells up to the neighbour's top are not placed; covered at one, they are plain wall. Quoins,
+  downpipes and cornice mitres start above whatever stands against their corner.
+- Style gates: quoins on old town, village, hills and grid90 up to 5 storeys; no cornice on grid120 and
+  terminal sheds; pitched (hip) roofs only where the short side is 14 m or less and storeys 5 or fewer.
+- Downhill bays whose ground falls more than 2.8 m below the floor get plain lower storeys and the plinth
+  under the lowest; a door or shop over a drop of more than 1.2 m becomes barred windows or wall.
+- Choices use hashed sub-seeds per building and purpose (bays, colours, roof, props, lit windows).
