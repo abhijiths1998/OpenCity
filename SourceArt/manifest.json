@@ -273,6 +273,19 @@
    "author": "Poly Haven",
    "license": "CC0",
    "notes": "Kit: shop awnings and laundry, tinted per building (MI_Kit_Fabric)"
+  },
+  {
+   "slug": "roof_slates_02",
+   "size": 2048,
+   "maps": [
+    "bc",
+    "n",
+    "orm"
+   ],
+   "source_url": "https://polyhaven.com/a/roof_slates_02",
+   "author": "Poly Haven",
+   "license": "CC0",
+   "notes": "Kit: Ligurian grey slate roofs, part of the old town (MI_Kit_Slate)"
   }
  ],
  "models": [

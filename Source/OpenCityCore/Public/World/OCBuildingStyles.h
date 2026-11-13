@@ -115,6 +115,71 @@ struct OPENCITYCORE_API FOCBuildingArchetype
 	/** Street ground bays that are not shops (GroundWindow, Garage...). */
 	UPROPERTY(EditAnywhere, Category = "Facade")
 	TArray<FOCPieceWeight> GroundOther;
+
+	// ---- BUILDINGS_PLAN.md section 4: Italian character ----
+
+	/** Eaves under a pitched roof: Coved (plastered cove, town houses), Rafters (exposed rafter ends) or None. */
+	UPROPERTY(EditAnywhere, Category = "Roof")
+	FName Eaves = TEXT("Coved");
+
+	/** Of pitched roofs, the share in grey slate (Ligurian) instead of clay pan tiles. */
+	UPROPERTY(EditAnywhere, Category = "Roof", meta = (ClampMin = "0", ClampMax = "1"))
+	float Slate = 0.f;
+
+	/** Of flat roofs, the share that are rendered barrel vaults (Campanian coast). */
+	UPROPERTY(EditAnywhere, Category = "Roof", meta = (ClampMin = "0", ClampMax = "1"))
+	float Vault = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Roof", meta = (ClampMin = "0", ClampMax = "1"))
+	float Dormers = 0.f;
+
+	/** Chimneys per pitched roof (0-3), Italian pots with tiled hoods. */
+	UPROPERTY(EditAnywhere, Category = "Roof", meta = (ClampMin = "0"))
+	int32 Chimneys = 1;
+
+	UPROPERTY(EditAnywhere, Category = "Roof", meta = (ClampMin = "0", ClampMax = "1"))
+	float Altana = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Roof", meta = (ClampMin = "0", ClampMax = "1"))
+	float Pergola = 0.f;
+
+	/** Painted architecture: surrounds, quoins and bands in cream or a darker shade of the wall, not stone. */
+	UPROPERTY(EditAnywhere, Category = "Colour", meta = (ClampMin = "0", ClampMax = "1"))
+	float PaintedTrim = 0.f;
+
+	/** Rusticated ground floor (bugnato), pilaster strips between bays (lesene), sill bands (marcadavanzale),
+	 *  battered base on slopes (scarpa), ground-floor arcade (portico). */
+	UPROPERTY(EditAnywhere, Category = "Facade")
+	bool bRustic = false;
+
+	UPROPERTY(EditAnywhere, Category = "Facade")
+	bool bLesene = false;
+
+	UPROPERTY(EditAnywhere, Category = "Facade")
+	bool bSillBand = false;
+
+	UPROPERTY(EditAnywhere, Category = "Facade")
+	bool bScarpa = false;
+
+	UPROPERTY(EditAnywhere, Category = "Facade")
+	bool bArcade = false;
+
+	/** Chances per building: an external stair to the first floor, a corner shrine, brace arches across the
+	 *  alley to the facing house, a bridge room over the alley to the next house, a walled garden with a gate. */
+	UPROPERTY(EditAnywhere, Category = "Features", meta = (ClampMin = "0", ClampMax = "1"))
+	float ExtStair = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Features", meta = (ClampMin = "0", ClampMax = "1"))
+	float Edicola = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Features", meta = (ClampMin = "0", ClampMax = "1"))
+	float BraceArches = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Features", meta = (ClampMin = "0", ClampMax = "1"))
+	float Bridges = 0.f;
+
+	UPROPERTY(EditAnywhere, Category = "Features")
+	bool bGardenWalls = false;
 };
 
 USTRUCT(BlueprintType)
@@ -147,6 +212,10 @@ public:
 	/** Shutter, door and awning colours. */
 	UPROPERTY(EditAnywhere, Category = "Colour")
 	FOCColourList WoodColours;
+
+	/** Weights of WoodColours (dark green dominates on the Ligurian coast). */
+	UPROPERTY(EditAnywhere, Category = "Colour")
+	TArray<float> WoodWeights;
 
 	/** Chance a shuttered window is closed or half closed at upkeep 0 (scaled down to a fifth at upkeep 1). */
 	UPROPERTY(EditAnywhere, Category = "Detail", meta = (ClampMin = "0", ClampMax = "1"))

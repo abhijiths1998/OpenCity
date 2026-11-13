@@ -646,6 +646,7 @@ namespace OCArt
 				{ TEXT("MI_Kit_Corrugated"), TEXT("corrugated_iron_02"), 2.7f, FLinearColor(0.95f, 0.95f, 0.95f), { { TEXT("TintSlot"), 0 }, { TEXT("Macro"), 0.4f }, { TEXT("GrimeAmount"), 0.5f } } },
 				{ TEXT("MI_Kit_Brick"), TEXT("red_brick_03"), 1.0f, FLinearColor(1.0f, 0.97f, 0.95f), { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.4f }, { TEXT("GrimeAmount"), 0.5f } } },
 				{ TEXT("MI_Kit_Fabric"), TEXT("rough_linen"), 0.6f, FLinearColor(1.2f, 1.2f, 1.2f), { { TEXT("TintSlot"), 1 }, { TEXT("Macro"), 0.1f } } },
+				{ TEXT("MI_Kit_Slate"), TEXT("roof_slates_02"), 1.5f, FLinearColor(0.95f, 0.96f, 1.0f), { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.5f }, { TEXT("ProjectionMode"), 1 } } },
 				{ TEXT("MI_Kit_Roof"), TEXT("clay_roof_tiles"), 2.0f, White, { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.5f }, { TEXT("ProjectionMode"), 1 } } },
 				{ TEXT("MI_Kit_Concrete"), TEXT("brushed_concrete"), 2.0f, FLinearColor(0.95f, 0.94f, 0.92f), { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.5f }, { TEXT("PuddleAmount"), 0.3f }, { TEXT("WetGround"), 1 } } },
 				{ TEXT("MI_Road_Asphalt"), TEXT("asphalt_02"), 4.0f, White, { { TEXT("TintSlot"), -1 }, { TEXT("Macro"), 0.7f }, { TEXT("WetGround"), 1 } } },

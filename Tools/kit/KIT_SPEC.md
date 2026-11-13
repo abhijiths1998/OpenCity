@@ -32,6 +32,9 @@ Previews: `scripts/run_commandlet.sh OCKitPreview` -> `SourceArt/Kit/Previews/`.
 | `Concrete` | flat roof slabs, parapet copings, balcony slabs | `MI_Kit_Concrete` |
 | `PaintRed`, `PaintWhite`, `PaintBlack`, `PaintBlue` | sign faces and lettering, mirror rims | `MI_Kit_Paint*` (`M_Master_Paint`, retroreflective at night) |
 | `Paint` | bins and other fixtures coloured per instance | `MI_Kit_Paint` (colour from instance custom data 0-2) |
+| `Brick` | brick warehouse walls, arches, corbels, gable ends | `MI_Kit_Brick` (red_brick_03, natural colour) |
+| `Corrugated` | port shed sheeting | `MI_Kit_Corrugated` (corrugated_iron_02, wall tint) |
+| `Fabric` | awnings, laundry | `MI_Kit_Fabric` (rough_linen, shutter colour) |
 
 UV0 is in **metres**, laid out for tiling materials: on walls 1 UV unit = 1 m of surface (box/cube projection in world-scale), so a texture's real size is set by the material, never baked into a piece. Trims and frames use the same metre scale. No lightmap UV channel (the project is fully dynamic).
 
@@ -95,3 +98,43 @@ Street fixtures (kind `fixture`) keep their pivot at the post foot or wall attac
 - Downhill bays whose ground falls more than 2.8 m below the floor get plain lower storeys and the plinth
   under the lowest; a door or shop over a drop of more than 1.2 m becomes barred windows or wall.
 - Choices use hashed sub-seeds per building and purpose (bays, colours, roof, props, lit windows).
+
+## Piece families (BUILDINGS_PLAN.md phase 3, 2026-11-13)
+
+`_200` pieces have one opening centred in the bay, `_400` two on the 2 m pitch. All 3.2 m storeys, facade frame.
+
+| Piece | Notes |
+|---|---|
+| `Wall_100`, `Plinth_100` | 1 m fillers |
+| `StringCourse_200/400` | moulded band, placed on the first-floor line of street fronts (pivot on the line) |
+| `WindowTall_*` | 1.10 x 1.95 m, sill 0.55, shutters, keystone: first floors |
+| `WindowArch_*` | round-headed 1.10 x 1.85 m, no shutters, keystone |
+| `WindowSmall_*` | 0.80 x 0.80 m attic window |
+| `WindowClosed_*`, `WindowHalf_*` | shutters shut in the reveal / one leaf shut |
+| `WindowBlind_*` | walled-up window: surround and sill on a 4 cm recess |
+| `Juliet_400` | French door, railing flush with the wall |
+| `BalconyLong_400` | slab and front rail across the whole bay, so neighbours join |
+| `Portone_400` | arched carriage door 2.4 x 3.0 m, studded leaves (ground) |
+| `Garage_400`, `ShopClosed_400`, `ShopAwning_400` | roller door; shopfront with the shutter down; with a canvas awning |
+| `CorniceBracket_200/400` | deep eave on wooden brackets (crown) |
+| `Wall_283`, `Window_283`, `WindowPlain_283`, `Plinth_283`, `Cornice_283`, `Parapet_283` | the 45 degree cut of a corner building (2 m legs) |
+| `Shed_Wall_200/400`, `Shed_WindowStrip_400`, `Shed_RollerDoor_400` | corrugated sheeting on a concrete kerb |
+| `Brick_Wall_200/400`, `Brick_WindowArch_200/400`, `Brick_GoodsDoor_400`, `Brick_Corbel_200/400` | brick warehouse |
+| `Hotel_Window_400`, `Hotel_Balcony_400`, `Hotel_Entrance_400` | aluminium glazing, continuous glass-rail balcony, canopy entrance |
+| `Church_Portal_400` (6.4 m), `Church_Rose_400`, `Pediment` (unit triangle), `Civic_Entrance_400`, `Pilaster_320`, `Canopy_400` | landmark fronts |
+| `RoofHipEnd` (plan x -0.5..0, apex at x 0), `RoofRidge` (x 0..1, capped ends) | hip roofs: two ends scaled uniformly by the roof width + the ridge stretched between; gables: the ridge alone |
+| `GableEnd`, `GableEndBrick`, `GableEndCorrugated` | unit triangle in the facade plane |
+| `Gutter_200/400` | eaves gutter 0.4-0.55 m out, pivot at the eave line |
+| `ShopSign_00`..`_11` | lettering for the shopfront board (invented trade names) |
+| `Prop_ShopBlade`, `Prop_WallAC`, `Prop_Laundry`, `Prop_FlowerBox` | wall dressing, pivot on the wall face, reaching -Y |
+
+## Archetypes (DA_BuildingStyles)
+
+The layout writes an `archetype` per building (townhouse, palazzo, tower, courtyard, tenement, office, corner,
+shed, warehouse, annex, slabhotel, steppedhotel, villa, kiosk, farmhouse, cottage, villatower, farm, church,
+civic, station) plus `age`, `wealth`, `upkeep` (0-1), `street` (character seed), `lot` (volumes of one
+building), `on` (a recessed top: the volume it stands on) and `chamfer` (corner building). Each archetype in
+`/Game/Environment/Buildings/DA_BuildingStyles` sets the material (Plaster, Brick, Shed), palette, trim,
+roof (pitched share, gable share, pitch), crown, door, and weighted piece families for upper, first-floor,
+top-storey, balcony, shop and other ground bays. A building draws one of each; every volume of a lot shares it.
+Custom data on kit instances: 0-2 wall tint, 3-5 wood tint, 6 wear, 7 unused, 8 ground-floor piece, 9 trim palette.

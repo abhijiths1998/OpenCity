@@ -184,6 +184,8 @@ namespace OCLayout
 		int32 Lot = -1;                       // volumes of one building share a lot
 		int32 On = -1;                        // a recessed top storey: index of the volume it stands on
 		int32 Chamfer = 0;                    // 1: the front corner at the start of the width is cut 2 m (corner building)
+		double StoreyH = 3.2, GroundH = 3.2;  // m: upper storeys and ground floor (BUILDINGS_PLAN.md 4.6)
+		FString Feature;                      // torretta, leanto, recess
 	};
 	extern const TArray<FString> BuildingStyles;
 

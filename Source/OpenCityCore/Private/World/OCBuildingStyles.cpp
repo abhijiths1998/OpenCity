@@ -21,13 +21,18 @@ namespace
 void UOCBuildingStyleSet::FillDefaults()
 {
 	WallPalettes = {
-		{ { { 1.00f, 0.90f, 0.74f }, { 0.96f, 0.76f, 0.48f }, { 0.90f, 0.58f, 0.44f }, { 1.00f, 0.86f, 0.62f }, { 0.98f, 0.95f, 0.88f }, { 0.94f, 0.72f, 0.60f },
-			{ 0.92f, 0.66f, 0.42f }, { 0.86f, 0.52f, 0.38f } } },
+		// 0: Ligurian colour wash: ochre yellow, Genoa red, rose, pale green, cream, apricot, salmon, sand.
+		{ { { 1.00f, 0.80f, 0.45f }, { 0.86f, 0.42f, 0.32f }, { 0.98f, 0.70f, 0.62f }, { 0.80f, 0.88f, 0.72f }, { 1.00f, 0.94f, 0.80f }, { 0.98f, 0.72f, 0.50f },
+			{ 0.95f, 0.62f, 0.50f }, { 0.96f, 0.84f, 0.66f } } },
 		{ { { 1.00f, 0.82f, 0.76f }, { 0.86f, 0.92f, 0.90f }, { 1.00f, 0.95f, 0.80f }, { 0.84f, 0.88f, 0.96f }, { 1.00f, 1.00f, 0.97f }, { 0.98f, 0.86f, 0.66f } } },
 		{ { { 0.80f, 0.78f, 0.74f }, { 0.86f, 0.80f, 0.70f }, { 0.72f, 0.70f, 0.68f }, { 0.88f, 0.70f, 0.56f }, { 0.78f, 0.76f, 0.70f }, { 0.82f, 0.74f, 0.64f } } },
-		{ { { 1.00f, 0.95f, 0.86f }, { 0.95f, 0.88f, 0.74f }, { 0.98f, 0.92f, 0.82f }, { 0.92f, 0.80f, 0.64f }, { 1.00f, 0.98f, 0.93f }, { 0.90f, 0.84f, 0.74f } } } };
-	WoodColours = { { { 0.30f, 0.52f, 0.36f }, { 0.30f, 0.46f, 0.68f }, { 0.26f, 0.52f, 0.52f }, { 0.52f, 0.36f, 0.24f },
-		{ 0.55f, 0.60f, 0.64f }, { 0.92f, 0.92f, 0.88f }, { 0.62f, 0.24f, 0.20f } } };
+		{ { { 1.00f, 0.95f, 0.86f }, { 0.95f, 0.88f, 0.74f }, { 0.98f, 0.92f, 0.82f }, { 0.92f, 0.80f, 0.64f }, { 1.00f, 0.98f, 0.93f }, { 0.90f, 0.84f, 0.74f } } },
+		// 4: Campanian white and pale pastels.
+		{ { { 1.00f, 1.00f, 0.98f }, { 0.98f, 0.97f, 0.92f }, { 0.92f, 0.95f, 1.00f }, { 1.00f, 0.96f, 0.88f }, { 0.94f, 0.98f, 0.94f }, { 1.00f, 0.92f, 0.90f } } } };
+	// Shutters: dark green dominates, then grey, brown and faded blue.
+	WoodColours = { { { 0.14f, 0.30f, 0.18f }, { 0.30f, 0.52f, 0.36f }, { 0.55f, 0.60f, 0.64f }, { 0.40f, 0.28f, 0.18f },
+		{ 0.42f, 0.55f, 0.66f }, { 0.92f, 0.92f, 0.88f }, { 0.62f, 0.24f, 0.20f } } };
+	WoodWeights = { 5.f, 2.f, 2.f, 2.f, 1.f, 0.5f, 0.3f };
 
 	auto Plaster = [](const TCHAR* Name) { FOCBuildingArchetype A; A.Name = Name; A.Crowns = W({ { TEXT("Cornice"), 1.f } }); return A; };
 	Archetypes.Reset();
@@ -205,6 +210,86 @@ void UOCBuildingStyleSet::FillDefaults()
 		A.Shop = 0.f; A.Balcony = 0.f; A.Symmetric = 1.f; A.Door = TEXT("Civic_Entrance"); A.bWideDoor = true;
 		A.Upper = W({ { TEXT("WindowArch"), 1.f } });
 		A.GroundOther = W({ { TEXT("WindowArch"), 1.f } });
+		Archetypes.Add(A);
+	}
+
+	// BUILDINGS_PLAN.md section 4 (Italian character): pitched roofs by default at 30-35% (17-19 degrees) with
+	// deep eaves, Ligurian slate and painted architecture in the old town, Campanian vaults and whites in the
+	// village and hills, and the vocabulary of each archetype.
+	for (FOCBuildingArchetype& A : Archetypes)
+	{
+		const FString N = A.Name.ToString();
+		if (A.Material == TEXT("Plaster")) { A.Pitch = 0.33f; }
+		if (N == TEXT("townhouse"))
+		{
+			A.PitchedRoof = 0.95f; A.Gable = 0.65f; A.Slate = 0.3f; A.Eaves = TEXT("Coved"); A.PaintedTrim = 0.5f; A.Dormers = 0.25f; A.Chimneys = 2;
+			A.Altana = 0.04f; A.Edicola = 0.05f; A.BraceArches = 0.35f; A.Bridges = 0.12f; A.ExtStair = 0.05f; A.bScarpa = true;
+			A.Shops.Add({ TEXT("ShopArch"), 1.f });
+			A.Balconies.Add({ TEXT("BalconyBracket"), 2.f });
+		}
+		else if (N == TEXT("palazzo"))
+		{
+			A.PitchedRoof = 0.95f; A.Gable = 0.15f; A.Slate = 0.2f; A.Eaves = TEXT("Coved"); A.PaintedTrim = 0.4f; A.Chimneys = 2;
+			A.bRustic = true; A.bLesene = true; A.bSillBand = true; A.Edicola = 0.08f; A.BraceArches = 0.2f;
+			A.UpperFirst = W({ { TEXT("WindowNobile"), 3.f }, { TEXT("WindowTall"), 1.f } });
+			A.Top = W({ { TEXT("WindowSmall"), 2.f }, { TEXT("Loggia"), 1.f } });
+			A.Balconies = W({ { TEXT("BalconyBracketLong"), 2.f }, { TEXT("BalconyBracket"), 1.f } });
+			A.Shops.Add({ TEXT("ShopArch"), 1.f });
+		}
+		else if (N == TEXT("tower"))
+		{
+			A.PitchedRoof = 1.f; A.Gable = 0.f; A.Slate = 0.3f; A.Eaves = TEXT("Rafters"); A.bScarpa = true; A.Chimneys = 1; A.PaintedTrim = 0.3f;
+		}
+		else if (N == TEXT("courtyard"))
+		{
+			A.PitchedRoof = 0.95f; A.Gable = 0.4f; A.Slate = 0.25f; A.PaintedTrim = 0.5f; A.Chimneys = 2; A.bSillBand = true; A.BraceArches = 0.25f;
+			A.UpperFirst = W({ { TEXT("WindowNobile"), 1.f }, { TEXT("Window"), 2.f } });
+		}
+		else if (N == TEXT("tenement") || N == TEXT("corner"))
+		{
+			A.PitchedRoof = N == TEXT("corner") ? 0.f : 0.75f; A.Gable = 0.5f; A.Eaves = TEXT("Coved"); A.PaintedTrim = 0.35f; A.Chimneys = 2; A.Dormers = 0.1f;
+			A.Balconies.Add({ TEXT("BalconyBracket"), 1.f });
+		}
+		else if (N == TEXT("office"))
+		{
+			A.PitchedRoof = 0.3f; A.Gable = 0.f; A.bRustic = true; A.Chimneys = 0;
+		}
+		else if (N == TEXT("farmhouse") || N == TEXT("cottage"))
+		{
+			A.Palette = 4; A.PitchedRoof = 0.8f; A.Gable = 0.7f; A.Vault = 1.f; A.Eaves = TEXT("Rafters"); A.Chimneys = 1; A.ExtStair = 0.3f; A.Pergola = 0.4f;
+			A.Edicola = 0.03f;
+		}
+		else if (N == TEXT("villa") || N == TEXT("villatower") || N == TEXT("farm"))
+		{
+			A.PitchedRoof = 1.f; A.Eaves = N == TEXT("farm") ? TEXT("Rafters") : TEXT("Coved"); A.Chimneys = 2; A.bGardenWalls = true; A.Pergola = 0.3f;
+			A.ExtStair = N == TEXT("farm") ? 0.4f : 0.f; A.PaintedTrim = 0.3f;
+			if (N != TEXT("farm"))
+			{
+				A.Top = W({ { TEXT("Loggia"), 1.f }, { TEXT("Window"), 1.f } });
+				A.UpperFirst = W({ { TEXT("WindowNobile"), 1.f }, { TEXT("WindowTall"), 1.f } });
+			}
+			if (N == TEXT("villa") && A.Palette == 1) { A.Palette = 4; A.PitchedRoof = 0.6f; A.Vault = 0.5f; }
+		}
+		else if (N == TEXT("church"))
+		{
+			A.bLesene = true; A.Eaves = TEXT("None"); A.Pitch = 0.33f;
+		}
+		else if (N == TEXT("civic") || N == TEXT("station"))
+		{
+			A.bRustic = true; A.bLesene = true; A.bSillBand = true;
+			if (N == TEXT("civic")) { A.UpperFirst = W({ { TEXT("WindowNobile"), 1.f } }); }
+		}
+		else if (N == TEXT("kiosk"))
+		{
+			A.Shops = W({ { TEXT("ShopAwning"), 2.f }, { TEXT("ShopArch"), 1.f } });
+		}
+	}
+	{
+		// Arcade block (portico): grid90 main streets and piazzas; arcaded ground floor, sill bands, eaves.
+		FOCBuildingArchetype A = *Find(TEXT("tenement"));
+		A.Name = TEXT("arcadeblock");
+		A.bArcade = true; A.bSillBand = true; A.PitchedRoof = 0.8f; A.Gable = 0.6f; A.Symmetric = 0.9f; A.Shop = 0.f;
+		A.UpperFirst = W({ { TEXT("WindowNobile"), 1.f }, { TEXT("Window"), 1.f } });
 		Archetypes.Add(A);
 	}
 }

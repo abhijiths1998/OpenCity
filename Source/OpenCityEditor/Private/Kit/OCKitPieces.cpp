@@ -12,7 +12,7 @@ namespace OCKit
 {
 	const TCHAR* const MatOrder[NumMats] = { TEXT("Wall"), TEXT("Trim"), TEXT("Wood"), TEXT("Glass"), TEXT("Metal"), TEXT("Roof"), TEXT("Concrete"),
 		TEXT("PaintRed"), TEXT("PaintWhite"), TEXT("PaintBlack"), TEXT("PaintBlue"), TEXT("Paint"),
-		TEXT("Brick"), TEXT("Corrugated"), TEXT("Fabric") };
+		TEXT("Brick"), TEXT("Corrugated"), TEXT("Fabric"), TEXT("Slate") };
 
 	void FPiece::Add(FSoup S, const TCHAR* Mat)
 	{
@@ -2019,10 +2019,10 @@ namespace OCKit
 		/** Hip end: the half pyramid at one end of a hip roof, plan x -0.5..0 by y -0.5..0.5, apex (0, 0, 1).
 		 *  Scaled uniformly in plan by the roof's width (with eaves) and in Z by its rise, so every slope of
 		 *  the roof has the same pitch at any length (RoofRidge fills the middle). */
-		FPiece MakeRoofHipEnd()
+		FPiece MakeRoofHipEnd(const TCHAR* Mat = TEXT("Roof"))
 		{
 			FPiece P;
-			P.Name = TEXT("RoofHipEnd");
+			P.Name = FCString::Strcmp(Mat, TEXT("Roof")) == 0 ? TEXT("RoofHipEnd") : TEXT("RoofHipEndSlate");
 			P.Kind = TEXT("roof");
 			const double Tf = 0.04, Zr = 1.0;
 			FSoup S;
@@ -2039,23 +2039,24 @@ namespace OCKit
 			S.Face(0, { C1, C2, E2, Ap, E1 });           // joint face to the ridge section (hidden)
 			S.NextShell = 1;
 			OrientOutward(S);
-			P.Add(MoveTemp(S), TEXT("Roof"));
+			P.Add(MoveTemp(S), Mat);
 			FSoup Caps;
 			for (const double Sy : { -1.0, 1.0 })
 			{
 				const V3 A(-0.5, Sy * 0.5, Tf), B(0, 0, Zr - 0.008);
 				Capping(Caps, A + (B - A) * 0.04, B);
 			}
-			P.Add(MoveTemp(Caps), TEXT("Roof"));
+			P.Add(MoveTemp(Caps), Mat);
 			P.Box(-0.5, 0, -0.5, 0.5, 0, 1);
 			return P;
 		}
 
 		/** Ridge section: x 0..1, y -0.5..0.5, slopes meeting at y = 0, z = 1; capped ends (gables). */
-		FPiece MakeRoofRidge()
+		FPiece MakeRoofRidge(const TCHAR* Mat = TEXT("Roof"))
 		{
 			FPiece P;
-			P.Name = TEXT("RoofRidge");
+			const bool bTile = FCString::Strcmp(Mat, TEXT("Roof")) == 0, bSlate = FCString::Strcmp(Mat, TEXT("Slate")) == 0;
+			P.Name = bTile ? TEXT("RoofRidge") : (bSlate ? TEXT("RoofRidgeSlate") : TEXT("RoofRidgeMetal"));
 			P.Kind = TEXT("roof");
 			const double Tf = 0.04;
 			FSoup S;
@@ -2071,10 +2072,10 @@ namespace OCKit
 			S.Face(0, { C1, C2, E2, R1, E1 });
 			S.NextShell = 1;
 			OrientOutward(S);
-			P.Add(MoveTemp(S), TEXT("Roof"));
+			P.Add(MoveTemp(S), Mat);
 			FSoup Caps;
 			Capping(Caps, V3(0, 0, 1 - 0.008), V3(1, 0, 1 - 0.008));
-			P.Add(MoveTemp(Caps), TEXT("Roof"));
+			P.Add(MoveTemp(Caps), bTile ? TEXT("Roof") : (bSlate ? TEXT("Slate") : TEXT("Metal")));
 			P.Box(0, 1, -0.5, 0.5, 0, 1);
 			return P;
 		}
@@ -2120,7 +2121,8 @@ namespace OCKit
 			P.Name = FString::Printf(TEXT("ShopSign_%02d"), Index);
 			P.Kind = TEXT("fixture");
 			FSoup Txt = TextMesh(ShopNames[Index], 0.26, 0.0, 0.012, -0.061);
-			Transform(Txt, FM4::Translation(V3(2.0, 0.0, 2.865)));   // letters centred on the 2.70-3.12 m board
+			// Turned half round so the letters read from the street (-Y), then centred on the 2.70-3.12 m board.
+			Transform(Txt, FM4::Translation(V3(2.0, -0.134, 2.865)) * FM4::Rotation(UE_PI, AZ));
 			P.Add(MoveTemp(Txt), Index % 4 == 3 ? TEXT("PaintBlack") : TEXT("PaintWhite"));
 			P.Box(0.4, 3.6, -0.075, -0.06, 2.75, 3.08);
 			return P;
@@ -2190,6 +2192,529 @@ namespace OCKit
 			P.Box(-0.5, 0.5, -0.24, -0.02, 0, 0.18);
 			return P;
 		}
+
+		// ==== BUILDINGS_PLAN.md section 4: Italian character ============================================
+
+		/** Deep eaves (0.75 m) under a pitched roof, along a facade (frame: wall face Y = 0, Z = 0 at the wall top).
+		 *  Rafters: timber board on exposed rafter ends (vernacular). Coved: a plastered cove (town houses). */
+		FPiece MakeEaves(double W, bool bRafters)
+		{
+			FPiece P;
+			P.Name = FString(bRafters ? TEXT("EavesRafters_") : TEXT("EavesCoved_")) + Cm(W);
+			const double Over = 0.75;
+			if (bRafters)
+			{
+				P.Add(Bev(Box(0.0, W, -Over, T, 0.16, 0.20), 0.006, 1, { { AX, 0.0 }, { AX, W }, { AY, T } }), TEXT("Roof"));   // terracotta boards (pianelle) on the rafters
+				FSoup R;
+				for (int32 k = 0; 0.25 + 0.5 * k < W; ++k)
+				{
+					const double Xc = 0.25 + 0.5 * k;
+					Append(R, PrismX({ V2(0.0, 0.16), V2(-Over + 0.05, 0.16), V2(-Over + 0.05, 0.10), V2(-Over + 0.12, 0.06), V2(0.0, 0.06) }, Xc - 0.045, Xc + 0.045));
+				}
+				P.Add(MoveTemp(R), TEXT("Trim"));
+				P.Add(Bev(Box(0.0, W, -0.06, T, 0.0, 0.06), 0.006, 1, { { AX, 0.0 }, { AX, W }, { AY, T } }), TEXT("Wall"));   // wall plate
+			}
+			else
+			{
+				TArray<V2> Prof = { V2(T, 0.0), V2(0.0, 0.0) };
+				for (int32 i = 0; i <= 6; ++i)   // quarter-round cove out to the eave
+				{
+					const double A = (UE_PI / 2) * i / 6;
+					Prof.Add(V2(-(Over - 0.08) * FMath::Sin(A), 0.04 + 0.12 * (1.0 - FMath::Cos(A))));
+				}
+				Prof.Append({ V2(-Over, 0.16), V2(-Over, 0.20), V2(T, 0.20) });
+				FSoup S = PrismX(Prof, 0.0, W);
+				Bevel(S, 0.008, 2, { { AX, 0.0 }, { AX, W }, { AY, T } });
+				P.Add(MoveTemp(S), TEXT("Wall"));
+				P.Add(Bev(Box(0.0, W, -Over - 0.02, -Over + 0.06, 0.15, 0.21), 0.006, 1, { { AX, 0.0 }, { AX, W } }), TEXT("Trim"));
+			}
+			P.Box(0, W, -Over, T, 0, 0.20);
+			return P;
+		}
+
+		/** A row of half-round pan tiles along the eave (pivot on the wall line at the roof base, reaching out). */
+		FPiece MakeEavesRow(double W)
+		{
+			FPiece P;
+			P.Name = TEXT("EavesRow_") + Cm(W);
+			P.Kind = TEXT("fixture");
+			FSoup S;
+			for (int32 k = 0; 0.125 + 0.25 * k < W; ++k)
+			{
+				const double Xc = 0.125 + 0.25 * k;
+				AddCyl(S, V3(Xc, -0.80, 0.21), 0.075, 0.42, 8, 'Y', true, 0.065);
+			}
+			P.Add(MoveTemp(S), TEXT("Roof"));
+			P.Box(0, W, -0.8, -0.38, 0.13, 0.29);
+			return P;
+		}
+
+		/** Piano nobile window: 1.1 x 2.1 m French window under a small pediment (timpano) on brackets. */
+		FPiece MakeWindowNobile(double W)
+		{
+			FPiece P;
+			P.Name = TEXT("WindowNobile_") + Cm(W);
+			TArray<FCut> Cuts;
+			for (const double C : (W < 3 ? TArray<double>{ W / 2 } : TArray<double>{ 1.0, 3.0 }))
+			{
+				const double Ox0 = C - 0.55, Ox1 = C + 0.55, Zb = 0.35, Zt = 2.45;
+				SillPart(P, Ox0, Ox1, Zb + 0.02, 0.16, 0.12);
+				Surround(P, Ox0, Ox1, Zb + 0.02, Zt, 0.12, 0.04, 0.12, false);
+				Casement(P, Ox0, Ox1, Zb + 0.015, Zt, 2, 3, 0.45);
+				P.Add(PolyY({ V2(Ox0 - 0.22, Zt + 0.18), V2(Ox1 + 0.22, Zt + 0.18), V2(C, Zt + 0.50) }, -0.10, 0.0), TEXT("Trim"));   // pediment
+				P.Add(Bev(Box(Ox0 - 0.24, Ox1 + 0.24, -0.12, 0.0, Zt + 0.12, Zt + 0.18), 0.008, 1, { { AY, 0.0 } }), TEXT("Trim"));
+				for (const double Bx : { Ox0 - 0.17, Ox1 + 0.17 })   // console brackets
+				{
+					P.Add(PrismX({ V2(0.0, Zt - 0.20), V2(-0.03, Zt - 0.20), V2(-0.10, Zt + 0.10), V2(-0.10, Zt + 0.12), V2(0.0, Zt + 0.12) }, Bx - 0.04, Bx + 0.04), TEXT("Trim"));
+				}
+				const double Sw = 0.195;
+				ShutterStack(P, Ox0 - Sw - 0.02, Ox0 - 0.025, Zb + 0.02, Zt, -0.03, Ox0 - 0.025);
+				ShutterStack(P, Ox1 + 0.025, Ox1 + Sw + 0.02, Zb + 0.02, Zt, -0.03, Ox1 + 0.025);
+				Cuts.Add({ Ox0, Ox1, Zb, Zt, Recess });
+			}
+			WallSlab(P, W, Cuts);
+			RenderBand(P, 0, W);
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Sill band (marcadavanzale): a thin band linking the sills of a storey, at sill height 0.90 m. */
+		FPiece MakeSillBand(double W)
+		{
+			FPiece P;
+			P.Name = TEXT("SillBand_") + Cm(W);
+			P.Kind = TEXT("trim");
+			P.Add(Bev(Box(0.0, W, -0.035, 0.0, 0.80, 0.90), 0.006, 1, { { AX, 0.0 }, { AX, W }, { AY, 0.0 } }), TEXT("Trim"));
+			P.Box(0, W, -0.035, 0, 0.8, 0.9);
+			return P;
+		}
+
+		/** Rusticated ground floor (bugnato): wall with channelled joints every 0.4 m. Window = two barred windows. */
+		FPiece MakeRustic(double W, bool bWindows)
+		{
+			FPiece P;
+			P.Name = FString(bWindows ? TEXT("RusticWindow_") : TEXT("RusticWall_")) + Cm(W);
+			TArray<FCut> Cuts;
+			if (bWindows)
+			{
+				Cuts = { WindowUnit(P, 1.0, TEXT("grille")), WindowUnit(P, 3.0, TEXT("grille")) };
+			}
+			FSoup S = Box(0, W, -0.05, T, 0.0, H);
+			FSoup Cb;
+			for (const FCut& C : Cuts) { AddBox(Cb, C.X0, C.X1, -0.2, C.Depth, C.Zb, C.Zt); }
+			for (double Z = 0.4; Z < H - 0.05; Z += 0.4) { AddBox(Cb, -0.1, W + 0.1, -0.2, -0.03, Z - 0.02, Z + 0.02); }   // channels
+			S = BoolDiff(S, Cb);
+			DelPlane(S, AX, 0.0);
+			DelPlane(S, AX, W);
+			P.Add(MoveTemp(S), TEXT("Trim"));
+			P.Add(Box(0.0, W, -0.05, T, -3.0, 0.0), TEXT("Trim"));
+			P.Box(0, W, -0.05, T, 0, H);
+			return P;
+		}
+
+		/** Balcony on scrolled brackets: a thin stone slab, iron rail; Long spans the whole bay (neighbours join). */
+		FPiece MakeBalconyBracket(bool bLong)
+		{
+			FPiece P;
+			P.Name = bLong ? TEXT("BalconyBracketLong_400") : TEXT("BalconyBracket_400");
+			const double W = 4.0, Cx = 2.0, Ox0 = Cx - FdW / 2, Ox1 = Cx + FdW / 2;
+			const double Zs = 0.12, Zb = Zs + 0.02, Zt = Zb + FdH - 0.02, Sd = 0.65;
+			const double Sx0 = bLong ? 0.0 : 0.95, Sx1 = bLong ? W : 3.05;
+			P.Add(Bev(Box(Sx0, Sx1, -Sd, 0.01, Zs - 0.08, Zs), 0.012, 2, bLong ? TArray<FKeep>{ { AY, 0.01 }, { AX, 0.0 }, { AX, W } } : TArray<FKeep>{ { AY, 0.01 } }), TEXT("Trim"));
+			for (const double Bx : (bLong ? TArray<double>{ 0.6, 2.0, 3.4 } : TArray<double>{ Sx0 + 0.25, Sx1 - 0.25 }))
+			{
+				P.Add(PrismX({ V2(0.0, Zs - 0.08), V2(-Sd + 0.08, Zs - 0.08), V2(-Sd + 0.12, Zs - 0.16), V2(-0.25, Zs - 0.32), V2(-0.08, Zs - 0.50), V2(0.0, Zs - 0.52) }, Bx - 0.05, Bx + 0.05), TEXT("Trim"));
+			}
+			Surround(P, Ox0, Ox1, Zb, Zt + 0.02, 0.10, 0.03, 0.20, true, false);
+			Casement(P, Ox0, Ox1, Zb - 0.005, Zt + 0.02, 2, 2, 0.55);
+			ShutterStack(P, Ox0 - 0.195, Ox0 - 0.005, Zb, Zt + 0.04, -0.03, Ox0 - 0.005);
+			ShutterStack(P, Ox1 + 0.005, Ox1 + 0.195, Zb, Zt + 0.04, -0.03, Ox1 + 0.005);
+			if (bLong)
+			{
+				FSoup M;
+				const double Yf = -Sd + 0.05;
+				AddBox(M, 0.0, W, Yf - 0.006, Yf + 0.006, Zs + 0.06, Zs + 0.085);
+				for (int32 k = 0; k < 30; ++k) { AddBar(M, (k + 0.5) * W / 30, Yf, Zs + 0.06, Zs + 0.95, 0.009); }
+				P.Add(MoveTemp(M), TEXT("Metal"));
+				P.Add(Bev(Box(0.0, W, Yf - 0.025, Yf + 0.025, Zs + 0.95, Zs + 0.98), 0.008, 1, { { AX, 0.0 }, { AX, W } }), TEXT("Metal"));
+			}
+			else
+			{
+				Railing(P, Sx0 + 0.04, Sx1 - 0.04, -Sd + 0.05, Zs, 0.95);
+			}
+			WallSlab(P, W, { { Ox0, Ox1, Zs - 0.02, Zt + 0.02, Recess } });
+			RenderBand(P, 0, W);
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Wall shrine (edicola): an arched niche with a small tiled hood; pivot on the wall face, at its foot. */
+		FPiece MakeEdicola()
+		{
+			FPiece P;
+			P.Name = TEXT("Edicola");
+			P.Kind = TEXT("fixture");
+			P.Add(Bev(Box(-0.45, 0.45, -0.10, 0.0, 0.0, 0.12), 0.01, 1), TEXT("Trim"));   // shelf
+			for (const double X : { -0.40, 0.30 }) { P.Add(Bev(Box(X, X + 0.10, -0.06, 0.0, 0.12, 0.80), 0.008, 1), TEXT("Trim")); }
+			FSoup Ring;
+			ArcBlocks(Ring, 0.0, 0.80, 0.30, 0.40, -0.06, 0.0, 0.0, UE_PI, 8);
+			P.Add(MoveTemp(Ring), TEXT("Trim"));
+			P.Add(Box(-0.30, 0.30, -0.01, 0.0, 0.12, 0.80), TEXT("PaintBlue"));   // painted niche back
+			P.Add(PolyY({ V2(-0.55, 1.22), V2(0.55, 1.22), V2(0.0, 1.45) }, -0.22, 0.0), TEXT("Roof"));
+			P.Box(-0.55, 0.55, -0.22, 0, 0, 1.45);
+			return P;
+		}
+
+		/** Arched shop opening: a 3.0 m round-headed arch, glazed, with a stone surround. */
+		FPiece MakeShopArch()
+		{
+			FPiece P;
+			P.Name = TEXT("ShopArch_400");
+			const double W = 4.0, Cx = 2.0, Ow = 2.8, Zs = 3.0 - Ow / 2;
+			P.Add(Box(Cx - Ow / 2 - 0.2, Cx + Ow / 2 + 0.2, -0.04, T, -3.0, 0.0), TEXT("Trim"));
+			PlinthBlock(P, 0.0, Cx - Ow / 2 - 0.2, { 0.0 });
+			PlinthBlock(P, Cx + Ow / 2 + 0.2, W, { W });
+			for (const V2 A : { V2(Cx - Ow / 2 - 0.2, Cx - Ow / 2), V2(Cx + Ow / 2, Cx + Ow / 2 + 0.2) }) { P.Add(Bev(Box(A.X, A.Y, -0.04, 0.0, 0.0, Zs), 0.01, 2, { { AY, 0.0 }, { AZ, 0.0 } }), TEXT("Trim")); }
+			FSoup Ring;
+			ArcBlocks(Ring, Cx, Zs, Ow / 2, Ow / 2 + 0.2, -0.04, 0.0, 0.0, UE_PI, 14);
+			P.Add(MoveTemp(Ring), TEXT("Trim"));
+			FSoup M;   // glazing frame: posts and a transom at the spring line
+			for (const double X : { Cx - Ow / 2 + 0.03, Cx - 0.45, Cx + 0.45, Cx + Ow / 2 - 0.03 }) { AddBox(M, X - 0.03, X + 0.03, 0.16, 0.22, 0.0, Zs); }
+			AddBox(M, Cx - Ow / 2, Cx + Ow / 2, 0.16, 0.22, Zs - 0.03, Zs + 0.03);
+			AddBox(M, Cx - Ow / 2, Cx + Ow / 2, 0.16, 0.22, 0.45, 0.50);
+			P.Add(MoveTemp(M), TEXT("Wood"));
+			FSoup G;
+			AddQuadY(G, Cx - Ow / 2, Cx + Ow / 2, 0.20, 0.0, Zs);
+			P.Add(MoveTemp(G), TEXT("Glass"));
+			ArchGlass(P, Cx, Zs, Ow / 2, 0.20);
+			WallSlabArch(P, W, {}, { ArchOf({ Cx - Ow / 2, Cx + Ow / 2, 0.0, Zs, Recess }, Zs) });
+			P.Box(0, W, 0, T, 0, H);
+			return P;
+		}
+
+		/** Battered base (scarpa): a stone apron leaning out from the wall foot, 1.4 m high, 0.25 m out at the ground. */
+		FPiece MakeScarpa(double W)
+		{
+			FPiece P;
+			P.Name = TEXT("Scarpa_") + Cm(W);
+			P.Kind = TEXT("trim");
+			FSoup S = PrismX({ V2(0.0, -3.0), V2(-0.25, -3.0), V2(-0.25, 0.0), V2(0.0, 1.40) }, 0.0, W);
+			Bevel(S, 0.01, 1, { { AX, 0.0 }, { AX, W } });
+			P.Add(MoveTemp(S), TEXT("Trim"));
+			P.Box(0, W, -0.25, 0, -0.5, 1.4);
+			return P;
+		}
+
+		/** Arcade bay (portico): two piers and a round arch on the street line, the walk 3 m deep behind it,
+		 *  vaulted ceiling slab, and the shop front on the back wall. Collision on the piers and back wall only. */
+		FPiece MakeArcade()
+		{
+			FPiece P;
+			P.Name = TEXT("Arcade_400");
+			const double W = 4.0, Dp = 3.0, Pw = 0.45, Zs = 2.4, R = (W - 2 * Pw) / 2;
+			FSoup Front = Box(0, W, -0.05, 0.35, 0.0, H);
+			Front = BoolDiff(Front, ArchCutter(Pw, W - Pw, -0.1, Zs, 0.5));
+			DelPlane(Front, AX, 0.0);
+			DelPlane(Front, AX, W);
+			Bevel(Front, 0.015, 2, { { AX, 0.0 }, { AX, W }, { AZ, 0.0 }, { AZ, H } });
+			P.Add(MoveTemp(Front), TEXT("Wall"));
+			for (const V2 A : { V2(0.0, Pw), V2(W - Pw, W) }) { P.Add(Bev(Box(A.X, A.Y, -0.08, 0.38, 0.0, 0.5), 0.012, 2, { { AZ, 0.0 } }), TEXT("Trim")); }   // pier bases
+			FSoup Ring;
+			ArcBlocks(Ring, W / 2, Zs, R, R + 0.18, -0.08, 0.0, 0.0, UE_PI, 14);
+			P.Add(MoveTemp(Ring), TEXT("Trim"));
+			P.Add(Box(0.0, W, 0.35, Dp + 0.3, H - 0.25, H), TEXT("Wall"));          // ceiling
+			P.Add(Box(0.0, W, -0.05, Dp + 0.3, -3.0, 0.0), TEXT("Trim"));          // floor slab and skirt
+			// Back wall with a glazed shop opening.
+			FSoup Back = Box(0, W, Dp, Dp + 0.3, 0.0, H - 0.25);
+			Back = BoolDiff(Back, Box(0.4, W - 0.4, Dp - 0.1, Dp + 0.2, 0.0, 2.6));
+			DelPlane(Back, AX, 0.0);
+			DelPlane(Back, AX, W);
+			P.Add(MoveTemp(Back), TEXT("Wall"));
+			FSoup M;
+			for (const double X : { 0.45, 2.0, W - 0.45 }) { AddBox(M, X - 0.03, X + 0.03, Dp + 0.1, Dp + 0.16, 0.0, 2.6); }
+			AddBox(M, 0.4, W - 0.4, Dp + 0.1, Dp + 0.16, 2.1, 2.16);
+			P.Add(MoveTemp(M), TEXT("Wood"));
+			FSoup G;
+			AddQuadY(G, 0.4, W - 0.4, Dp + 0.14, 0.0, 2.6);
+			P.Add(MoveTemp(G), TEXT("Glass"));
+			P.Box(0, Pw, -0.08, 0.38, 0, H);
+			P.Box(W - Pw, W, -0.08, 0.38, 0, H);
+			P.Box(0, W, Dp, Dp + 0.3, 0, H);
+			return P;
+		}
+
+		/** Loggia bay: an open arch at an upper storey, 1.6 m deep behind it, balustrade, back wall with a French door. */
+		FPiece MakeLoggia()
+		{
+			FPiece P;
+			P.Name = TEXT("Loggia_400");
+			const double W = 4.0, Dp = 1.6, Pw = 0.35, Zs = 2.0, R = (W - 2 * Pw) / 2;
+			FSoup Front = BoolDiff(Box(0, W, 0.0, 0.3, 0.0, H), ArchCutter(Pw, W - Pw, 0.0, Zs, 0.5));
+			DelPlane(Front, AX, 0.0);
+			DelPlane(Front, AX, W);
+			Bevel(Front, 0.015, 2, { { AX, 0.0 }, { AX, W }, { AZ, 0.0 }, { AZ, H } });
+			P.Add(MoveTemp(Front), TEXT("Wall"));
+			FSoup Ring;
+			ArcBlocks(Ring, W / 2, Zs, R, R + 0.14, -0.04, 0.0, 0.0, UE_PI, 12);
+			P.Add(MoveTemp(Ring), TEXT("Trim"));
+			// Balustrade: rail, base and turned balusters (octagonal prisms).
+			P.Add(Bev(Box(Pw, W - Pw, -0.02, 0.18, 0.0, 0.12), 0.01, 1), TEXT("Trim"));
+			P.Add(Bev(Box(Pw, W - Pw, -0.04, 0.18, 0.85, 0.95), 0.01, 1), TEXT("Trim"));
+			FSoup Bal;
+			for (double X = Pw + 0.12; X < W - Pw - 0.05; X += 0.22) { AddCyl(Bal, V3(X, 0.08, 0.12), 0.045, 0.73, 8, 'Z', false, 0.03); }
+			P.Add(MoveTemp(Bal), TEXT("Trim"));
+			P.Add(Box(0.0, W, 0.3, Dp + 0.3, -0.05, 0.0), TEXT("Concrete"));      // floor
+			P.Add(Box(0.0, W, 0.3, Dp + 0.3, H - 0.2, H), TEXT("Wall"));          // ceiling
+			FSoup Back = BoolDiff(Box(0, W, Dp, Dp + 0.3, 0.0, H - 0.2), Box(1.45, 2.55, Dp - 0.1, Dp + 0.2, 0.0, 2.4));
+			DelPlane(Back, AX, 0.0);
+			DelPlane(Back, AX, W);
+			P.Add(MoveTemp(Back), TEXT("Wall"));
+			Casement(P, 1.45, 2.55, 0.0, 2.4, 2, 2, 0.55, 0.06, Dp + 0.08, Dp + 0.14);
+			P.Box(0, W, 0, 0.3, 0, H);
+			P.Box(0, W, Dp, Dp + 0.3, 0, H);
+			return P;
+		}
+
+		/** Brace arch (archetto): a thin masonry arch across an alley; unit span along -Y from the wall (0..1 m),
+		 *  scaled to the gap; 0.4 m wide, a flat top 0.9 m above its springing. */
+		FPiece MakeArchetto()
+		{
+			FPiece P;
+			P.Name = TEXT("Archetto");
+			P.Kind = TEXT("fixture");
+			TArray<V2> Pts;   // (y, z) outline: flat top, segmental underside
+			Pts.Add(V2(0.0, 0.9));
+			Pts.Add(V2(-1.0, 0.9));
+			for (int32 k = 0; k <= 10; ++k)
+			{
+				const double Tt = double(k) / 10.0;
+				Pts.Add(V2(-1.0 + Tt, 0.55 * FMath::Sin(UE_PI * Tt) * 0.9));
+			}
+			FSoup S;
+			TArray<V2> Hull;
+			for (const V2& Pt : Pts) { Hull.Add(V2(Pt.X, Pt.Y)); }
+			Append(S, PrismX(Hull, -0.2, 0.2));
+			P.Add(MoveTemp(S), TEXT("Wall"));
+			P.Add(Bev(Box(-0.24, 0.24, -1.0, 0.0, 0.9, 0.98), 0.01, 1), TEXT("Roof"));   // tiled cap
+			P.Box(-0.24, 0.24, -1, 0, 0, 0.98);
+			return P;
+		}
+
+		/** Bridge room (sottoportico): one storey on an arch spanning an alley, unit 1 m along the street (X,
+		 *  scaled to the gap), 4 m deep (Y 0..4), standing on the first-floor line; the arch soffit below. */
+		FPiece MakeSottoportico()
+		{
+			FPiece P;
+			P.Name = TEXT("Sottoportico");
+			P.Kind = TEXT("fixture");
+			const double Dp = 4.0;
+			for (const double Y0 : { 0.0, Dp - 0.3 })   // front and back walls, a small window in each
+			{
+				FSoup Wl = BoolDiff(Box(0.0, 1.0, Y0, Y0 + 0.3, 0.0, H), Box(0.32, 0.68, Y0 - 0.1, Y0 + 0.4, 1.0, 2.2));
+				P.Add(MoveTemp(Wl), TEXT("Wall"));
+				FSoup G;
+				AddQuadY(G, 0.32, 0.68, Y0 + 0.17, 1.0, 2.2);
+				P.Add(MoveTemp(G), TEXT("Glass"));
+				P.Add(Box(0.30, 0.70, Y0 - 0.06, Y0 + 0.02, 0.96, 1.0), TEXT("Trim"));
+			}
+			P.Add(Box(0.0, 1.0, 0.0, Dp, H, H + 0.25), TEXT("Concrete"));   // roof slab
+			// The arch below: a shallow barrel soffit under the floor, with an arch face on both walls.
+			FSoup Arch;
+			for (int32 k = 0; k < 8; ++k)
+			{
+				const double A0 = UE_PI * k / 8, A1 = UE_PI * (k + 1) / 8;
+				const double X0 = 0.5 - 0.5 * FMath::Cos(A0), X1 = 0.5 - 0.5 * FMath::Cos(A1);
+				const double Z0 = -0.9 + 0.7 * FMath::Sin(A0), Z1 = -0.9 + 0.7 * FMath::Sin(A1);
+				Append(Arch, PolyY({ V2(X0, Z0), V2(X1, Z1), V2(X1, 0.0), V2(X0, 0.0) }, 0.0, Dp));
+			}
+			P.Add(MoveTemp(Arch), TEXT("Wall"));
+			P.Box(0, 1, 0, Dp, -0.9, H + 0.25);
+			return P;
+		}
+
+		/** External stair: a masonry flight along the wall (X 0..4) up to a first-floor landing, with a parapet. */
+		FPiece MakeExtStair()
+		{
+			FPiece P;
+			P.Name = TEXT("ExtStair_400");
+			P.Kind = TEXT("fixture");
+			const double Rise = H, Run = 3.0, Wd = 1.0;
+			FSoup S;
+			const int32 N = 17;
+			for (int32 k = 0; k < N; ++k)
+			{
+				const double X0 = Run * k / N, Z1 = Rise * (k + 1) / N;
+				AddBox(S, X0, Run, -Wd, 0.0, -0.5, Z1);
+			}
+			P.Add(MoveTemp(S), TEXT("Trim"));
+			P.Add(Bev(Box(Run, 4.0, -Wd, 0.0, -0.5, Rise), 0.01, 1), TEXT("Wall"));   // landing block
+			P.Add(PolyY({ V2(0.0, 0.0), V2(Run, Rise), V2(4.0, Rise), V2(4.0, Rise + 0.9), V2(Run, Rise + 0.9), V2(0.0, 0.9) }, -Wd - 0.15, -Wd), TEXT("Wall"));
+			P.Box(0, 4, -Wd - 0.15, 0, 0, Rise + 0.9);
+			return P;
+		}
+
+		/** Single-pitch (lean-to) roof: unit x 0..1 along the wall, y -1..0 out from it, rise 1 at the wall. */
+		FPiece MakeRoofMono()
+		{
+			FPiece P;
+			P.Name = TEXT("RoofMono");
+			P.Kind = TEXT("roof");
+			FSoup S;
+			const int32 A = S.Add(V3(0, 0, 0.96)), B = S.Add(V3(1, 0, 0.96)), C = S.Add(V3(1, -1, 0)), D = S.Add(V3(0, -1, 0));
+			const int32 A2 = S.Add(V3(0, 0, 1.0)), B2 = S.Add(V3(1, 0, 1.0)), C2 = S.Add(V3(1, -1, 0.04)), D2 = S.Add(V3(0, -1, 0.04));
+			S.Face(0, { A, D, C, B });
+			S.Face(0, { A2, B2, C2, D2 });
+			S.Face(0, { D, D2, C2, C });
+			S.Face(0, { A, A2, D2, D });
+			S.Face(0, { B, C, C2, B2 });
+			S.Face(0, { A, B, B2, A2 });
+			S.NextShell = 1;
+			OrientOutward(S);
+			P.Add(MoveTemp(S), TEXT("Roof"));
+			P.Box(0, 1, -1, 0, 0, 1);
+			return P;
+		}
+
+		/** Vaulted roof (Campanian coast): a rendered barrel vault on a unit footprint, rise 1, ends closed. */
+		FPiece MakeRoofVault()
+		{
+			FPiece P;
+			P.Name = TEXT("RoofVault");
+			P.Kind = TEXT("roof");
+			TArray<V2> Prof;   // (y, z)
+			for (int32 k = 0; k <= 12; ++k)
+			{
+				const double A = UE_PI * k / 12;
+				Prof.Add(V2(-0.5 * FMath::Cos(A), FMath::Sin(A)));
+			}
+			FSoup S = PrismX(Prof, -0.5, 0.5);
+			P.Add(MoveTemp(S), TEXT("Wall"));
+			P.Box(-0.5, 0.5, -0.5, 0.5, 0, 1);
+			return P;
+		}
+
+		/** Italian chimney: a rendered stack with a small tiled hood on four posts. */
+		FPiece MakeChimneyPot()
+		{
+			FPiece P;
+			P.Name = TEXT("Prop_ChimneyPot");
+			P.Kind = TEXT("prop");
+			P.Add(Bev(Box(-0.25, 0.25, -0.25, 0.25, 0.0, 1.0), 0.015, 1), TEXT("Wall"));
+			FSoup M;
+			for (const double Sx : { -1.0, 1.0 }) { for (const double Sy : { -1.0, 1.0 }) { AddBox(M, Sx * 0.18 - 0.03, Sx * 0.18 + 0.03, Sy * 0.18 - 0.03, Sy * 0.18 + 0.03, 1.0, 1.28); } }
+			P.Add(MoveTemp(M), TEXT("Trim"));
+			P.Add(PrismX({ V2(-0.36, 1.28), V2(0.36, 1.28), V2(0.0, 1.48) }, -0.36, 0.36), TEXT("Roof"));
+			P.Box(-0.36, 0.36, -0.36, 0.36, 0, 1.48);
+			return P;
+		}
+
+		/** Dormer (abbaino): a small gabled window box; pivot at the foot of its front wall, base buried in the slope. */
+		FPiece MakeDormer()
+		{
+			FPiece P;
+			P.Name = TEXT("Dormer");
+			P.Kind = TEXT("fixture");
+			const double Wd = 1.4, Dp = 1.6, Hf = 1.3;
+			FSoup Wl = BoolDiff(Box(-Wd / 2, Wd / 2, 0.0, Dp, -0.8, Hf), Box(-0.35, 0.35, -0.1, 0.25, 0.15, 1.05));
+			P.Add(MoveTemp(Wl), TEXT("Wall"));
+			Casement(P, -0.35, 0.35, 0.15, 1.05, 2, 1, 0.0, 0.05, 0.12, 0.17);
+			P.Add(PolyY({ V2(-Wd / 2 - 0.15, Hf), V2(Wd / 2 + 0.15, Hf), V2(0.0, Hf + 0.6) }, -0.15, Dp), TEXT("Roof"));
+			P.Box(-Wd / 2, Wd / 2, 0, Dp, -0.8, Hf + 0.6);
+			return P;
+		}
+
+		/** TV aerial: a mast with three crossbars of elements. */
+		FPiece MakeAerial()
+		{
+			FPiece P;
+			P.Name = TEXT("Prop_Aerial");
+			P.Kind = TEXT("prop");
+			FSoup M;
+			AddCyl(M, V3(0, 0, 0), 0.02, 2.2, 8);
+			for (int32 k = 0; k < 3; ++k)
+			{
+				const double Z = 1.5 + 0.25 * k;
+				AddBox(M, -0.6, 0.6, -0.01, 0.01, Z - 0.01, Z + 0.01);
+				for (double X = -0.55; X <= 0.56; X += 0.11) { AddBox(M, X - 0.006, X + 0.006, -0.18, 0.18, Z - 0.006, Z + 0.006); }
+			}
+			P.Add(MoveTemp(M), TEXT("Metal"));
+			P.Box(-0.6, 0.6, -0.18, 0.18, 0, 2.2);
+			return P;
+		}
+
+		/** Altana: a timber roof deck on posts straddling a ridge, with a rail. Pivot at the deck centre's foot. */
+		FPiece MakeAltana()
+		{
+			FPiece P;
+			P.Name = TEXT("Altana");
+			P.Kind = TEXT("prop");
+			const double Hx = 1.5, Hy = 1.2, Z = 1.0;
+			P.Add(Bev(Box(-Hx, Hx, -Hy, Hy, Z, Z + 0.08), 0.01, 1), TEXT("Wood"));
+			FSoup W;
+			for (const double Sx : { -1.0, 1.0 }) { for (const double Sy : { -1.0, 1.0 }) { AddBox(W, Sx * (Hx - 0.06) - 0.05, Sx * (Hx - 0.06) + 0.05, Sy * (Hy - 0.06) - 0.05, Sy * (Hy - 0.06) + 0.05, -1.5, Z + 1.0); } }
+			for (const double Sy : { -1.0, 1.0 }) { AddBox(W, -Hx, Hx, Sy * (Hy - 0.06) - 0.03, Sy * (Hy - 0.06) + 0.03, Z + 0.92, Z + 1.0); }
+			for (const double Sx : { -1.0, 1.0 }) { AddBox(W, Sx * (Hx - 0.06) - 0.03, Sx * (Hx - 0.06) + 0.03, -Hy, Hy, Z + 0.92, Z + 1.0); }
+			P.Add(MoveTemp(W), TEXT("Wood"));
+			P.Box(-Hx, Hx, -Hy, Hy, Z, Z + 1.0);
+			return P;
+		}
+
+		/** Pergola for a flat roof terrace: four posts and a slatted top, 3 x 3 m. */
+		FPiece MakePergola()
+		{
+			FPiece P;
+			P.Name = TEXT("Pergola");
+			P.Kind = TEXT("prop");
+			FSoup W;
+			for (const double Sx : { -1.0, 1.0 }) { for (const double Sy : { -1.0, 1.0 }) { AddBox(W, Sx * 1.4 - 0.06, Sx * 1.4 + 0.06, Sy * 1.4 - 0.06, Sy * 1.4 + 0.06, 0.0, 2.3); } }
+			for (const double Sy : { -1.0, 1.0 }) { AddBox(W, -1.55, 1.55, Sy * 1.4 - 0.05, Sy * 1.4 + 0.05, 2.3, 2.45); }
+			for (double X = -1.4; X <= 1.41; X += 0.35) { AddBox(W, X - 0.03, X + 0.03, -1.6, 1.6, 2.45, 2.52); }
+			P.Add(MoveTemp(W), TEXT("Wood"));
+			P.Box(-1.6, 1.6, -1.6, 1.6, 0, 2.52);
+			return P;
+		}
+
+		/** Bell gable (campanile a vela): a wall rising over a chapel front with an arched opening and a bell. */
+		FPiece MakeBellGable()
+		{
+			FPiece P;
+			P.Name = TEXT("BellGable");
+			P.Kind = TEXT("fixture");
+			FSoup Wl = BoolDiff(Box(-0.9, 0.9, 0.0, 0.4, 0.0, 2.4), ArchCutter(-0.45, 0.45, 0.6, 1.6, 0.6));
+			P.Add(MoveTemp(Wl), TEXT("Wall"));
+			P.Add(PolyY({ V2(-1.0, 2.4), V2(1.0, 2.4), V2(0.0, 2.9) }, -0.05, 0.45), TEXT("Trim"));
+			FSoup Bell;
+			AddCyl(Bell, V3(0, 0.2, 1.05), 0.26, 0.45, 12, 'Z', true, 0.12);
+			AddBox(Bell, -0.45, 0.45, 0.18, 0.22, 1.55, 1.6);
+			P.Add(MoveTemp(Bell), TEXT("Metal"));
+			P.Box(-1, 1, 0, 0.45, 0, 2.9);
+			return P;
+		}
+
+		/** Garden wall with a tiled coping (4 m) and a gate pier pair; pivots at the wall's foot. */
+		FPiece MakeGardenWall()
+		{
+			FPiece P;
+			P.Name = TEXT("GardenWall_400");
+			P.Add(Bev(Box(0.0, 4.0, 0.0, 0.4, -1.0, 1.8), 0.015, 1, { { AX, 0.0 }, { AX, 4.0 } }), TEXT("Wall"));
+			P.Add(PrismX({ V2(-0.06, 1.8), V2(0.46, 1.8), V2(0.2, 1.98) }, 0.0, 4.0), TEXT("Roof"));
+			P.Box(0, 4, 0, 0.4, 0, 1.98);
+			return P;
+		}
+
+		FPiece MakeGatePier()
+		{
+			FPiece P;
+			P.Name = TEXT("GatePier");
+			P.Kind = TEXT("fixture");
+			P.Add(Bev(Box(-0.3, 0.3, -0.3, 0.3, -1.0, 2.4), 0.015, 2), TEXT("Trim"));
+			P.Add(Bev(Box(-0.38, 0.38, -0.38, 0.38, 2.4, 2.55), 0.012, 2), TEXT("Trim"));
+			FSoup B;
+			AddCyl(B, V3(0, 0, 2.55), 0.18, 0.3, 12, 'Z', true, 0.02);
+			P.Add(MoveTemp(B), TEXT("Trim"));
+			P.Box(-0.38, 0.38, -0.38, 0.38, 0, 2.85);
+			return P;
+		}
 	}
 
 	TArray<TFunction<FPiece()>> Builders()
@@ -2222,9 +2747,16 @@ namespace OCKit
 			[] { return MakeHotel(0); }, [] { return MakeHotel(1); }, [] { return MakeHotel(2); },
 			MakeChurchPortal, MakeChurchRose, MakePediment, MakeCivicEntrance, MakePilaster, MakeCanopy,
 			// Phase 4 roofs and phase 6 dressing.
-			MakeRoofHipEnd, MakeRoofRidge, [] { return MakeGableEnd(TEXT("Wall")); }, [] { return MakeGableEnd(TEXT("Brick")); }, [] { return MakeGableEnd(TEXT("Corrugated")); },
+			[] { return MakeRoofHipEnd(); }, [] { return MakeRoofHipEnd(TEXT("Slate")); }, [] { return MakeRoofRidge(); }, [] { return MakeRoofRidge(TEXT("Slate")); }, [] { return MakeRoofRidge(TEXT("Corrugated")); }, [] { return MakeGableEnd(TEXT("Wall")); }, [] { return MakeGableEnd(TEXT("Brick")); }, [] { return MakeGableEnd(TEXT("Corrugated")); },
 			[] { return MakeGutter(2.0); }, [] { return MakeGutter(4.0); },
-			MakeShopBlade, MakeWallAC, MakeLaundry, MakeFlowerBox };
+			MakeShopBlade, MakeWallAC, MakeLaundry, MakeFlowerBox,
+			// Section 4: Italian character.
+			[] { return MakeEaves(2.0, true); }, [] { return MakeEaves(4.0, true); }, [] { return MakeEaves(2.0, false); }, [] { return MakeEaves(4.0, false); },
+			[] { return MakeEavesRow(2.0); }, [] { return MakeEavesRow(4.0); }, [] { return MakeWindowNobile(2.0); }, [] { return MakeWindowNobile(4.0); },
+			[] { return MakeSillBand(2.0); }, [] { return MakeSillBand(4.0); }, [] { return MakeRustic(2.0, false); }, [] { return MakeRustic(4.0, false); }, [] { return MakeRustic(4.0, true); },
+			[] { return MakeBalconyBracket(false); }, [] { return MakeBalconyBracket(true); }, MakeEdicola, MakeShopArch, [] { return MakeScarpa(2.0); }, [] { return MakeScarpa(4.0); },
+			MakeArcade, MakeLoggia, MakeArchetto, MakeSottoportico, MakeExtStair, MakeRoofMono, MakeRoofVault, MakeChimneyPot, MakeDormer, MakeAerial,
+			MakeAltana, MakePergola, MakeBellGable, MakeGardenWall, MakeGatePier };
 		for (const TCHAR* Family : { TEXT("WindowTall"), TEXT("WindowArch"), TEXT("WindowSmall"), TEXT("WindowClosed"), TEXT("WindowHalf"), TEXT("WindowBlind") })
 		{
 			for (const double W : { 2.0, 4.0 }) { Out.Add([Family, W] { return MakeWindowFamily(Family, W); }); }

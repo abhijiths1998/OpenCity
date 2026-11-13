@@ -762,7 +762,8 @@ namespace OCLayout
 					{ TEXT("courtyard"), 0.5, 16, 22, 14, 18, 9, 13, EMass::Wings, 0.5, 0.0 } } },
 				{ TEXT("grid90"), {
 					{ TEXT("tenement"), 3.0, 10, 20, 12, 20, 13, 24, EMass::Wings, -0.3, 0.0 },
-					{ TEXT("office"), 1.0, 12, 20, 12, 18, 16, 24, EMass::Box, 0.6, -1.0 } } },
+					{ TEXT("office"), 1.0, 12, 20, 12, 18, 16, 24, EMass::Box, 0.6, -1.0 },
+					{ TEXT("arcadeblock"), 0.0, 14, 24, 12, 18, 14, 22, EMass::Wings, 0.0, 0.0 } } },
 				{ TEXT("grid120"), {
 					{ TEXT("shed"), 2.0, 20, 45, 20, 35, 7, 10, EMass::Box, -0.5, 0.0 },
 					{ TEXT("warehouse"), 1.5, 20, 40, 15, 25, 10, 14, EMass::Box, 0.0, 1.0 },
@@ -784,6 +785,45 @@ namespace OCLayout
 					{ TEXT("farm"), 1.0, 10, 16, 8, 12, 3.2, 7, EMass::Wings, -0.5, 0.5 } } },
 			};
 			return M[Style];
+		}
+
+		const FArchetype* FindArchetype(const FString& Style, const TCHAR* Name)
+		{
+			return ArchetypesFor(Style).FindByPredicate([Name](const FArchetype& A) { return FCString::Strcmp(A.Name, Name) == 0; });
+		}
+
+		/** Storey heights (m) for a lot: upper storeys 2.9, 3.2 or 3.5 so terrace eaves step even at equal storey
+		 *  counts; tall ground floors (3.5-4.2) for palazzi, civic buildings, arcades and shop streets. */
+		void StoreyHeights(const FString& Arch, int32 Lot, int32 Seed, double& OutStorey, double& OutGround)
+		{
+			const double H1 = Hash01(Lot, 31, Seed), H2 = Hash01(Lot, 32, Seed);
+			const double Three = H1 < 0.33 ? 2.9 : (H1 < 0.75 ? 3.2 : 3.5);
+			OutStorey = Three;
+			OutGround = Three;
+			if (Arch == TEXT("palazzo") || Arch == TEXT("civic") || Arch == TEXT("station") || Arch == TEXT("church"))
+			{
+				OutStorey = H1 < 0.3 ? 3.2 : 3.5;
+				OutGround = H2 < 0.5 ? 4.0 : 4.2;
+			}
+			else if (Arch == TEXT("arcadeblock"))
+			{
+				OutStorey = 3.2;
+				OutGround = 4.0;
+			}
+			else if (Arch == TEXT("tenement") || Arch == TEXT("corner") || Arch == TEXT("townhouse") || Arch == TEXT("courtyard"))
+			{
+				OutGround = FMath::Max(Three, H2 < 0.4 ? 3.2 : (H2 < 0.8 ? 3.5 : 3.8));
+			}
+			else if (Arch == TEXT("slabhotel") || Arch == TEXT("steppedhotel") || Arch == TEXT("office") || Arch == TEXT("kiosk") || Arch == TEXT("annex"))
+			{
+				OutStorey = 3.2;
+				OutGround = Arch == TEXT("office") ? 3.8 : 3.5;
+			}
+			else if (Arch == TEXT("shed") || Arch == TEXT("warehouse"))
+			{
+				OutStorey = 3.5;
+				OutGround = 3.5;
+			}
 		}
 
 		const FArchetype& PickArchetype(const FString& Style, const FCityFields& F, FPyRandom& Rng)
@@ -1002,7 +1042,8 @@ namespace OCLayout
 			Bd.Yaw = PyRound(YawDeg, 1);
 			Bd.Base = PyRound(GMin - 1.0, 2);
 			Bd.Storeys = Storeys;
-			Bd.Top = PyRound(Ci + Storeys * StoreyH, 2);
+			StoreyHeights(Archetype, Lot, Seed, Bd.StoreyH, Bd.GroundH);
+			Bd.Top = PyRound(Ci + Bd.GroundH + (Storeys - 1) * Bd.StoreyH, 2);
 			Bd.Style = BuildingStyles.IndexOfByKey(Style);
 			Bd.District = Districts[Di].Name;
 			Bd.Archetype = Archetype;
@@ -1012,6 +1053,45 @@ namespace OCLayout
 			Bd.Street = StreetSeed;
 			Bd.Lot = Lot;
 			return Out.Add(Bd);
+		};
+
+		// Piazzas (BUILDINGS_PLAN.md 4.5): a few old-town and grid junctions stay open as squares, 12-20 m round
+		// the node; the buildings that front them lean to arcades (grid) and palazzi (old town).
+		struct FPiazza { double X, Y, R; };
+		TArray<FPiazza> Piazzas;
+		{
+			TMap<int32, int32> Degree;
+			for (const FSeg& Sg : G.Segments)
+			{
+				if (Sg.Bridge.IsEmpty()) { ++Degree.FindOrAdd(Sg.A); ++Degree.FindOrAdd(Sg.B); }
+			}
+			for (const TPair<int32, int32>& Dg : Degree)
+			{
+				const FNode& N = G.Nodes[Dg.Key];
+				const int32 Di = DistrictAt(N.X, N.Y);
+				const FString St = Di == INDEX_NONE ? FString() : FString(Districts[Di].Style);
+				if (Dg.Value < 3 || (St != TEXT("oldtown") && St != TEXT("grid90")) || Hash01(Dg.Key, 77, Seed) > 0.06)
+				{
+					continue;
+				}
+				if (Piazzas.ContainsByPredicate([&N](const FPiazza& P) { return std::hypot(P.X - N.X, P.Y - N.Y) < 150.0; }))
+				{
+					continue;
+				}
+				const double R = 12.0 + 8.0 * Hash01(Dg.Key, 78, Seed);
+				Piazzas.Add({ N.X, N.Y, R });
+				for (int32 r = FMath::Max(0, int32(N.Y - R - YMin)); r < FMath::Min(NY, int32(N.Y + R - YMin) + 2); ++r)
+				{
+					for (int32 c = FMath::Max(0, int32(N.X - R)); c < FMath::Min(NX, int32(N.X + R) + 2); ++c)
+					{
+						if (std::hypot(c - N.X, r + YMin - N.Y) < R) { Blocked(r, c) = 1; }
+					}
+				}
+			}
+		}
+		auto NearPiazza = [&Piazzas](double X, double Y)
+		{
+			return Piazzas.ContainsByPredicate([X, Y](const FPiazza& P) { return std::hypot(P.X - X, P.Y - Y) < P.R + 18.0; });
 		};
 
 		// Corner buildings: where two streets meet at 70-110 degrees in the old town and the grid, a building
@@ -1124,6 +1204,7 @@ namespace OCLayout
 				// line, and its storeys centre on a street level instead of the whole district range.
 				const int32 StreetSeed = int32(Hash01(SegIndex, Side, Seed) * 1e6);
 				const double StreetLevel = Hash01(SegIndex, Side + 7, Seed);
+				const bool bArcadeSide = Seg.Kind == TEXT("avenue") && Hash01(SegIndex, Side + 11, Seed) < 0.5;
 				const double RunSetback = Rng.Uniform(P.Set0, P.Set1);
 				double S = Rng.Uniform(0, 3);
 				int32 JoinStoreys = 0;   // storeys of the building this one shares a wall with (0 = none)
@@ -1131,7 +1212,17 @@ namespace OCLayout
 				{
 					const double Mx = A.X + Ux * (S + 4.0) - Uy * (Edge + 6.0) * Side, My = A.Y + Uy * (S + 4.0) + Ux * (Edge + 6.0) * Side;
 					const FCityFields Fl = FieldsAt(Mx, My, Districts[Di].Name, Seed);
-					const FArchetype& Arch = PickArchetype(Style, Fl, Rng);
+					const FArchetype* ArchP = &PickArchetype(Style, Fl, Rng);
+					const double Override = Rng.Random();
+					if (Style == TEXT("grid90") && (bArcadeSide || NearPiazza(Mx, My)))
+					{
+						ArchP = FindArchetype(Style, TEXT("arcadeblock"));   // arcaded main streets and piazza fronts
+					}
+					else if (Style == TEXT("oldtown") && NearPiazza(Mx, My) && Override < 0.4)
+					{
+						ArchP = FindArchetype(Style, TEXT("palazzo"));
+					}
+					const FArchetype& Arch = *ArchP;
 					// Footprints snap to the facade kit's 2 m bay grid, min 4 m.
 					const double Wb0 = FMath::Max(MinFootprint, Bay * PyRoundInt(Rng.Uniform(Arch.W0, Arch.W1) / Bay));
 					const double Db0 = FMath::Max(MinFootprint, Bay * PyRoundInt(Rng.Uniform(Arch.D0, Arch.D1) / Bay));
@@ -1141,7 +1232,7 @@ namespace OCLayout
 					const double Setback = bTerrace ? RunSetback : Rng.Uniform(P.Set0, P.Set1);
 					const double Drift = Rng.Random();
 					const double HeightDraw = Rng.Random();
-					const double MassDraw = Rng.Random(), MassDraw2 = Rng.Random();
+					const double MassDraw = Rng.Random(), MassDraw2 = Rng.Random(), MassDraw3 = Rng.Random();
 					if (S + Wb0 > L)
 					{
 						break;
@@ -1190,7 +1281,7 @@ namespace OCLayout
 					// More volumes on the lot, behind the street front (back = away from the road).
 					const FVector2D U2(Ux, Uy), Back = FVector2D(-Uy, Ux) * double(Side);
 					const FVector2D C0(Cx, Cy);
-					auto Volume = [&](const FVector2D& Centre, double Ww, double Dw, double Yd, int32 St, const TCHAR* Name)
+					auto Volume = [&](const FVector2D& Centre, double Ww, double Dw, double Yd, int32 St, const TCHAR* Name, const TCHAR* Feature = TEXT(""))
 					{
 						double Gm = 0.0;
 						const double Vx = PyRound(Centre.X, 2), Vy = PyRound(Centre.Y, 2);
@@ -1199,7 +1290,7 @@ namespace OCLayout
 							return false;
 						}
 						AddFoot(MakeFootprint(Vx, Vy, Ww, Dw, Yd));
-						Record(Vx, Vy, Ww, Dw, Yd, Gm, St, Style, Di, Name, Fl, StreetSeed, Lot);
+						Out[Record(Vx, Vy, Ww, Dw, Yd, Gm, St, Style, Di, Name, Fl, StreetSeed, Lot)].Feature = Feature;
 						++Wings;
 						return true;
 					};
@@ -1224,7 +1315,7 @@ namespace OCLayout
 					case EMass::RearExt:
 						if (MassDraw < 0.35)
 						{
-							Volume(C0 + Back * ((Db + 4.0) / 2), Wb - 2.0, 4.0, YawDeg, 1, Arch.Name);
+							Volume(C0 + Back * ((Db + 4.0) / 2), Wb - 2.0, 4.0, YawDeg, 1, Arch.Name, TEXT("leanto"));
 						}
 						break;
 					case EMass::Tower:
@@ -1237,15 +1328,26 @@ namespace OCLayout
 							const int32 Bi = Record(Cx, Cy, Wb - 4.0, Db - 4.0, YawDeg, GMin, MassDraw2 < 0.5 ? 1 : 2, Style, Di, Arch.Name, Fl, StreetSeed, Lot);
 							Out[Bi].On = Main;
 							++Tops;
+							Out[Bi].Feature = TEXT("recess");
 						}
 						break;
 					default:
 						break;
 					}
+					// A torretta: one bay square at a front corner, one or two storeys over the eaves (villas, a few townhouses).
+					const double TorrettaChance = FCString::Strcmp(Arch.Name, TEXT("villa")) == 0 ? 0.4 : (FCString::Strcmp(Arch.Name, TEXT("townhouse")) == 0 ? 0.04 : 0.0);
+					if (MassDraw3 < TorrettaChance && Wb >= 8.0 && Db >= 8.0)
+					{
+						const FVector2D Tc = C0 + U2 * ((MassDraw3 < TorrettaChance * 0.5 ? -1.0 : 1.0) * (Wb / 2 - 2.0)) - Back * (Db / 2 - 2.0);
+						const int32 Bi = Record(PyRound(Tc.X, 2), PyRound(Tc.Y, 2), 4.0, 4.0, YawDeg, GMin, MassDraw2 < 0.5 ? 1 : 2, Style, Di, Arch.Name, Fl, StreetSeed, Lot);
+						Out[Bi].On = Main;
+						Out[Bi].Feature = TEXT("torretta");
+						++Tops;
+					}
 				}
 			}
 		}
-		UE_LOG(LogOpenCity, Display, TEXT("buildings: %d corner buildings, %d wings and rear volumes, %d recessed tops"), Corners, Wings, Tops);
+		UE_LOG(LogOpenCity, Display, TEXT("buildings: %d piazzas, %d corner buildings, %d wings and rear volumes, %d recessed tops and torrette"), Piazzas.Num(), Corners, Wings, Tops);
 		// Self-check on the stored (rounded) records: no two footprints overlap (exact test), none is in a road.
 		TGrid<int16> Chk(NX, NY, 0);
 		for (int32 i = 0; i < Out.Num(); ++i)
@@ -2091,6 +2193,9 @@ namespace OCLayout
 				O->Set(TEXT("lot"), Int(B.Lot));
 				if (B.On >= 0) { O->Set(TEXT("on"), Int(B.On)); }
 				if (B.Chamfer) { O->Set(TEXT("chamfer"), Int(B.Chamfer)); }
+				O->Set(TEXT("storey_h"), Flt(B.StoreyH));
+				O->Set(TEXT("ground_h"), Flt(B.GroundH));
+				if (!B.Feature.IsEmpty()) { O->Set(TEXT("feature"), Str(B.Feature)); }
 				Bs->Add(O);
 			}
 			L->Set(TEXT("buildings"), Bs);

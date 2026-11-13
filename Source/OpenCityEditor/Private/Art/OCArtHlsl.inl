@@ -63,9 +63,12 @@ float lumMean = max(dot(mean, float3(0.3, 0.59, 0.11)), 0.02);
 bc *= lerp(1.0, clamp(lumBig / lumMean, 0.65, 1.35), Macro);
 
 // Tints: material tint x per-instance tint (slot A = custom data 0-2, slot B = 3-5, slot C = the stone
-// trim palette picked by custom data 9: pale limestone, grey stone, painted white, brick red).
-const float3 TrimPal[4] = { float3(1.0, 1.0, 1.0), float3(0.74, 0.76, 0.78), float3(1.28, 1.26, 1.2), float3(0.92, 0.55, 0.44) };
-float3 inst = Slot < -0.5 ? float3(1.0, 1.0, 1.0) : (Slot < 0.5 ? float3(I0, I1, I2) : (Slot < 1.5 ? float3(I3, I4, I5) : TrimPal[clamp((int)(I9 + 0.5), 0, 3)]));
+// trim palette picked by custom data 9: pale limestone, grey stone, painted white, brick red, and the
+// Ligurian painted architecture: cream, or a darker shade of the wall colour (BUILDINGS_PLAN.md 4.4).
+const float3 TrimPal[5] = { float3(1.0, 1.0, 1.0), float3(0.74, 0.76, 0.78), float3(1.28, 1.26, 1.2), float3(0.92, 0.55, 0.44), float3(1.3, 1.22, 1.0) };
+int ti = clamp((int)(I9 + 0.5), 0, 5);
+float3 trim = ti == 5 ? float3(I0, I1, I2) * float3(0.78, 0.74, 0.7) * 1.25 : TrimPal[min(ti, 4)];
+float3 inst = Slot < -0.5 ? float3(1.0, 1.0, 1.0) : (Slot < 0.5 ? float3(I0, I1, I2) : (Slot < 1.5 ? float3(I3, I4, I5) : trim));
 bc *= Tint * inst;
 // Kit walls on the ground floor (custom data 8 = 1): a darker, warmer base band and rain splash over
 // the lowest metre of the piece.
