@@ -1,6 +1,8 @@
 #include "Missions/OCMissionSubsystem.h"
 
+#include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Progression/OCProgressionSubsystem.h"
 
 bool UOCMissionSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -119,6 +121,19 @@ void UOCMissionSubsystem::EvaluateObjectives()
 	if (AllRequiredSucceeded)
 	{
 		Outcome = EOCMissionOutcome::Succeeded;
+		if (ActiveMission && ActiveMission->CompletesMilestone.IsValid())
+		{
+			if (const UWorld* W = GetWorld())
+			{
+				if (const UGameInstance* GI = W->GetGameInstance())
+				{
+					if (UOCProgressionSubsystem* Prog = GI->GetSubsystem<UOCProgressionSubsystem>())
+					{
+						Prog->CompleteMilestone(ActiveMission->CompletesMilestone);
+					}
+				}
+			}
+		}
 		return;
 	}
 }

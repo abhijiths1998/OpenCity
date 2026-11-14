@@ -21,6 +21,8 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "OCLog.h"
+#include "Missions/OCMissionData.h"
+#include "Missions/OCMissionSubsystem.h"
 #include "Population/OCPopulationSubsystem.h"
 #include "Player/OCInteractionComponent.h"
 #include "TimerManager.h"
@@ -374,6 +376,101 @@ namespace OCDev
 	}
 	FAutoConsoleCommandWithWorldAndArgs CmdPopulation(TEXT("oc.dev.population"), TEXT("Population: stats; gunshot X Y (makes every ped within GunshotRadiusM flee)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&OCDevPopulation::Command));
+
+	UOCMissionSubsystem* Missions(UWorld* World)
+	{
+		return World ? World->GetSubsystem<UOCMissionSubsystem>() : nullptr;
+	}
+
+	/** List missions: oc.dev.mission list */
+	void MissionList(UWorld* World)
+	{
+		if (UOCMissionSubsystem* M = Missions(World))
+		{
+			if (UOCMissionData* Active = M->GetActiveMission())
+			{
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: active %s (outcome %d)"), *Active->GetName(), (int32)M->GetOutcome());
+			}
+			else
+			{
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: none active"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: mission subsystem not available"));
+		}
+	}
+
+	/** Start a mission: oc.dev.mission start DA_Mission_Funerale */
+	void MissionStart(const TArray<FString>& Args, UWorld* World)
+	{
+		if (!Args.IsValidIndex(1))
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: oc.dev.mission start <DataAsset path> | complete | list"));
+			return;
+		}
+		if (UOCMissionSubsystem* M = Missions(World))
+		{
+			if (UOCMissionData* Data = Cast<UOCMissionData>(LoadObject<UObject>(nullptr, *Args[1])))
+			{
+				M->StartMission(Data);
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: started %s"), *Args[1]);
+			}
+			else
+			{
+				UE_LOG(LogOpenCity, Warning, TEXT("OCDEV mission: %s is not a mission data asset"), *Args[1]);
+			}
+		}
+	}
+
+	/** Complete the active mission: oc.dev.mission complete */
+	void MissionComplete(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UOCMissionSubsystem* M = Missions(World))
+		{
+			if (UOCMissionData* Active = M->GetActiveMission())
+			{
+				if (const UGameInstance* GI = World->GetGameInstance())
+				{
+					if (UOCProgressionSubsystem* Prog = GI->GetSubsystem<UOCProgressionSubsystem>())
+					{
+						Prog->CompleteMilestone(Active->CompletesMilestone);
+						UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: completed %s, milestone %s"), *Active->GetName(),
+							*Active->CompletesMilestone.ToString());
+					}
+				}
+			}
+			else
+			{
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: no active mission to complete"));
+			}
+		}
+	}
+
+	void MissionCommand(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() == 0 || Args[0] == TEXT("list"))
+		{
+			MissionList(World);
+			return;
+		}
+		if (Args[0] == TEXT("start") && Args.IsValidIndex(1))
+		{
+			MissionStart(Args, World);
+			return;
+		}
+		if (Args[0] == TEXT("complete"))
+		{
+			MissionComplete(Args, World);
+			return;
+		}
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: oc.dev.mission start <DataAsset path> | complete | list"));
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdMission(TEXT("oc.dev.mission"), TEXT("Mission: start <asset path> | complete | list."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&MissionCommand));
+
 	/** Runs -ocdevscript once, on the first tick of the first game world that has begun play. */
 	void StartScript(UWorld* World, const FString& Script)
 	{
