@@ -5,6 +5,8 @@
 #include "Engine/CollisionProfile.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
+#include "Events/OCEventSubsystem.h"
+#include "GameplayTags.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace OCPopulation
@@ -65,7 +67,15 @@ bool AOCPedestrian::ApplyDamage(float Amount, const FVector& Impulse, const AAct
 	if (Health <= 0.f)
 	{
 		bDead = true;
-		// Death notifications go through UOCEventSubsystem (M7 wanted/panic wiring), not here.
+		// Death notifications go through UOCEventSubsystem (M7 wanted/panic wiring).
+		if (const UWorld* W = GetWorld())
+		{
+			if (UOCEventSubsystem* Events = W->GetSubsystem<UOCEventSubsystem>())
+			{
+				Events->Publish(FGameplayTag::RequestGameplayTag(FName(TEXT("Event.Crime.Murder"))),
+					GetActorLocation(), this, 1.f);
+			}
+		}
 	}
 	return true;
 }

@@ -4,6 +4,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameplayTags.h"
 #include "HAL/IConsoleManager.h"
 #include "OCLog.h"
 #include "Population/OCPedestrian.h"
@@ -56,12 +57,20 @@ void UOCPopulationSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	}
 	bReady = !Pool.IsEmpty();
 
-	// World subsystems: query from the world (traffic, world state).
+	// World subsystems: query from the world (traffic, world state, events).
 	UWorld* W = GetWorld();
 	if (W)
 	{
 		Traffic = W->GetSubsystem<UOCTrafficSubsystem>();
 		WorldState = W->GetSubsystem<UOCWorldStateSubsystem>();
+		Events = W->GetSubsystem<UOCEventSubsystem>();
+		if (Events.IsValid())
+		{
+			Events->Subscribe(FGameplayTag::RequestGameplayTag(FName(TEXT("Event.Crime.Gunshot"))),
+				[this](const FOCEvent& Ev) { OnCrimeEvent(Ev); });
+			Events->Subscribe(FGameplayTag::RequestGameplayTag(FName(TEXT("Event.Crime.Murder"))),
+				[this](const FOCEvent& Ev) { OnCrimeEvent(Ev); });
+		}
 		if (const UGameInstance* GI = W->GetGameInstance())
 		{
 			if (const UOCProgressionSubsystem* Prog = GI->GetSubsystem<UOCProgressionSubsystem>())
@@ -73,9 +82,8 @@ void UOCPopulationSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 			}
 		}
 	}
-
-	UE_LOG(LogOpenCity, Display, TEXT("Population: pool of %d peds, budget %d"), Pool.Num(), GetBudget());
 }
+
 
 void UOCPopulationSubsystem::Deinitialize()
 {
@@ -188,6 +196,31 @@ void UOCPopulationSubsystem::Release(int32 Index)
 		Sim.Remove(P->SimId);
 		P->SetPooled(FTransform(FVector(0.0, 0.0, -20000.0)));
 		++Despawned;
+	}
+}
+
+void UOCPopulationSubsystem::OnCrimeEvent(const FOCEvent& Ev)
+{
+	if (!bReady) return;
+	const float RadiusCm = Settings->GunshotRadiusM * 100.0 * 1.5f; // panic radius slightly larger than gunshot
+	for (AOCPedestrian* P : Pool)
+	{
+		if (!P || P->SimId == INDEX_NONE) continue;
+		const FOCPedestrian* C = Sim.FindPed(P->SimId);
+		if (!C || C->State == EOCPedState::Dead) continue;
+		const double Dist = FVector::Dist2D(P->GetActorLocation(), Ev.Location);
+		if (Dist < RadiusCm)
+		{
+			// Panic: flee away from the crime location.
+			const FVector2D Away = (FVector2D(P->GetActorLocation().X, P->GetActorLocation().Y) - FVector2D(Ev.Location.X, Ev.Location.Y)).GetSafeNormal();
+			P->SetSimPose(P->GetActorLocation(), P->GetActorForwardVector(), 0.f);
+			// Mark the sim ped as fleeing by injecting a threat at the crime spot.
+			FOCThreat T;
+			T.Pos = FVector2D(Ev.Location.X, Ev.Location.Y);
+			T.RadiusCm = RadiusCm;
+			T.Weight = 1.f;
+			Sim.AddThreat(T);
+		}
 	}
 }
 

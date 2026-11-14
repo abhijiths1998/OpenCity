@@ -37,3 +37,9 @@ void UOCEventSubsystem::Publish(const FGameplayTag& Tag, const FVector& Location
 	UE_LOG(LogOpenCity, Verbose, TEXT("Event: %s at %s (severity %.2f)"), *Tag.ToString(),
 		*Location.ToCompactString(), Severity);
 }
+
+void UOCEventSubsystem::Subscribe(const FGameplayTag& Tag, TFunction<void(const FOCEvent&)> Handle)
+{
+	if (!Tag.IsValid()) return;
+	Listeners.FindOrAdd(Tag).Add(Handle);
+}

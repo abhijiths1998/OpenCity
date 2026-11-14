@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "Events/OCEventSubsystem.h"
 #include "Population/OCPopulationSettings.h"
 #include "Population/OCCrowdSim.h"
 #include "OCPopulationSubsystem.generated.h"
@@ -62,4 +63,8 @@ private:
 	/** Subsystem handles (queried lazily). */
 	TWeakObjectPtr<UOCTrafficSubsystem> Traffic;
 	TWeakObjectPtr<UOCWorldStateSubsystem> WorldState;
+	TWeakObjectPtr<UOCEventSubsystem> Events;
+
+	/** React to a crime event: nearby peds panic/flee. */
+	void OnCrimeEvent(const FOCEvent& Ev);
 };
