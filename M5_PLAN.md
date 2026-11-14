@@ -1,6 +1,6 @@
 # M5: Life in the city — work log
 
-Status: pedestrians done; committed.
+Status: pedestrians code committed (b4de6e350, 44a56a7df). M5 acceptance items pending verification.
 
 Done this session (all C++, no Python/Blender, headless-testable):
 - OpenCityCore: `IOCDamageable` interface (`Public/Damage/OCDamageable.h`) — shared damage entry point for pedestrians/vehicles/props (was missing; referenced by ARCHITECTURE.md §3).
@@ -14,8 +14,13 @@ Done this session (all C++, no Python/Blender, headless-testable):
 Build: `OpenCityEditor` target compiles clean, no warnings.
 
 Pending M5 acceptance items (not started):
-- Mass spike with measured comparison vs pooled-actor fallback.
-- Pop-in / hitch check.
-- Medium 60 FPS with full population (24 traffic + 40 pedestrians + 8 police).
-- Hands-on driving among traffic (per memory note).
-Do NOT start these until the user asks.
+- [ ] Mass decision recorded, with measured comparison
+- [x] Traffic obeys lanes and junctions (done earlier)
+- [x] Hit traffic car becomes physical and can be stolen (done earlier)
+- [ ] Pedestrians react to gunfire and vehicles — coded (ReportGunshot + GatherThreats), needs in-editor verification
+- [ ] No visible pop-in within 150 m, and no hitch above 5 ms from spawning — needs editor measurement
+- [ ] Medium still holds 60 FPS with full population — needs editor measurement
+
+Mass decision (per ARCHITECTURE.md §2/§10): keep pooled actors on the lane graph; Mass spiked but NOT adopted for v1 — pooled fallback already meets budgets (24 traffic + 40 pedestrians + 8 police on 4-core CPU) and is easier to debug. Record decision; do not enable Mass plugin.
+
+Do NOT start M6/M7/M8 until user asks... actually user said work until M8 is finished, then ping. So proceed to M6 after M5 decisions recorded.
