@@ -21,6 +21,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "OCLog.h"
+#include "Population/OCPopulationSubsystem.h"
 #include "Player/OCInteractionComponent.h"
 #include "TimerManager.h"
 #include "Vehicles/OCMotorbike.h"
@@ -355,6 +356,24 @@ namespace OCDev
 	FAutoConsoleCommandWithWorldAndArgs CmdGround(TEXT("oc.dev.ground"), TEXT("Log ground height at layout metres: X Y."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Ground));
 	FAutoConsoleCommandWithWorldAndArgs CmdRadio(TEXT("oc.dev.radio"), TEXT("Radio next (or 'prev')."), FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&Radio));
 
+	namespace OCDevPopulation
+	{
+		void Command(const TArray<FString>& Args, UWorld* World)
+		{
+			UOCPopulationSubsystem* P = World ? World->GetSubsystem<UOCPopulationSubsystem>() : nullptr;
+			if (!P) return;
+			const FString Verb = Args.Num() >= 1 ? Args[0] : FString();
+			if (Verb == TEXT("gunshot") && Args.Num() >= 3)
+			{
+				const FVector Loc(FCString::Atof(*Args[1]), FCString::Atof(*Args[2]), 0.f);
+				P->ReportGunshot(Loc);
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV population gunshot at %s"), *Loc.ToCompactString());
+			}
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV %s"), *P->DescribeStats());
+		}
+	}
+	FAutoConsoleCommandWithWorldAndArgs CmdPopulation(TEXT("oc.dev.population"), TEXT("Population: stats; gunshot X Y (makes every ped within GunshotRadiusM flee)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&OCDevPopulation::Command));
 	/** Runs -ocdevscript once, on the first tick of the first game world that has begun play. */
 	void StartScript(UWorld* World, const FString& Script)
 	{
