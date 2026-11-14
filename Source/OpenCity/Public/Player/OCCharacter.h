@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Player/OCLocomotion.h"
+#include "Combat/OCWeaponComponent.h"
 #include "OCCharacter.generated.h"
 
 class UAnimInstance;
@@ -65,6 +66,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "OpenCity|Interaction")
 	TObjectPtr<UOCInteractionComponent> Interaction;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "OpenCity|Combat")
+	TObjectPtr<UOCWeaponComponent> Weapon;
+
 	UPROPERTY(EditDefaultsOnly, Category = "OpenCity|Input")
 	TObjectPtr<UOCInputConfig> InputConfig;
 
@@ -99,6 +103,12 @@ private:
 	void HandleAimStopped(const FInputActionValue& Value);
 	void HandleSwapShoulder(const FInputActionValue& Value);
 	void HandleInteract(const FInputActionValue& Value);
+
+	/** Combat input. */
+	void HandleFireStarted(const FInputActionValue& Value);
+	void HandleFireStopped(const FInputActionValue& Value);
+	void HandleAimWeaponStarted(const FInputActionValue& Value);
+	void HandleAimWeaponStopped(const FInputActionValue& Value);
 
 	/** All input policy (toggles, cancels, buffered jump) lives here, in OpenCityCore. */
 	FOCLocomotionIntent Intent;

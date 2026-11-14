@@ -15,6 +15,7 @@
 #include "Player/OCCameraRigComponent.h"
 #include "Player/OCInteractionComponent.h"
 #include "Player/OCInputConfig.h"
+#include "Combat/OCWeaponComponent.h"
 
 AOCCharacter::AOCCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -57,6 +58,7 @@ AOCCharacter::AOCCharacter(const FObjectInitializer& ObjectInitializer)
 
 	CameraRig = CreateDefaultSubobject<UOCCameraRigComponent>(TEXT("CameraRig"));
 	Interaction = CreateDefaultSubobject<UOCInteractionComponent>(TEXT("Interaction"));
+	Weapon = CreateDefaultSubobject<UOCWeaponComponent>(TEXT("Weapon"));
 }
 
 void AOCCharacter::ApplyArt()
@@ -196,6 +198,16 @@ void AOCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	if (C.Interact)
 	{
 		Input->BindAction(C.Interact, ETriggerEvent::Started, this, &AOCCharacter::HandleInteract);
+	}
+	if (C.Fire)
+	{
+		Input->BindAction(C.Fire, ETriggerEvent::Started, this, &AOCCharacter::HandleFireStarted);
+		Input->BindAction(C.Fire, ETriggerEvent::Completed, this, &AOCCharacter::HandleFireStopped);
+	}
+	if (C.AimWeapon)
+	{
+		Input->BindAction(C.AimWeapon, ETriggerEvent::Started, this, &AOCCharacter::HandleAimWeaponStarted);
+		Input->BindAction(C.AimWeapon, ETriggerEvent::Completed, this, &AOCCharacter::HandleAimWeaponStopped);
 	}
 }
 
@@ -344,4 +356,36 @@ void AOCCharacter::HandleSwapShoulder(const FInputActionValue& Value)
 void AOCCharacter::HandleInteract(const FInputActionValue& Value)
 {
 	Interaction->TryInteract();
+}
+
+void AOCCharacter::HandleFireStarted(const FInputActionValue& Value)
+{
+	if (Weapon) Weapon->Fire();
+}
+
+void AOCCharacter::HandleFireStopped(const FInputActionValue& Value)
+{
+	if (Weapon) Weapon->StopFire();
+}
+
+void AOCCharacter::HandleAimWeaponStarted(const FInputActionValue& Value)
+{
+	if (Weapon) Weapon->SetAiming(true);
+	Intent.SetAim(true);
+	if (InputConfig)
+	{
+		AddMappingContext(InputConfig->AimingContext, InputConfig->AimingPriority);
+	}
+	UpdateLocomotion();
+}
+
+void AOCCharacter::HandleAimWeaponStopped(const FInputActionValue& Value)
+{
+	if (Weapon) Weapon->SetAiming(false);
+	Intent.SetAim(false);
+	if (InputConfig)
+	{
+		RemoveMappingContext(InputConfig->AimingContext);
+	}
+	UpdateLocomotion();
 }
