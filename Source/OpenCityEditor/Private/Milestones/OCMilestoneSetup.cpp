@@ -35,6 +35,7 @@
 #include "Vehicles/OCMotorbike.h"
 #include "Vehicles/OCVehicle.h"
 #include "Vehicles/OCVehicleData.h"
+#include "Missions/OCMissionData.h"
 
 namespace OCMilestone
 {
@@ -774,6 +775,57 @@ namespace OCMilestone
 		return true;
 	}
 
+	bool SetupM8()
+	{
+		const TCHAR* Tag = TEXT("oc_m8");
+		const FString Dir = TEXT("/Game/Missions");
+
+		// ---- Funerale (Mission 1): drive Beppe home from the cemetery.
+		// Opens Porto Vecchio.
+		UOCMissionData* Funerale = CastChecked<UOCMissionData>(OCEd::GetOrCreateDataAsset(TEXT("DA_Mission_Funerale"), Dir, UOCMissionData::StaticClass(), Tag));
+		Funerale->Modify();
+		Funerale->DisplayName = FText::FromString("Funerale");
+		Funerale->Description = FText::FromString("Drive Beppe home from the cemetery with a Salvi car behind you; lose it in the old town without drawing police attention.");
+		Funerale->CompletesMilestone = FGameplayTag::RequestGameplayTag(FName(TEXT("Story.Mission.Funerale")));
+		Funerale->UnlocksAreas = { FGameplayTag::RequestGameplayTag(FName(TEXT("Area.PortoVecchio"))) };
+		FOCMissionObjective Obj;
+		Obj.bRequired = true;
+		Funerale->Objectives = { Obj };
+		Funerale->CheckpointObjectiveIndex = 0;
+		OCEd::Save(Funerale);
+
+		// ---- Strada Costiera (Mission 5): chase a terminal driver along the coast road.
+		// Opens Le Colline.
+		UOCMissionData* StradaCostiera = CastChecked<UOCMissionData>(OCEd::GetOrCreateDataAsset(TEXT("DA_Mission_StradaCostiera"), Dir, UOCMissionData::StaticClass(), Tag));
+		StradaCostiera->Modify();
+		StradaCostiera->DisplayName = FText::FromString("Strada Costiera");
+		StradaCostiera->Description = FText::FromString("Chase a terminal driver who saw the arsonists, before he reaches Villa Salvi.");
+		StradaCostiera->CompletesMilestone = FGameplayTag::RequestGameplayTag(FName(TEXT("Story.Mission.StradaCostiera")));
+		StradaCostiera->UnlocksAreas = { FGameplayTag::RequestGameplayTag(FName(TEXT("Area.LeColline"))) };
+		FOCMissionObjective Obj2;
+		Obj2.bRequired = true;
+		StradaCostiera->Objectives = { Obj2 };
+		StradaCostiera->CheckpointObjectiveIndex = 0;
+		OCEd::Save(StradaCostiera);
+
+		// ---- La Fornace (Mission 7): shootout in the abandoned kiln.
+		// Opens Lungomare.
+		UOCMissionData* LaFornace = CastChecked<UOCMissionData>(OCEd::GetOrCreateDataAsset(TEXT("DA_Mission_LaFornace"), Dir, UOCMissionData::StaticClass(), Tag));
+		LaFornace->Modify();
+		LaFornace->DisplayName = FText::FromString("La Fornace");
+		LaFornace->Description = FText::FromString("Fight through Rocco's crew in the abandoned kiln. Rocco names Salvi and is shot by a sniper.");
+		LaFornace->CompletesMilestone = FGameplayTag::RequestGameplayTag(FName(TEXT("Story.Mission.LaFornace")));
+		LaFornace->UnlocksAreas = { FGameplayTag::RequestGameplayTag(FName(TEXT("Area.Lungomare"))) };
+		FOCMissionObjective Obj3;
+		Obj3.bRequired = true;
+		LaFornace->Objectives = { Obj3 };
+		LaFornace->CheckpointObjectiveIndex = 0;
+		OCEd::Save(LaFornace);
+
+		OCEd::Log(Tag, TEXT("authored 3 story mission DataAssets"));
+		return true;
+	}
+
 	bool VerifyM1()
 	{
 		FVerify V;
@@ -860,7 +912,7 @@ int32 UOCMilestoneCommandlet::Main(const FString& Params)
 	FString StepList;
 	if (!FParse::Value(*Params, TEXT("steps="), StepList, /*bShouldStopOnSeparator*/ false))
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("usage: -run=OCMilestone -steps=m0,m1,m2,verify-m1,verify-m2"));
+		UE_LOG(LogOpenCity, Error, TEXT("usage: -run=OCMilestone -steps=m0,m1,m2,m8,verify-m1,verify-m2"));
 		return 1;
 	}
 	TArray<FString> Steps;
@@ -871,6 +923,7 @@ int32 UOCMilestoneCommandlet::Main(const FString& Params)
 		if (Step == TEXT("m0")) { bOk = OCMilestone::SetupM0(); }
 		else if (Step == TEXT("m1")) { bOk = OCMilestone::SetupM1(); }
 		else if (Step == TEXT("m2")) { bOk = OCMilestone::SetupM2(); }
+		else if (Step == TEXT("m8")) { bOk = OCMilestone::SetupM8(); }
 		else if (Step == TEXT("verify-m1")) { bOk = OCMilestone::VerifyM1(); }
 		else if (Step == TEXT("verify-m2")) { bOk = OCMilestone::VerifyM2(); }
 		else { UE_LOG(LogOpenCity, Error, TEXT("OCMilestone: unknown step %s"), *Step); }
