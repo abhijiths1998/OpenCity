@@ -178,7 +178,9 @@ void UOCPopulationSubsystem::OnCrimeEvent(const FOCEvent& Ev)
 	if (Ev.Tag == OCEventTags::Murder()) Scale = 1.5;
 	else if (Ev.Tag == OCEventTags::Assault()) Scale = 0.6;
 	else Scale = 0.5 + FMath::Clamp(Ev.Severity, 0.f, 1.f);
-	AddThreat(Ev.Location, Settings->GunshotRadiusM * 100.0 * Scale, 1.f);
+	// Run from the attacker when known (a shot is fired where the shooter stands; a body lies where the victim fell).
+	const AActor* Who = Ev.Instigator.Get();
+	AddThreat(Who ? Who->GetActorLocation() : Ev.Location, Settings->GunshotRadiusM * 100.0 * Scale, 1.f);
 }
 
 bool UOCPopulationSubsystem::DamagePed(AOCPedestrian* Ped, float Amount, const FVector& Impulse, const AActor* Instigator)
@@ -203,7 +205,8 @@ bool UOCPopulationSubsystem::DamagePed(AOCPedestrian* Ped, float Amount, const F
 	}
 	else
 	{
-		AddThreat(At, Settings->ThreatRadiusM * 100.0, 1.f); // the victim runs
+		// The victim runs from whoever hurt it (a threat at its own feet has no direction to run).
+		AddThreat(Instigator ? Instigator->GetActorLocation() : At, Settings->ThreatRadiusM * 100.0 * 2.0, 1.f);
 		if (Events.IsValid())
 		{
 			Events->Publish(OCEventTags::Assault(), At, Instigator, 0.3f);
@@ -227,6 +230,16 @@ AOCPedestrian* UOCPopulationSubsystem::FindNearestPed(const FVector& Location, d
 		}
 	}
 	return Best;
+}
+
+TArray<AOCPedestrian*> UOCPopulationSubsystem::GetActivePeds() const
+{
+	TArray<AOCPedestrian*> Out;
+	for (AOCPedestrian* P : Pool)
+	{
+		if (P && P->SimId != INDEX_NONE && !P->IsDead()) Out.Add(P);
+	}
+	return Out;
 }
 
 void UOCPopulationSubsystem::KnockdownByPlayerVehicle()

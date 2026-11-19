@@ -49,6 +49,9 @@ public:
 	/** The nearest live, active ped to Location within MaxDistCm (dev commands, tests). */
 	AOCPedestrian* FindNearestPed(const FVector& Location, double MaxDistCm) const;
 
+	/** Live, active peds (dev commands). */
+	TArray<AOCPedestrian*> GetActivePeds() const;
+
 private:
 	void Populate(const FVector& View, const FVector& ViewDir);
 	void PlacePeds(double SinceStep);

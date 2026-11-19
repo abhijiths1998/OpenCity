@@ -474,8 +474,40 @@ namespace OCDev
 		{
 			// Turn the player's view onto the nearest live pedestrian (scripted shooting tests).
 			UOCPopulationSubsystem* Pop = World->GetSubsystem<UOCPopulationSubsystem>();
-			AOCPedestrian* Ped = Pop ? Pop->FindNearestPed(P->GetActorLocation(), 5000.0) : nullptr;
 			APlayerController* PC = World->GetFirstPlayerController();
+			// The nearest ped within 50 m that the camera can actually see (no building in between).
+			AOCPedestrian* Ped = nullptr;
+			if (Pop && PC)
+			{
+				FVector ViewLoc;
+				FRotator ViewRot;
+				PC->GetPlayerViewPoint(ViewLoc, ViewRot);
+				double Best = 5000.0;
+				FCollisionQueryParams Q(SCENE_QUERY_STAT(OCDevAim), false, P);
+				FCollisionObjectQueryParams Objects(ECC_WorldStatic);
+				Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+				for (AOCPedestrian* Cand : Pop->GetActivePeds())
+				{
+					const double D = FVector::Dist(Cand->GetActorLocation(), P->GetActorLocation());
+					FHitResult Block;
+					if (D < Best && !World->LineTraceSingleByObjectType(Block, ViewLoc, Cand->GetActorLocation(), Objects, Q)
+						&& !World->LineTraceSingleByObjectType(Block, P->GetPawnViewLocation(), Cand->GetActorLocation(), Objects, Q))
+					{
+						Best = D;
+						Ped = Cand;
+					}
+				}
+				if (!Ped)
+				{
+					// Nobody in sight: step up to 6 m from the nearest ped (scripted tests need a clear shot).
+					if (AOCPedestrian* Near = Pop->FindNearestPed(P->GetActorLocation(), 30000.0))
+					{
+						const FVector Away = (P->GetActorLocation() - Near->GetActorLocation()).GetSafeNormal2D();
+						P->SetActorLocation(Near->GetActorLocation() + Away * 600.0 + FVector(0.0, 0.0, 60.0), false, nullptr, ETeleportType::TeleportPhysics);
+						Ped = Near;
+					}
+				}
+			}
 			if (Ped && PC)
 			{
 				// The camera orbits as the view turns, so re-aim over a few frames until its line passes through the ped.
