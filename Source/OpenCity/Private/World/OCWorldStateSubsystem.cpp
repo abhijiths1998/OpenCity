@@ -249,7 +249,7 @@ void UOCWorldStateSubsystem::Apply()
 		const float Bearing = Sun.AzimuthDeg(Hour) + (bDay ? 0.f : 180.f);
 		// Compass bearing to Unreal yaw: light travels away from the sun (bearing + 180); east = yaw 0.
 		Light->SetActorRotation(FRotator(-Up, Bearing + 90.f + S->SunPathYawOffset, 0.f));
-		UDirectionalLightComponent* C = Light->GetComponent();
+		ULightComponent* C = Light->GetLightComponent();
 		const float Low = FMath::SmoothStep(0.f, 25.f, Elevation);
 		C->SetLightColor(bDay ? FMath::Lerp(S->LowSunColor, S->NoonColor, Low) : FLinearColor(0.55f, 0.65f, 1.f));
 		C->SetIntensity((bDay ? S->SunIntensity * FMath::SmoothStep(-1.f, 6.f, Elevation) : 0.12f) * Current.Sun);

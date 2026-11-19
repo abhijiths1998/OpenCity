@@ -46,8 +46,8 @@ case "$BUILD" in
     PRESET="first-run/saved"
     # Shipping ignores a map on the command line (UE_ALLOW_MAP_OVERRIDE_IN_SHIPPING=0 in the
     # prebuilt engine), so it always loads the default map.
-    if [[ "$MAP" != "L_PerfBaseline" ]]; then
-      echo "error: Shipping always loads the default map (L_PerfBaseline); use OC_PERF_BUILD=dev for $MAP" >&2
+    if [[ "$MAP" != "L_Marevia" ]]; then
+      echo "error: Shipping always loads the default map (L_Marevia); use OC_PERF_BUILD=dev for $MAP" >&2
       exit 1
     fi ;;
   *) echo "error: OC_PERF_BUILD must be editor, dev or shipping" >&2; exit 1 ;;
