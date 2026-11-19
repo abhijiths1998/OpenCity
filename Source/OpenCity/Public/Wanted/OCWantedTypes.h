@@ -34,7 +34,7 @@ struct OPENCITY_API FOCSearchZone
 	GENERATED_BODY()
 
 	UPROPERTY()
-	FVector Center;           // zone centre (world cm)
+	FVector Center = FVector::ZeroVector; // zone centre (world cm)
 
 	UPROPERTY()
 	float RadiusCm = 0.f;     // zone radius

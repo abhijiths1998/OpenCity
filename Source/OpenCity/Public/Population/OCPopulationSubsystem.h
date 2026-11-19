@@ -9,16 +9,20 @@
 
 class AOCPedestrian;
 class UOCTrafficSubsystem;
-class UOCWorldStateSubsystem;
 class FOCLaneGraph;
 
 /**
  * Pedestrians around the player (M5): a fixed pool of AOCPedestrian actors allocated at load,
- * driven by the headless crowd sim at ~4 Hz. Peds flee threats (moving vehicles, gunshots)
- * and wander idly otherwise. Spawned only outside view and beyond 150 m, despawned beyond 250 m
- * — no pop-in, no per-frame AI, no play-time spawning (ARCHITECTURE.md section 8).
+ * driven by the headless crowd sim at AiRateHz. Between AI steps each ped is extrapolated along
+ * its heading so movement is smooth, and its feet follow the ground with one short trace a frame.
+ * Peds flee threats (moving traffic, Event.Crime.Gunshot / Murder / Assault) and wander otherwise.
+ * Spawned only outside view and beyond 150 m, despawned beyond 250 m — no pop-in, no per-frame
+ * AI, no play-time spawning (ARCHITECTURE.md section 8).
  *
- * Console: oc.population.Enabled, oc.population.Budget. Dev: oc.dev.population (stats|view|gunshot X Y).
+ * Damage: AOCPedestrian forwards IOCDamageable hits here; health lives in the sim. The player's
+ * vehicle knocks peds down when it reaches them above VehicleKnockdownKmh.
+ *
+ * Console: oc.population.Enabled, oc.population.Budget. Dev: oc.dev.population (stats | gunshot X Y).
  */
 UCLASS()
 class OPENCITY_API UOCPopulationSubsystem : public UTickableWorldSubsystem
@@ -36,35 +40,40 @@ public:
 	int32 GetBudget() const;
 	FString DescribeStats() const;
 
-	/** Report a gunshot at WorldLocation so every nearby ped flees (called by weapons/deaths). */
+	/** Make every ped near Location (world cm) flee, as if a shot was fired there. */
 	void ReportGunshot(const FVector& Location);
+
+	/** Damage a ped through the sim (from AOCPedestrian::ApplyDamage). Amount is in hit points. */
+	bool DamagePed(AOCPedestrian* Ped, float Amount, const FVector& Impulse, const AActor* Instigator);
+
+	/** The nearest live, active ped to Location within MaxDistCm (dev commands, tests). */
+	AOCPedestrian* FindNearestPed(const FVector& Location, double MaxDistCm) const;
 
 private:
 	void Populate(const FVector& View, const FVector& ViewDir);
-	void PlacePeds(float DeltaTime);
-	void GatherThreats(const FVector& View);
+	void PlacePeds(double SinceStep);
+	void GatherThreats();
+	void KnockdownByPlayerVehicle();
+	void AddThreat(const FVector& Location, double RadiusCm, float Weight);
 	bool InView(const FVector& At, const FVector& View, const FVector& ViewDir) const;
-	bool GroundAt(const FVector& At, FVector& OutGround) const;
+	bool GroundAt(const FVector& At, double UpCm, double DownCm, FVector& OutGround) const;
 	void Release(int32 Index);
+	void OnCrimeEvent(const FOCEvent& Ev);
 
 	FOCCrowdSim Sim;
-	const FOCLaneGraph* Lanes = nullptr;   // ground heights for lane walking (optional, traffic lanes)
+	const FOCLaneGraph* Lanes = nullptr;   // spawn points (traffic lanes)
 	FRandomStream Rng;
 	bool bReady = false;
-	float AiIn = 0.f;
-	int32 Spawned = 0, Despawned = 0;
+	double AiIn = 0.0;        // seconds until the next AI step
+	double SinceStep = 0.0;   // seconds since the last AI step (extrapolation)
+	int32 Spawned = 0, Despawned = 0, Killed = 0;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<AOCPedestrian>> Pool;
 
-	/** Developer settings (global, not GC-tracked). */
-	UOCPopulationSettings* Settings = nullptr;
+	/** Developer settings (class default object, lives for the whole run). */
+	const UOCPopulationSettings* Settings = nullptr;
 
-	/** Subsystem handles (queried lazily). */
 	TWeakObjectPtr<UOCTrafficSubsystem> Traffic;
-	TWeakObjectPtr<UOCWorldStateSubsystem> WorldState;
 	TWeakObjectPtr<UOCEventSubsystem> Events;
-
-	/** React to a crime event: nearby peds panic/flee. */
-	void OnCrimeEvent(const FOCEvent& Ev);
 };

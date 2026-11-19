@@ -138,6 +138,11 @@ void AOCCharacter::UnPossessed()
 	}
 	// Don't keep running or aiming without a driver.
 	Intent.Reset();
+	if (Weapon)
+	{
+		Weapon->StopFire();
+		Weapon->SetAiming(false);
+	}
 	UpdateLocomotion();
 	Super::UnPossessed();
 }
@@ -203,11 +208,7 @@ void AOCCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(C.Fire, ETriggerEvent::Started, this, &AOCCharacter::HandleFireStarted);
 		Input->BindAction(C.Fire, ETriggerEvent::Completed, this, &AOCCharacter::HandleFireStopped);
-	}
-	if (C.AimWeapon)
-	{
-		Input->BindAction(C.AimWeapon, ETriggerEvent::Started, this, &AOCCharacter::HandleAimWeaponStarted);
-		Input->BindAction(C.AimWeapon, ETriggerEvent::Completed, this, &AOCCharacter::HandleAimWeaponStopped);
+		Input->BindAction(C.Fire, ETriggerEvent::Canceled, this, &AOCCharacter::HandleFireStopped);
 	}
 }
 
@@ -331,6 +332,7 @@ void AOCCharacter::HandleCrouch(const FInputActionValue& Value)
 void AOCCharacter::HandleAimStarted(const FInputActionValue& Value)
 {
 	Intent.SetAim(true);
+	if (Weapon) Weapon->SetAiming(true);
 	if (InputConfig)
 	{
 		AddMappingContext(InputConfig->AimingContext, InputConfig->AimingPriority);
@@ -341,6 +343,7 @@ void AOCCharacter::HandleAimStarted(const FInputActionValue& Value)
 void AOCCharacter::HandleAimStopped(const FInputActionValue& Value)
 {
 	Intent.SetAim(false);
+	if (Weapon) Weapon->SetAiming(false);
 	if (InputConfig)
 	{
 		RemoveMappingContext(InputConfig->AimingContext);
@@ -368,24 +371,3 @@ void AOCCharacter::HandleFireStopped(const FInputActionValue& Value)
 	if (Weapon) Weapon->StopFire();
 }
 
-void AOCCharacter::HandleAimWeaponStarted(const FInputActionValue& Value)
-{
-	if (Weapon) Weapon->SetAiming(true);
-	Intent.SetAim(true);
-	if (InputConfig)
-	{
-		AddMappingContext(InputConfig->AimingContext, InputConfig->AimingPriority);
-	}
-	UpdateLocomotion();
-}
-
-void AOCCharacter::HandleAimWeaponStopped(const FInputActionValue& Value)
-{
-	if (Weapon) Weapon->SetAiming(false);
-	Intent.SetAim(false);
-	if (InputConfig)
-	{
-		RemoveMappingContext(InputConfig->AimingContext);
-	}
-	UpdateLocomotion();
-}

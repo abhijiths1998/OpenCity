@@ -1,4 +1,5 @@
 #include "Misc/AutomationTest.h"
+#include "Combat/OCAmmo.h"
 #include "Population/OCCrowdSim.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -12,40 +13,43 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FOCOCAmmoRulesTest, "OpenCity.Core.Combat.Weapo
 
 bool FOCOCAmmoRulesTest::RunTest(const FString& Parameters)
 {
-	// Ammo bookkeeping: fire consumes magazine; reload refills up to magazine size from reserve.
-	const int32 MagazineSize = 12;
-	const int32 PerShot = 1;
+	FOCAmmo Ammo;
+	Ammo.Equip(12, 1, 24);
+	TestEqual(TEXT("Equip fills the magazine"), Ammo.InMagazine, 12);
+	TestEqual(TEXT("Equip sets the reserve"), Ammo.Reserve, 24);
+	TestFalse(TEXT("Full magazine cannot reload"), Ammo.CanReload());
 
-	int32 Magazine = MagazineSize;
-	int32 Reserve = 24;
-
-	// Fire 5 shots: magazine drops, reserve untouched.
 	for (int32 s = 0; s < 5; ++s)
 	{
-		Magazine -= PerShot;
+		TestTrue(TEXT("Shot consumed"), Ammo.Consume());
 	}
-	TestTrue(TEXT("Magazine after 5 shots"), Magazine == 7);
-	TestTrue(TEXT("Reserve untouched by firing"), Reserve == 24);
+	TestEqual(TEXT("Magazine after 5 shots"), Ammo.InMagazine, 7);
+	TestEqual(TEXT("Reserve untouched by firing"), Ammo.Reserve, 24);
 
-	// Fire until empty: magazine reaches 0.
-	Magazine = 0;
-	TestTrue(TEXT("Magazine empty after emptying"), Magazine == 0);
+	while (Ammo.Consume()) {}
+	TestEqual(TEXT("Magazine empty"), Ammo.InMagazine, 0);
+	TestFalse(TEXT("Empty magazine cannot fire"), Ammo.CanFire());
+	TestFalse(TEXT("Consume on empty spends nothing"), Ammo.Consume());
 
-	// Reload: refill up to magazine size from reserve.
-	const int32 Needed = MagazineSize - Magazine;
-	const int32 ToAdd = FMath::Min(Needed, Reserve);
-	Magazine += ToAdd;
-	Reserve -= ToAdd;
-	TestTrue(TEXT("Magazine full after reload"), Magazine == MagazineSize);
-	TestTrue(TEXT("Reserve reduced by reload"), Reserve == 24 - MagazineSize);
+	TestEqual(TEXT("Reload moves a full magazine"), Ammo.Reload(), 12);
+	TestEqual(TEXT("Reserve reduced by reload"), Ammo.Reserve, 12);
+	TestEqual(TEXT("Reload when full moves nothing"), Ammo.Reload(), 0);
 
-	// Reload when already full: no change.
-	const int32 BeforeMag = Magazine, BeforeRes = Reserve;
-	const int32 NeededFull = MagazineSize - Magazine;
-	const int32 ToAddFull = FMath::Min(NeededFull, Reserve);
-	TestTrue(TEXT("No ammo added when full"), ToAddFull == 0);
-	TestTrue(TEXT("Magazine unchanged when full"), Magazine == BeforeMag);
-	TestTrue(TEXT("Reserve unchanged when full"), Reserve == BeforeRes);
+	// Partial reserve: the last reload only tops up what is left.
+	Ammo.Equip(12, 1, 5);
+	for (int32 s = 0; s < 8; ++s) { Ammo.Consume(); }
+	TestEqual(TEXT("Partial reload moves the whole reserve"), Ammo.Reload(), 5);
+	TestEqual(TEXT("Magazine after partial reload"), Ammo.InMagazine, 9);
+	TestFalse(TEXT("No reserve, no reload"), Ammo.CanReload());
+
+	// Multi-round shots (e.g. a shotgun) need the full cost in the magazine.
+	Ammo.Equip(3, 2, 0);
+	TestTrue(TEXT("First 2-round shot"), Ammo.Consume());
+	TestFalse(TEXT("1 round left cannot pay a 2-round shot"), Ammo.Consume());
+	TestEqual(TEXT("Failed shot spends nothing"), Ammo.InMagazine, 1);
+
+	Ammo.AddReserve(500, 120);
+	TestEqual(TEXT("Reserve capped by MaxReserve"), Ammo.Reserve, 120);
 	return true;
 }
 
@@ -53,7 +57,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FOCOCDamageThroughCrowdSimTest, "OpenCity.Core.
 
 bool FOCOCDamageThroughCrowdSimTest::RunTest(const FString& Parameters)
 {
-	// Verify that applying damage through the crowd sim (the IOCDamageable path weapons use)
+	// Applying damage through the crowd sim (what AOCPedestrian::ApplyDamage forwards to)
 	// reduces health, kills at zero, and stops taking damage when dead.
 	FOCCrowdSim Sim;
 	FRandomStream Rng(11);

@@ -46,5 +46,17 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Threats", meta = (Units = "m"))
 	float GunshotRadiusM = 25.f;
 
+	/** Hit points of a pedestrian (weapon damage is in the same units). */
+	UPROPERTY(Config, EditAnywhere, Category = "Damage", meta = (ClampMin = "1"))
+	float PedestrianHealth = 100.f;
+
+	/** A vehicle driven by the player knocks a ped down above this speed (km/h). */
+	UPROPERTY(Config, EditAnywhere, Category = "Damage", meta = (ClampMin = "0", Units = "km/h"))
+	float VehicleKnockdownKmh = 12.f;
+
+	/** Bodies out of view go back to the pool after this long (s). */
+	UPROPERTY(Config, EditAnywhere, Category = "Damage", meta = (ClampMin = "0", Units = "s"))
+	float CorpseSeconds = 30.f;
+
 	virtual FName GetCategoryName() const override { return TEXT("Game"); }
 };

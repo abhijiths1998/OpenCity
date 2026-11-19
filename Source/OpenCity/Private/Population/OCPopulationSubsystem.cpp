@@ -1,24 +1,29 @@
 #include "Population/OCPopulationSubsystem.h"
 
-#include "Components/CapsuleComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
-#include "GameplayTags.h"
 #include "HAL/IConsoleManager.h"
 #include "OCLog.h"
 #include "Population/OCPedestrian.h"
 #include "Progression/OCProgressionSubsystem.h"
+#include "Scalability.h"
 #include "Traffic/OCTrafficSubsystem.h"
 #include "World/OCLaneGraph.h"
 #include "World/OCRoadGraphAsset.h"
-#include "World/OCWorldStateSubsystem.h"
 
 namespace OCPopulationCVars
 {
 	TAutoConsoleVariable<int32> Enabled(TEXT("oc.population.Enabled"), 1, TEXT("Pedestrians around the player (M5): 1 on, 0 off."));
 	TAutoConsoleVariable<int32> Budget(TEXT("oc.population.Budget"), -1, TEXT("Peds: -1 = by scalability (OpenCity Population settings), else this many."));
 	constexpr int32 MaxPool = 96;
+	const FVector PoolLocation(0.0, 0.0, -20000.0);
+	// Feet follow the ground: look this far above / below the last foot height (walkable steps and kerbs).
+	constexpr double StepUpCm = 150.0;
+	constexpr double StepDownCm = 600.0;
 }
 
 bool UOCPopulationSubsystem::ShouldCreateSubsystem(UObject* Outer) const
@@ -30,11 +35,9 @@ bool UOCPopulationSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 void UOCPopulationSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
-	const UOCPopulationSettings* const Defaults = GetDefault<UOCPopulationSettings>();
-	Settings = const_cast<UOCPopulationSettings*>(Defaults);
+	Settings = GetDefault<UOCPopulationSettings>();
 	if (!Settings) return;
 
-	// Wire the crowd sim to the settings' threat parameters.
 	FOCCrowdSim::FParams SimParams;
 	SimParams.ThreatRadiusCm = Settings->ThreatRadiusM * 100.0;
 	SimParams.FleeDurationS = Settings->FleeDurationS;
@@ -48,45 +51,42 @@ void UOCPopulationSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	const int32 PoolSize = FMath::Min(OCPopulationCVars::MaxPool, Settings->MediumBudget * 2);
 	for (int32 i = 0; i < PoolSize; ++i)
 	{
-		AOCPedestrian* P = InWorld.SpawnActor<AOCPedestrian>(FVector(0.0, 0.0, -20000.0), FRotator::ZeroRotator, Params);
+		AOCPedestrian* P = InWorld.SpawnActor<AOCPedestrian>(OCPopulationCVars::PoolLocation, FRotator::ZeroRotator, Params);
 		if (P)
 		{
-			P->SetPooled(FTransform(FVector(0.0, 0.0, -20000.0)));
+			P->SetPooled(FTransform(OCPopulationCVars::PoolLocation));
 			Pool.Add(P);
 		}
 	}
 	bReady = !Pool.IsEmpty();
 
-	// World subsystems: query from the world (traffic, world state, events).
-	UWorld* W = GetWorld();
-	if (W)
+	Traffic = InWorld.GetSubsystem<UOCTrafficSubsystem>();
+	Events = InWorld.GetSubsystem<UOCEventSubsystem>();
+	if (Events.IsValid())
 	{
-		Traffic = W->GetSubsystem<UOCTrafficSubsystem>();
-		WorldState = W->GetSubsystem<UOCWorldStateSubsystem>();
-		Events = W->GetSubsystem<UOCEventSubsystem>();
-		if (Events.IsValid())
+		for (const FGameplayTag& Tag : { OCEventTags::Gunshot(), OCEventTags::Murder(), OCEventTags::Assault() })
 		{
-			Events->Subscribe(FGameplayTag::RequestGameplayTag(FName(TEXT("Event.Crime.Gunshot"))),
-				[this](const FOCEvent& Ev) { OnCrimeEvent(Ev); });
-			Events->Subscribe(FGameplayTag::RequestGameplayTag(FName(TEXT("Event.Crime.Murder"))),
-				[this](const FOCEvent& Ev) { OnCrimeEvent(Ev); });
+			Events->Subscribe(Tag, this, [this](const FOCEvent& Ev) { OnCrimeEvent(Ev); });
 		}
-		if (const UGameInstance* GI = W->GetGameInstance())
+	}
+	if (const UGameInstance* GI = InWorld.GetGameInstance())
+	{
+		if (const UOCProgressionSubsystem* Prog = GI->GetSubsystem<UOCProgressionSubsystem>())
 		{
-			if (const UOCProgressionSubsystem* Prog = GI->GetSubsystem<UOCProgressionSubsystem>())
+			if (const UOCRoadGraphAsset* Asset = Prog->GetRoadGraphAsset())
 			{
-				if (const UOCRoadGraphAsset* Asset = Prog->GetRoadGraphAsset())
-				{
-					Lanes = &Asset->GetLanes();
-				}
+				Lanes = &Asset->GetLanes();
 			}
 		}
 	}
 }
 
-
 void UOCPopulationSubsystem::Deinitialize()
 {
+	if (Events.IsValid())
+	{
+		Events->Unsubscribe(this);
+	}
 	bReady = false;
 	Pool.Reset();
 	Sim.Reset();
@@ -100,7 +100,7 @@ TStatId UOCPopulationSubsystem::GetStatId() const
 
 int32 UOCPopulationSubsystem::GetBudget() const
 {
-	if (OCPopulationCVars::Enabled.GetValueOnGameThread() == 0)
+	if (!Settings || OCPopulationCVars::Enabled.GetValueOnGameThread() == 0)
 	{
 		return 0;
 	}
@@ -124,47 +124,139 @@ void UOCPopulationSubsystem::Tick(float DeltaTime)
 	const FVector View = PC->PlayerCameraManager->GetCameraLocation();
 	const FVector ViewDir = PC->PlayerCameraManager->GetCameraRotation().Vector();
 
+	// AI at a fixed rate; in between, actors are extrapolated (no per-frame AI).
+	const double AiDt = 1.0 / FMath::Max(Settings->AiRateHz, 1.f);
 	AiIn -= DeltaTime;
-	if (AiIn <= 0.f)
+	SinceStep += DeltaTime;
+	if (AiIn <= 0.0)
 	{
-		const float AiDt = 1.0f / FMath::Max(Settings->AiRateHz, 1.f);
-		GatherThreats(View);
+		AiIn = FMath::Max(AiIn + AiDt, 0.0); // a long hitch runs one step, not a burst
+		GatherThreats();
 		Sim.Step(AiDt, World->GetTimeSeconds(), Rng);
+		SinceStep = 0.0;
 	}
 
-	PlacePeds(DeltaTime);
+	KnockdownByPlayerVehicle();
+	PlacePeds(FMath::Min(SinceStep, AiDt));
 	Populate(View, ViewDir);
 }
 
 FString UOCPopulationSubsystem::DescribeStats() const
 {
-	int32 Active = 0, Fleeing = 0;
+	int32 Active = 0, Fleeing = 0, Dead = 0;
 	for (const AOCPedestrian* P : Pool)
 	{
 		if (!P || P->SimId == INDEX_NONE) continue;
 		++Active;
 		if (P->GetState() == EOCPedState::Flee) ++Fleeing;
+		if (P->IsDead()) ++Dead;
 	}
-	return FString::Printf(TEXT("population: %d active (budget %d, pool %d), %d fleeing; spawned %d, despawned %d"),
-		Active, GetBudget(), Pool.Num(), Fleeing, Spawned, Despawned);
+	return FString::Printf(TEXT("population: %d active (budget %d, pool %d), %d fleeing, %d dead; spawned %d, despawned %d, killed %d"),
+		Active, GetBudget(), Pool.Num(), Fleeing, Dead, Spawned, Despawned, Killed);
+}
+
+void UOCPopulationSubsystem::AddThreat(const FVector& Location, double RadiusCm, float Weight)
+{
+	FOCThreat T;
+	T.Pos = FVector2D(Location.X, Location.Y);
+	T.RadiusCm = RadiusCm;
+	T.Weight = Weight;
+	Sim.AddThreat(T); // consumed by the next Step
 }
 
 void UOCPopulationSubsystem::ReportGunshot(const FVector& Location)
 {
 	if (!bReady) return;
-	const FVector2D Shot(Location.X, Location.Y);
-	FOCThreat T;
-	T.Pos = Shot;
-	T.RadiusCm = Settings->GunshotRadiusM * 100.0;
-	T.Weight = 1.f;
-	Sim.AddThreat(T);
+	AddThreat(Location, Settings->GunshotRadiusM * 100.0, 1.f);
+}
+
+void UOCPopulationSubsystem::OnCrimeEvent(const FOCEvent& Ev)
+{
+	if (!bReady) return;
+	// A killing is heard further than a shot; a scuffle less far. Louder weapons carry further.
+	double Scale = 1.0;
+	if (Ev.Tag == OCEventTags::Murder()) Scale = 1.5;
+	else if (Ev.Tag == OCEventTags::Assault()) Scale = 0.6;
+	else Scale = 0.5 + FMath::Clamp(Ev.Severity, 0.f, 1.f);
+	AddThreat(Ev.Location, Settings->GunshotRadiusM * 100.0 * Scale, 1.f);
+}
+
+bool UOCPopulationSubsystem::DamagePed(AOCPedestrian* Ped, float Amount, const FVector& Impulse, const AActor* Instigator)
+{
+	if (!bReady || !Ped || Ped->SimId == INDEX_NONE || Ped->IsDead() || Amount <= 0.f) return false;
+	const float Fraction = Amount / FMath::Max(Settings->PedestrianHealth, 1.f);
+	if (!Sim.Damage(Ped->SimId, Fraction)) return false;
+
+	const FOCPedestrian* C = Sim.FindPed(Ped->SimId);
+	Ped->SetHealthFraction(C ? C->Health : 0.f);
+	UWorld* World = GetWorld();
+	const FVector At = Ped->GetActorLocation();
+	if (!C || C->Health <= 0.f)
+	{
+		Ped->Die(World ? World->GetTimeSeconds() : 0.0);
+		++Killed;
+		UE_LOG(LogOpenCity, Log, TEXT("Population: %s killed by %s"), *Ped->GetName(), *GetNameSafe(Instigator));
+		if (Events.IsValid())
+		{
+			Events->Publish(OCEventTags::Murder(), At, Instigator, 1.f);
+		}
+	}
+	else
+	{
+		AddThreat(At, Settings->ThreatRadiusM * 100.0, 1.f); // the victim runs
+		if (Events.IsValid())
+		{
+			Events->Publish(OCEventTags::Assault(), At, Instigator, 0.3f);
+		}
+	}
+	return true;
+}
+
+AOCPedestrian* UOCPopulationSubsystem::FindNearestPed(const FVector& Location, double MaxDistCm) const
+{
+	AOCPedestrian* Best = nullptr;
+	double BestSq = FMath::Square(MaxDistCm);
 	for (AOCPedestrian* P : Pool)
 	{
-		if (!P || P->SimId == INDEX_NONE) continue;
-				const FVector2D At(P->SimLocation().X, P->SimLocation().Y);
-		if (FVector2D::DistSquared(At, Shot) < FMath::Square(Settings->GunshotRadiusM * 100.0))
+		if (!P || P->SimId == INDEX_NONE || P->IsDead()) continue;
+		const double DSq = FVector::DistSquared(P->GetActorLocation(), Location);
+		if (DSq < BestSq)
 		{
-			P->SetSimPose(P->SimLocation(), P->GetActorForwardVector(), 0.0);
+			BestSq = DSq;
+			Best = P;
+		}
+	}
+	return Best;
+}
+
+void UOCPopulationSubsystem::KnockdownByPlayerVehicle()
+{
+	// The player's car: any live ped inside its box (plus a little) above walking pace goes down.
+	const UWorld* World = GetWorld();
+	const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (!Pawn || Pawn->IsA<ACharacter>()) return;
+
+	const FVector Vel = Pawn->GetVelocity();
+	const double Kmh = Vel.Size() * 0.036;
+	if (Kmh < Settings->VehicleKnockdownKmh) return;
+
+	const FBox Local = Pawn->CalculateComponentsBoundingBoxInLocalSpace(/*bNonColliding*/ false);
+	if (!Local.IsValid) return;
+	const FTransform& Xf = Pawn->GetActorTransform();
+	const FVector Pad(40.0, 40.0, 50.0);
+	const double ReachSq = FMath::Square(Local.GetExtent().Size() + 300.0);
+	for (AOCPedestrian* P : Pool)
+	{
+		if (!P || P->SimId == INDEX_NONE || P->IsDead()) continue;
+		const FVector At = P->GetActorLocation();
+		if (FVector::DistSquared(At, Xf.GetLocation()) > ReachSq) continue;
+		const FVector L = Xf.InverseTransformPosition(At);
+		if (Local.ExpandBy(Pad).IsInside(L))
+		{
+			// Lethal from about 40 km/h; a bump at low speed hurts.
+			const float Damage = Settings->PedestrianHealth * FMath::Clamp((float)(Kmh / 40.0), 0.25f, 2.f);
+			DamagePed(P, Damage, Vel, Pawn);
 		}
 	}
 }
@@ -176,11 +268,13 @@ bool UOCPopulationSubsystem::InView(const FVector& At, const FVector& View, cons
 	return Dist < 1.0 || FVector::DotProduct(To / Dist, ViewDir) > FMath::Cos(FMath::DegreesToRadians(60.0));
 }
 
-bool UOCPopulationSubsystem::GroundAt(const FVector& At, FVector& OutGround) const
+bool UOCPopulationSubsystem::GroundAt(const FVector& At, double UpCm, double DownCm, FVector& OutGround) const
 {
 	FHitResult Hit;
-	FCollisionObjectQueryParams Objects(ECC_WorldStatic);
-	if (GetWorld()->LineTraceSingleByObjectType(Hit, At + FVector(0.0, 0.0, 400.0), At - FVector(0.0, 0.0, 800.0), Objects))
+	const FCollisionObjectQueryParams Objects(ECC_WorldStatic);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(OCPedGround), false);
+	if (GetWorld()->LineTraceSingleByObjectType(Hit, At + FVector(0.0, 0.0, UpCm), At - FVector(0.0, 0.0, DownCm), Objects, Params)
+		&& !Hit.bStartPenetrating)
 	{
 		OutGround = Hit.ImpactPoint;
 		return true;
@@ -194,59 +288,35 @@ void UOCPopulationSubsystem::Release(int32 Index)
 	if (P && P->SimId != INDEX_NONE)
 	{
 		Sim.Remove(P->SimId);
-		P->SetPooled(FTransform(FVector(0.0, 0.0, -20000.0)));
+		P->SetPooled(FTransform(OCPopulationCVars::PoolLocation));
 		++Despawned;
 	}
 }
 
-void UOCPopulationSubsystem::OnCrimeEvent(const FOCEvent& Ev)
-{
-	if (!bReady) return;
-	const float RadiusCm = Settings->GunshotRadiusM * 100.0 * 1.5f; // panic radius slightly larger than gunshot
-	for (AOCPedestrian* P : Pool)
-	{
-		if (!P || P->SimId == INDEX_NONE) continue;
-		const FOCPedestrian* C = Sim.FindPed(P->SimId);
-		if (!C || C->State == EOCPedState::Dead) continue;
-		const double Dist = FVector::Dist2D(P->GetActorLocation(), Ev.Location);
-		if (Dist < RadiusCm)
-		{
-			// Panic: flee away from the crime location.
-			const FVector2D Away = (FVector2D(P->GetActorLocation().X, P->GetActorLocation().Y) - FVector2D(Ev.Location.X, Ev.Location.Y)).GetSafeNormal();
-			P->SetSimPose(P->GetActorLocation(), P->GetActorForwardVector(), 0.f);
-			// Mark the sim ped as fleeing by injecting a threat at the crime spot.
-			FOCThreat T;
-			T.Pos = FVector2D(Ev.Location.X, Ev.Location.Y);
-			T.RadiusCm = RadiusCm;
-			T.Weight = 1.f;
-			Sim.AddThreat(T);
-		}
-	}
-}
-
-void UOCPopulationSubsystem::PlacePeds(float DeltaTime)
+void UOCPopulationSubsystem::PlacePeds(double Ahead)
 {
 	for (AOCPedestrian* P : Pool)
 	{
 		if (!P || P->SimId == INDEX_NONE) continue;
 		const FOCPedestrian* C = Sim.FindPed(P->SimId);
-		if (!C)
-		{
-			P->SetPooled(FTransform(FVector(0.0, 0.0, -20000.0)));
-			continue;
-		}
+		if (!C) continue; // Populate releases it
+		P->SetState(C->State);
+		// Extrapolate from the last AI step along the heading so walking is smooth, not 4 Hz hops.
+		const FVector2D Pos = C->Pos + C->Dir * (C->Speed * Ahead);
+		const FVector Last = P->FeetLocation();
 		FVector Ground;
-		if (!GroundAt(FVector(C->Pos.X, C->Pos.Y, 20000.0), Ground))
+		if (!GroundAt(FVector(Pos.X, Pos.Y, Last.Z), OCPopulationCVars::StepUpCm, OCPopulationCVars::StepDownCm, Ground))
 		{
-			continue;
+			continue; // no ground under the new spot (a wall, a drop): stay put this frame
 		}
-		P->SetSimPose(Ground, FVector(C->Dir.X, C->Dir.Y, 0.0), C->Speed);
+		P->SetSimPose(Ground, FVector(C->Dir.X, C->Dir.Y, 0.0));
 	}
 }
 
 void UOCPopulationSubsystem::Populate(const FVector& View, const FVector& ViewDir)
 {
 	const double DespawnCm = Settings->DespawnM * 100.0;
+	const double Now = GetWorld()->GetTimeSeconds();
 	for (int32 i = 0; i < Pool.Num(); ++i)
 	{
 		AOCPedestrian* P = Pool[i];
@@ -254,8 +324,10 @@ void UOCPopulationSubsystem::Populate(const FVector& View, const FVector& ViewDi
 		const FOCPedestrian* C = Sim.FindPed(P->SimId);
 		const FVector At = P->GetActorLocation();
 		const double Dist = FVector::Dist(At, View);
-		const bool bSeen = InView(At, View, ViewDir) && Dist < DespawnCm * 1.6;
-		if (!C || (!bSeen && Dist > DespawnCm))
+		const bool bInView = InView(At, View, ViewDir);
+		const bool bSeen = bInView && Dist < DespawnCm * 1.6;
+		const bool bOldBody = P->IsDead() && !bInView && Now - P->GetDeathTime() > Settings->CorpseSeconds;
+		if (!C || (!bSeen && Dist > DespawnCm) || bOldBody)
 		{
 			Release(i);
 		}
@@ -280,15 +352,14 @@ void UOCPopulationSubsystem::Populate(const FVector& View, const FVector& ViewDi
 		Release(Worst);
 		--Active;
 	}
-	if (Active >= Budget) return;
+	if (Active >= Budget || !Lanes) return;
 
-	if (!Lanes) return;
 	const TArray<FOCLane>& L = Lanes->GetLanes();
+	if (L.IsEmpty()) return;
 	const double MinCm = Settings->SpawnMinM * 100.0, MaxCm = Settings->SpawnMaxM * 100.0, SeenCm = Settings->VisibleSpawnM * 100.0;
 	for (int32 Try = 0; Try < 24 && Active < Budget; ++Try)
 	{
-		const int32 Lane = Rng.RandRange(0, L.Num() - 1);
-		const FOCLane& Ln = L[Lane];
+		const FOCLane& Ln = L[Rng.RandRange(0, L.Num() - 1)];
 		const double Len = Ln.LengthCm();
 		if (Len < 1500.0) continue;
 		const double S = Rng.FRandRange(600.f, (float)(Len - 300.0));
@@ -296,31 +367,40 @@ void UOCPopulationSubsystem::Populate(const FVector& View, const FVector& ViewDi
 		const double Dist = FVector::Dist2D(At, View);
 		if (Dist < MinCm || Dist > MaxCm || (Dist < SeenCm && InView(At, View, ViewDir))) continue;
 		FVector Ground;
-		if (!GroundAt(At, Ground)) continue;
+		if (!GroundAt(At, 400.0, 800.0, Ground)) continue;
 		AOCPedestrian* Free = nullptr;
 		for (AOCPedestrian* P : Pool) { if (P && P->SimId == INDEX_NONE) { Free = P; break; } }
 		if (!Free) break;
 		const int32 Id = Sim.Spawn(FVector2D(At.X, At.Y), Rng);
 		Free->SimId = Id;
 		Free->SetActive(true);
-		Free->SetSimPose(Ground, FVector(1.0, 0.0, 0.0), Sim.GetParams().WalkSpeedCm);
+		Free->SetSimPose(Ground, Ln.Direction());
 		++Active;
 		++Spawned;
 	}
 }
 
-void UOCPopulationSubsystem::GatherThreats(const FVector& View)
+void UOCPopulationSubsystem::GatherThreats()
 {
-	// Moving cars are threats: every lane car within radius makes nearby peds flee.
+	// Moving cars are threats: every moving lane car makes peds within ThreatRadiusM flee.
 	if (!Traffic.IsValid()) return;
 	const double RadiusCm = Settings->ThreatRadiusM * 100.0;
 	for (const FOCTrafficCar& C : Traffic->GetSim().GetCars())
 	{
+		if (C.Speed < 200.0) continue; // parked or queued at a light: not scary
 		const FOCTrafficPose P = Traffic->GetSim().GetPose(C);
 		FOCThreat T;
 		T.Pos = FVector2D(P.Location.X, P.Location.Y);
 		T.RadiusCm = RadiusCm;
 		T.Weight = 0.4f;
 		Sim.AddThreat(T);
+	}
+	// The player's vehicle is a threat too (it is not in the traffic sim).
+	const UWorld* World = GetWorld();
+	const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (Pawn && !Pawn->IsA<ACharacter>() && Pawn->GetVelocity().Size() * 0.036 > Settings->VehicleKnockdownKmh)
+	{
+		AddThreat(Pawn->GetActorLocation(), RadiusCm, 0.8f);
 	}
 }

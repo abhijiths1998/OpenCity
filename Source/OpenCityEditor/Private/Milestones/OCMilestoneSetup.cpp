@@ -36,6 +36,10 @@
 #include "Vehicles/OCVehicle.h"
 #include "Vehicles/OCVehicleData.h"
 #include "Missions/OCMissionData.h"
+#include "Missions/OCObjective.h"
+#include "Combat/OCProjectile.h"
+#include "Combat/OCWeaponComponent.h"
+#include "Combat/OCWeaponData.h"
 
 namespace OCMilestone
 {
@@ -489,15 +493,15 @@ namespace OCMilestone
 		return true;
 	}
 
-	bool SetupM1()
+	/** On-foot input actions, IMC_OnFoot / IMC_Aiming and DA_OCInputConfig (M1 movement, M6 fire). */
+	UOCInputConfig* OnFootInput(const TCHAR* Tag)
 	{
-		const TCHAR* Tag = TEXT("oc_m1");
 		const TPair<const TCHAR*, EInputActionValueType> Names[] = {
 			{ TEXT("IA_Move"), EInputActionValueType::Axis2D }, { TEXT("IA_Look"), EInputActionValueType::Axis2D },
 			{ TEXT("IA_Jump"), EInputActionValueType::Boolean }, { TEXT("IA_Sprint"), EInputActionValueType::Boolean },
 			{ TEXT("IA_SprintToggle"), EInputActionValueType::Boolean }, { TEXT("IA_Crouch"), EInputActionValueType::Boolean },
 			{ TEXT("IA_Aim"), EInputActionValueType::Boolean }, { TEXT("IA_SwapShoulder"), EInputActionValueType::Boolean },
-			{ TEXT("IA_Interact"), EInputActionValueType::Boolean } };
+			{ TEXT("IA_Interact"), EInputActionValueType::Boolean }, { TEXT("IA_Fire"), EInputActionValueType::Boolean } };
 		TMap<FString, UInputAction*> A;
 		for (const auto& N : Names)
 		{
@@ -527,7 +531,9 @@ namespace OCMilestone
 				{ A[TEXT("IA_Aim")], TEXT("RightMouseButton"), {} },
 				{ A[TEXT("IA_Aim")], TEXT("Gamepad_LeftTrigger"), {}, { Down(Imc, 0.35f) } },
 				{ A[TEXT("IA_Interact")], TEXT("F"), {} },
-				{ A[TEXT("IA_Interact")], TEXT("Gamepad_FaceButton_Top"), {} } };
+				{ A[TEXT("IA_Interact")], TEXT("Gamepad_FaceButton_Top"), {} },
+				{ A[TEXT("IA_Fire")], TEXT("LeftMouseButton"), {} },
+				{ A[TEXT("IA_Fire")], TEXT("Gamepad_RightTrigger"), {}, { Down(Imc, 0.35f) } } };
 		}, Tag);
 		UInputMappingContext* Aiming = Context(TEXT("IMC_Aiming"), InputDir, [&A](UInputMappingContext*) -> TArray<FRow>
 		{
@@ -539,12 +545,19 @@ namespace OCMilestone
 		OCEd::SetProp(Cfg, TEXT("AimingContext"), Ref(Aiming));
 		const TPair<const TCHAR*, const TCHAR*> Props[] = { { TEXT("Move"), TEXT("IA_Move") }, { TEXT("Look"), TEXT("IA_Look") }, { TEXT("Jump"), TEXT("IA_Jump") },
 			{ TEXT("Sprint"), TEXT("IA_Sprint") }, { TEXT("SprintToggle"), TEXT("IA_SprintToggle") }, { TEXT("Crouch"), TEXT("IA_Crouch") },
-			{ TEXT("Aim"), TEXT("IA_Aim") }, { TEXT("SwapShoulder"), TEXT("IA_SwapShoulder") }, { TEXT("Interact"), TEXT("IA_Interact") } };
+			{ TEXT("Aim"), TEXT("IA_Aim") }, { TEXT("SwapShoulder"), TEXT("IA_SwapShoulder") }, { TEXT("Interact"), TEXT("IA_Interact") }, { TEXT("Fire"), TEXT("IA_Fire") } };
 		for (const auto& P : Props)
 		{
 			OCEd::SetProp(Cfg, P.Key, Ref(A[P.Value]));
 		}
 		OCEd::Save(Cfg);
+		return Cfg;
+	}
+
+	bool SetupM1()
+	{
+		const TCHAR* Tag = TEXT("oc_m1");
+		UOCInputConfig* Cfg = OnFootInput(Tag);
 
 		// Give ABP_Unarmed our C++ base so its graph can read crouch/aim/sprint state.
 		UBlueprint* Abp = CastChecked<UBlueprint>(OCEd::Require(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed")));
@@ -775,54 +788,154 @@ namespace OCMilestone
 		return true;
 	}
 
+	// ---- M6 ------------------------------------------------------------------------------------
+
+	/** Fire input, the pistol, and the player's starting weapon. */
+	bool SetupM6()
+	{
+		const TCHAR* Tag = TEXT("oc_m6");
+		OnFootInput(Tag);
+
+		UOCWeaponData* Pistol = CastChecked<UOCWeaponData>(OCEd::GetOrCreateDataAsset(TEXT("DA_Weapon_Pistol"), TEXT("/Game/Weapons"), UOCWeaponData::StaticClass(), Tag));
+		Pistol->Modify();
+		Pistol->DisplayName = FText::FromString(TEXT("Pistola"));
+		Pistol->DamageType = EOCWeaponDamageType::Bullet;
+		Pistol->Damage = 34.f;            // three hits put a pedestrian (100) down
+		Pistol->HitImpulse = 300.f;
+		Pistol->FireRate = 4.f;
+		Pistol->bAutomatic = false;
+		Pistol->bHitscan = true;
+		Pistol->ProjectileClass = AOCProjectile::StaticClass(); // tracer only
+		Pistol->ProjectileSpeed = 30000.f;
+		Pistol->GunshotSeverity = 0.5f;
+		Pistol->AmmoPerShot = 1;
+		Pistol->Range = 6000.f;
+		Pistol->MagazineSize = 12;
+		Pistol->StartingReserve = 48;
+		Pistol->MaxReserve = 120;
+		Pistol->ReloadSeconds = 1.6f;
+		OCEd::Save(Pistol);
+
+		// The player starts with the pistol: set it on the Weapon component template of the player Blueprint.
+		UBlueprint* Player = CastChecked<UBlueprint>(OCEd::Require(TEXT("/Game/Core/Player/BP_OCPlayerCharacter")));
+		FKismetEditorUtilities::CompileBlueprint(Player);
+		UOCWeaponComponent* Weapon = FindObject<UOCWeaponComponent>(Cdo(Player), TEXT("Weapon"));
+		if (!Weapon)
+		{
+			UE_LOG(LogOpenCity, Error, TEXT("oc_m6: BP_OCPlayerCharacter has no Weapon component"));
+			return false;
+		}
+		Weapon->Modify();
+		OCEd::SetProp(Weapon, TEXT("DefaultWeapon"), Ref(Pistol));
+		Player->MarkPackageDirty();
+		OCEd::Save(Player);
+		OCEd::Log(Tag, TEXT("IA_Fire mapped, DA_Weapon_Pistol on BP_OCPlayerCharacter"));
+		return true;
+	}
+
+	// ---- M8 ------------------------------------------------------------------------------------
+
+	/** Layout metres (x east, y north, height above sea) to world centimetres. */
+	FVector LayoutCm(double X, double Y, double Z)
+	{
+		return FVector(X * 100.0, -Y * 100.0, Z * 100.0);
+	}
+
+	/** Replace a mission's objectives (old instanced objects are retired so they are not saved again). */
+	void SetObjectives(UOCMissionData* Mission, TArray<UOCObjective*> Objs)
+	{
+		for (FOCMissionObjective& Old : Mission->Objectives)
+		{
+			if (Old.Objective)
+			{
+				Old.Objective->Rename(nullptr, GetTransientPackage(), REN_DontCreateRedirectors | REN_NonTransactional);
+				Old.Objective->MarkAsGarbage();
+			}
+		}
+		Mission->Objectives.Reset();
+		for (UOCObjective* O : Objs)
+		{
+			FOCMissionObjective Entry;
+			Entry.Objective = O;
+			Entry.bRequired = true;
+			Mission->Objectives.Add(Entry);
+		}
+	}
+
+	template <typename T>
+	T* NewObjective(UOCMissionData* Mission, const TCHAR* Text)
+	{
+		T* O = NewObject<T>(Mission, NAME_None, RF_Public | RF_Transactional);
+		O->Description = FText::FromString(Text);
+		return O;
+	}
+
+	UOCObjectiveReach* Reach(UOCMissionData* Mission, const TCHAR* Text, const FVector& At, float RadiusCm)
+	{
+		UOCObjectiveReach* R = NewObjective<UOCObjectiveReach>(Mission, Text);
+		R->Location = At;
+		R->RadiusCm = RadiusCm;
+		return R;
+	}
+
+	UOCMissionData* MissionAsset(const TCHAR* Name, const TCHAR* Display, const TCHAR* Desc, const TCHAR* Milestone, const TCHAR* Area, const TCHAR* Tag)
+	{
+		UOCMissionData* M = CastChecked<UOCMissionData>(OCEd::GetOrCreateDataAsset(FString(TEXT("DA_Mission_")) + Name, TEXT("/Game/Missions"), UOCMissionData::StaticClass(), Tag));
+		M->Modify();
+		M->DisplayName = FText::FromString(Display);
+		M->Description = FText::FromString(Desc);
+		M->CompletesMilestone = FGameplayTag::RequestGameplayTag(FName(Milestone));
+		M->UnlocksAreas = { FGameplayTag::RequestGameplayTag(FName(Area)) };
+		return M;
+	}
+
+	/**
+	 * The three Act 1 story missions (STORY.md), at their places in the layout. Stand-ins until the
+	 * actors they need exist: no Salvi tail car (Funerale), no fleeing driver (Strada Costiera: reach the
+	 * intercept point in time), no Rocco's crew (La Fornace: kills near the kiln).
+	 */
 	bool SetupM8()
 	{
 		const TCHAR* Tag = TEXT("oc_m8");
-		const FString Dir = TEXT("/Game/Missions");
 
-		// ---- Funerale (Mission 1): drive Beppe home from the cemetery.
-		// Opens Porto Vecchio.
-		UOCMissionData* Funerale = CastChecked<UOCMissionData>(OCEd::GetOrCreateDataAsset(TEXT("DA_Mission_Funerale"), Dir, UOCMissionData::StaticClass(), Tag));
-		Funerale->Modify();
-		Funerale->DisplayName = FText::FromString("Funerale");
-		Funerale->Description = FText::FromString("Drive Beppe home from the cemetery with a Salvi car behind you; lose it in the old town without drawing police attention.");
-		Funerale->CompletesMilestone = FGameplayTag::RequestGameplayTag(FName(TEXT("Story.Mission.Funerale")));
-		Funerale->UnlocksAreas = { FGameplayTag::RequestGameplayTag(FName(TEXT("Area.PortoVecchio"))) };
-		FOCMissionObjective Obj;
-		Obj.bRequired = true;
-		Funerale->Objectives = { Obj };
+		// ---- Funerale (Mission 1): Santa Lucia -> Beppe's garage, without police attention. Opens Porto Vecchio.
+		UOCMissionData* Funerale = MissionAsset(TEXT("Funerale"), TEXT("Funerale"),
+			TEXT("Drive Beppe home from the cemetery with a Salvi car behind you; lose it in the old town without drawing police attention."),
+			TEXT("Story.Mission.Funerale"), TEXT("Area.PortoVecchio"), Tag);
+		UOCObjectiveReach* Home = Reach(Funerale, TEXT("Drive Beppe home to the garage in Le Fornaci"), LayoutCm(2181.0, 1134.0, 11.62), 2000.f);
+		Home->FailAtHeatLevel = 1;
+		SetObjectives(Funerale, { Home });
 		Funerale->CheckpointObjectiveIndex = 0;
 		OCEd::Save(Funerale);
 
-		// ---- Strada Costiera (Mission 5): chase a terminal driver along the coast road.
-		// Opens Le Colline.
-		UOCMissionData* StradaCostiera = CastChecked<UOCMissionData>(OCEd::GetOrCreateDataAsset(TEXT("DA_Mission_StradaCostiera"), Dir, UOCMissionData::StaticClass(), Tag));
-		StradaCostiera->Modify();
-		StradaCostiera->DisplayName = FText::FromString("Strada Costiera");
-		StradaCostiera->Description = FText::FromString("Chase a terminal driver who saw the arsonists, before he reaches Villa Salvi.");
-		StradaCostiera->CompletesMilestone = FGameplayTag::RequestGameplayTag(FName(TEXT("Story.Mission.StradaCostiera")));
-		StradaCostiera->UnlocksAreas = { FGameplayTag::RequestGameplayTag(FName(TEXT("Area.LeColline"))) };
-		FOCMissionObjective Obj2;
-		Obj2.bRequired = true;
-		StradaCostiera->Objectives = { Obj2 };
-		StradaCostiera->CheckpointObjectiveIndex = 0;
-		OCEd::Save(StradaCostiera);
+		// ---- Strada Costiera (Mission 5): fish market -> cut him off on the coast road before the Colline checkpoint.
+		UOCMissionData* Costiera = MissionAsset(TEXT("StradaCostiera"), TEXT("Strada Costiera"),
+			TEXT("Chase a terminal driver who saw the arsonists, before he reaches Villa Salvi."),
+			TEXT("Story.Mission.StradaCostiera"), TEXT("Area.LeColline"), Tag);
+		UOCObjectiveReach* Market = Reach(Costiera, TEXT("Find the terminal driver at the fish market"), LayoutCm(630.0, 330.0, 5.35), 2500.f);
+		UOCObjectiveReach* Cut = Reach(Costiera, TEXT("Cut him off on the coast road before the Colline checkpoint"), LayoutCm(188.6, 1568.2, 13.78), 2000.f);
+		Cut->TimeLimitSeconds = 240.f;
+		SetObjectives(Costiera, { Market, Cut });
+		Costiera->CheckpointObjectiveIndex = 1;
+		OCEd::Save(Costiera);
 
-		// ---- La Fornace (Mission 7): shootout in the abandoned kiln.
-		// Opens Lungomare.
-		UOCMissionData* LaFornace = CastChecked<UOCMissionData>(OCEd::GetOrCreateDataAsset(TEXT("DA_Mission_LaFornace"), Dir, UOCMissionData::StaticClass(), Tag));
-		LaFornace->Modify();
-		LaFornace->DisplayName = FText::FromString("La Fornace");
-		LaFornace->Description = FText::FromString("Fight through Rocco's crew in the abandoned kiln. Rocco names Salvi and is shot by a sniper.");
-		LaFornace->CompletesMilestone = FGameplayTag::RequestGameplayTag(FName(TEXT("Story.Mission.LaFornace")));
-		LaFornace->UnlocksAreas = { FGameplayTag::RequestGameplayTag(FName(TEXT("Area.Lungomare"))) };
-		FOCMissionObjective Obj3;
-		Obj3.bRequired = true;
-		LaFornace->Objectives = { Obj3 };
-		LaFornace->CheckpointObjectiveIndex = 0;
-		OCEd::Save(LaFornace);
+		// ---- La Fornace (Mission 7): the abandoned kiln, a fight, then hold out. Opens Lungomare.
+		UOCMissionData* Fornace = MissionAsset(TEXT("LaFornace"), TEXT("La Fornace"),
+			TEXT("Fight through Rocco's crew in the abandoned kiln. Rocco names Salvi and is shot by a sniper."),
+			TEXT("Story.Mission.LaFornace"), TEXT("Area.Lungomare"), Tag);
+		const FVector Kiln = LayoutCm(2670.0, 1500.0, 11.95);
+		UOCObjectiveReach* ToKiln = Reach(Fornace, TEXT("Go to the abandoned kiln"), Kiln, 3000.f);
+		UOCObjectiveEliminate* Crew = NewObjective<UOCObjectiveEliminate>(Fornace, TEXT("Fight through Rocco's crew"));
+		Crew->KillCount = 4;
+		Crew->Location = Kiln;
+		Crew->RadiusCm = 8000.f;
+		UOCObjectiveSurvive* Hold = NewObjective<UOCObjectiveSurvive>(Fornace, TEXT("Hold the kiln until the shooting stops"));
+		Hold->DurationSeconds = 20.f;
+		SetObjectives(Fornace, { ToKiln, Crew, Hold });
+		Fornace->CheckpointObjectiveIndex = 1;
+		OCEd::Save(Fornace);
 
-		OCEd::Log(Tag, TEXT("authored 3 story mission DataAssets"));
+		OCEd::Log(Tag, TEXT("authored 3 story missions with objectives"));
 		return true;
 	}
 
@@ -842,7 +955,7 @@ namespace OCMilestone
 		UBlueprint* Abp = CastChecked<UBlueprint>(OCEd::Require(TEXT("/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed")));
 		UClass* Parent = UBlueprintEditorLibrary::GetBlueprintParentClass(Abp);
 		V.Check(TEXT("ABP_Unarmed parent"), Parent == UOCCharacterAnimInstance::StaticClass(), GetNameSafe(Parent));
-		const TPair<const TCHAR*, int32> Contexts[] = { { TEXT("IMC_OnFoot"), 17 }, { TEXT("IMC_Aiming"), 2 } };
+		const TPair<const TCHAR*, int32> Contexts[] = { { TEXT("IMC_OnFoot"), 19 }, { TEXT("IMC_Aiming"), 2 } };
 		for (const auto& C : Contexts)
 		{
 			UInputMappingContext* Imc = CastChecked<UInputMappingContext>(OCEd::Require(FString(InputDir) / C.Key));
@@ -912,7 +1025,7 @@ int32 UOCMilestoneCommandlet::Main(const FString& Params)
 	FString StepList;
 	if (!FParse::Value(*Params, TEXT("steps="), StepList, /*bShouldStopOnSeparator*/ false))
 	{
-		UE_LOG(LogOpenCity, Error, TEXT("usage: -run=OCMilestone -steps=m0,m1,m2,m8,verify-m1,verify-m2"));
+		UE_LOG(LogOpenCity, Error, TEXT("usage: -run=OCMilestone -steps=m0,m1,m2,m6,m8,verify-m1,verify-m2"));
 		return 1;
 	}
 	TArray<FString> Steps;
@@ -923,6 +1036,7 @@ int32 UOCMilestoneCommandlet::Main(const FString& Params)
 		if (Step == TEXT("m0")) { bOk = OCMilestone::SetupM0(); }
 		else if (Step == TEXT("m1")) { bOk = OCMilestone::SetupM1(); }
 		else if (Step == TEXT("m2")) { bOk = OCMilestone::SetupM2(); }
+		else if (Step == TEXT("m6")) { bOk = OCMilestone::SetupM6(); }
 		else if (Step == TEXT("m8")) { bOk = OCMilestone::SetupM8(); }
 		else if (Step == TEXT("verify-m1")) { bOk = OCMilestone::VerifyM1(); }
 		else if (Step == TEXT("verify-m2")) { bOk = OCMilestone::VerifyM2(); }

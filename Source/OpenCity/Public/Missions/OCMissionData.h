@@ -12,14 +12,16 @@ struct OPENCITY_API FOCMissionObjective
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Objective")
-	TSubclassOf<UOCObjective> ObjectiveClass;
+	/** The objective with its settings (Reach, Eliminate, Survive, Lose Heat). */
+	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Objective")
+	TObjectPtr<UOCObjective> Objective;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Objective")
-	FText DisplayOverride; // overrides the objective asset's description
+	/** Overrides the objective's own description. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
+	FText DisplayOverride;
 
-	/** Whether this objective must be completed to finish the mission. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Objective")
+	/** A required objective failing fails the mission; an optional one is skipped. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
 	bool bRequired = true;
 };
 
@@ -32,8 +34,8 @@ enum class EOCMissionOutcome : uint8
 	Failed,
 };
 
-/** Data asset defining one mission: objectives, success/fail conditions, unlocks.
- *  Authored entirely in the editor; no C++ needed per mission.
+/** Data asset defining one mission: objectives in order, checkpoint, unlocks.
+ *  Authored entirely as data (OCMilestone -steps=m8 or the editor); no C++ per mission.
  */
 UCLASS(BlueprintType)
 class OPENCITY_API UOCMissionData : public UPrimaryDataAsset
@@ -47,20 +49,20 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Info")
 	FText Description;
 
-	/** Story milestone completed when this mission succeeds (e.g. Story.Mission.Funerale). */
+	/** Story milestone completed when this mission succeeds (e.g. Story.Mission.Funerale). Areas and
+	 *  gates open from it through DA_AreaUnlocks. */
 	UPROPERTY(EditDefaultsOnly, Category = "Progression")
 	FGameplayTag CompletesMilestone;
 
-	/** Areas unlocked on success (e.g. Area.PortoVecchio). */
+	/** Areas this mission opens (informational: DA_AreaUnlocks is the authority; a test checks they agree). */
 	UPROPERTY(EditDefaultsOnly, Category = "Progression")
 	TArray<FGameplayTag> UnlocksAreas;
 
-	/** Objectives in order. All required objectives must succeed for the mission to succeed;
-	 *  any required objective failing fails the mission (unless checkpoint restart). */
+	/** Objectives, played one after another. */
 	UPROPERTY(EditDefaultsOnly, Category = "Objectives")
 	TArray<FOCMissionObjective> Objectives;
 
-	/** Checkpoint objective index: when reached, player can restart from here on failure. */
+	/** Once this objective becomes active it is the checkpoint: a retry after failing resumes here. */
 	UPROPERTY(EditDefaultsOnly, Category = "Objectives", meta = (ClampMin = "0"))
 	int32 CheckpointObjectiveIndex = 0;
 };

@@ -58,10 +58,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Actions")
 	TObjectPtr<UInputAction> Aim;
 
-	/** Aim weapon / aim down sights (shared with locomotion aim). */
-	UPROPERTY(EditDefaultsOnly, Category = "Actions")
-	TObjectPtr<UInputAction> AimWeapon;
-
 	/** Fire equipped weapon. */
 	UPROPERTY(EditDefaultsOnly, Category = "Actions")
 	TObjectPtr<UInputAction> Fire;

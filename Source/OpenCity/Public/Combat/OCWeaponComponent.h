@@ -1,14 +1,20 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Combat/OCAmmo.h"
 #include "Components/ActorComponent.h"
 #include "Combat/OCWeaponData.h"
 #include "OCWeaponComponent.generated.h"
 
 class AOCProjectile;
-class UOCAmmoData;
 
-/** Weapon handling on a pawn: fire, aim, reload, ammo reserve. Kept small; art/tuning in data assets. */
+/**
+ * Weapon handling on a pawn (M6): fire, aim, reload, ammo. Tuning lives in UOCWeaponData.
+ * Never ticks: automatic fire runs on a timer while the trigger is held. A shot traces from the
+ * owner's view point (the camera for the player) so it lands under the crosshair, then checks the
+ * line from the shooter to that point; damage goes through IOCDamageable, and every shot publishes
+ * Event.Crime.Gunshot (peds panic, wanted heat).
+ */
 UCLASS(ClassGroup = (OpenCity), meta = (BlueprintSpawnableComponent))
 class OPENCITY_API UOCWeaponComponent : public UActorComponent
 {
@@ -25,23 +31,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Combat")
 	UOCWeaponData* GetEquippedWeapon() const { return EquippedWeapon; }
 
-	/** Ammo currently in the magazine. */
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Combat")
-	int32 GetAmmoInMagazine() const { return AmmoInMagazine; }
+	int32 GetAmmoInMagazine() const { return Ammo.InMagazine; }
 
-	/** Ammo in reserve for the equipped weapon's ammo type. */
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Combat")
-	int32 GetAmmoReserve() const { return AmmoReserve; }
+	int32 GetAmmoReserve() const { return Ammo.Reserve; }
 
-	/** Whether the weapon is currently reloading. */
 	UFUNCTION(BlueprintPure, Category = "OpenCity|Combat")
 	bool IsReloading() const { return bReloading; }
 
-	/** Fire one shot (or start automatic fire while held). Called from input. */
+	/** Trigger pressed: fire one shot now if allowed, and keep firing while held if automatic. */
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|Combat")
 	void Fire();
 
-	/** Stop automatic fire. */
+	/** Trigger released. */
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|Combat")
 	void StopFire();
 
@@ -49,21 +52,29 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|Combat")
 	bool Reload();
 
+	/** Add reserve rounds for the equipped weapon (pickups), capped at its MaxReserve. */
+	void AddAmmo(int32 Rounds);
+
 	/** Aim down sights / weapon aim mode on/off. */
 	UFUNCTION(BlueprintCallable, Category = "OpenCity|Combat")
 	void SetAiming(bool bAiming);
 
 	bool IsAiming() const { return bAiming; }
 
+	/** Shots fired since equip (dev logging). */
+	int32 GetShotsFired() const { return ShotsFired; }
+
 protected:
 	virtual void BeginPlay() override;
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
-		FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
-	void TryFire();
-	void StartReload();
+	/** One shot if the weapon is ready; returns whether it fired. */
+	bool TryFire();
+	void AutoFireTick();
 	void FinishReload();
+	void SpawnTracer(const FVector& From, const FVector& To);
+	float ShotInterval() const;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Combat")
 	TObjectPtr<UOCWeaponData> DefaultWeapon;
@@ -71,23 +82,17 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UOCWeaponData> EquippedWeapon;
 
-	UPROPERTY(Transient)
-	int32 AmmoInMagazine = 0;
-
-	UPROPERTY(Transient)
-	int32 AmmoReserve = 0;
-
-	UPROPERTY(Transient)
-	float NextFireTime = 0.f;
-
-	UPROPERTY(Transient)
+	FOCAmmo Ammo;
+	double NextFireTime = 0.0;
 	bool bReloading = false;
-
-	UPROPERTY(Transient)
 	bool bAiming = false;
+	bool bTriggerHeld = false;
+	int32 ShotsFired = 0;
 
 	FTimerHandle ReloadTimer;
+	FTimerHandle AutoFireTimer;
 
-	/** Pooled projectiles for the equipped weapon. */
+	/** Pooled projectiles / tracers for the equipped weapon. */
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<AOCProjectile>> ProjectilePool;
 };

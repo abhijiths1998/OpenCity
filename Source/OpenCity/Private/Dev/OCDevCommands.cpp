@@ -24,6 +24,9 @@
 #include "Missions/OCMissionData.h"
 #include "Missions/OCMissionSubsystem.h"
 #include "Population/OCPopulationSubsystem.h"
+#include "Population/OCPedestrian.h"
+#include "Combat/OCWeaponComponent.h"
+#include "Wanted/OCWantedSubsystem.h"
 #include "Player/OCInteractionComponent.h"
 #include "TimerManager.h"
 #include "Vehicles/OCMotorbike.h"
@@ -382,94 +385,167 @@ namespace OCDev
 		return World ? World->GetSubsystem<UOCMissionSubsystem>() : nullptr;
 	}
 
-	/** List missions: oc.dev.mission list */
-	void MissionList(UWorld* World)
+	/** "Funerale", "DA_Mission_Funerale" or a full object path. */
+	UOCMissionData* LoadMission(const FString& Name)
 	{
-		if (UOCMissionSubsystem* M = Missions(World))
+		FString Path = Name;
+		if (!Path.StartsWith(TEXT("/")))
 		{
-			if (UOCMissionData* Active = M->GetActiveMission())
-			{
-				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: active %s (outcome %d)"), *Active->GetName(), (int32)M->GetOutcome());
-			}
-			else
-			{
-				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: none active"));
-			}
+			const FString Asset = Path.StartsWith(TEXT("DA_Mission_")) ? Path : TEXT("DA_Mission_") + Path;
+			Path = FString::Printf(TEXT("/Game/Missions/%s.%s"), *Asset, *Asset);
 		}
-		else
-		{
-			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: mission subsystem not available"));
-		}
+		return LoadObject<UOCMissionData>(nullptr, *Path);
 	}
 
-	/** Start a mission: oc.dev.mission start DA_Mission_Funerale */
-	void MissionStart(const TArray<FString>& Args, UWorld* World)
-	{
-		if (!Args.IsValidIndex(1))
-		{
-			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: oc.dev.mission start <DataAsset path> | complete | list"));
-			return;
-		}
-		if (UOCMissionSubsystem* M = Missions(World))
-		{
-			if (UOCMissionData* Data = Cast<UOCMissionData>(LoadObject<UObject>(nullptr, *Args[1])))
-			{
-				M->StartMission(Data);
-				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: started %s"), *Args[1]);
-			}
-			else
-			{
-				UE_LOG(LogOpenCity, Warning, TEXT("OCDEV mission: %s is not a mission data asset"), *Args[1]);
-			}
-		}
-	}
-
-	/** Complete the active mission: oc.dev.mission complete */
-	void MissionComplete(const TArray<FString>& Args, UWorld* World)
-	{
-		if (UOCMissionSubsystem* M = Missions(World))
-		{
-			if (UOCMissionData* Active = M->GetActiveMission())
-			{
-				if (const UGameInstance* GI = World->GetGameInstance())
-				{
-					if (UOCProgressionSubsystem* Prog = GI->GetSubsystem<UOCProgressionSubsystem>())
-					{
-						Prog->CompleteMilestone(Active->CompletesMilestone);
-						UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: completed %s, milestone %s"), *Active->GetName(),
-							*Active->CompletesMilestone.ToString());
-					}
-				}
-			}
-			else
-			{
-				UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: no active mission to complete"));
-			}
-		}
-	}
-
+	/** oc.dev.mission start <Name> | status | complete | abort | retry */
 	void MissionCommand(const TArray<FString>& Args, UWorld* World)
 	{
-		if (Args.Num() == 0 || Args[0] == TEXT("list"))
+		UOCMissionSubsystem* M = Missions(World);
+		if (!M)
 		{
-			MissionList(World);
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: no mission subsystem in this world"));
 			return;
 		}
-		if (Args[0] == TEXT("start") && Args.IsValidIndex(1))
+		const FString Verb = Args.Num() > 0 ? Args[0] : TEXT("status");
+		if (Verb == TEXT("start") && Args.IsValidIndex(1))
 		{
-			MissionStart(Args, World);
-			return;
+			UOCMissionData* Data = LoadMission(Args[1]);
+			if (!Data)
+			{
+				UE_LOG(LogOpenCity, Warning, TEXT("OCDEV mission: %s is not a mission data asset"), *Args[1]);
+				return;
+			}
+			const bool bStarted = M->StartMission(Data);
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: start %s: %s"), *Data->GetName(), bStarted ? TEXT("ok") : TEXT("refused"));
 		}
-		if (Args[0] == TEXT("complete"))
+		else if (Verb == TEXT("complete"))
 		{
-			MissionComplete(Args, World);
-			return;
+			M->ForceComplete();
 		}
-		UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: oc.dev.mission start <DataAsset path> | complete | list"));
+		else if (Verb == TEXT("abort"))
+		{
+			M->AbortMission();
+		}
+		else if (Verb == TEXT("retry"))
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: retry %s"), M->RetryFromCheckpoint() ? TEXT("ok") : TEXT("nothing to retry"));
+		}
+		else if (Verb != TEXT("status") && Verb != TEXT("list"))
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: start <Funerale|StradaCostiera|LaFornace|path> | status | complete | abort | retry"));
+		}
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV mission: %s"), *M->Describe());
 	}
 
-	FAutoConsoleCommandWithWorldAndArgs CmdMission(TEXT("oc.dev.mission"), TEXT("Mission: start <asset path> | complete | list."),
+	FAutoConsoleCommandWithWorldAndArgs CmdMission(TEXT("oc.dev.mission"), TEXT("Mission: start <Name> | status | complete | abort | retry."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&MissionCommand));
+
+	/** oc.dev.weapon [status] | fire [N] | aimped | reload | give <ammo> */
+	void WeaponCommand(const TArray<FString>& Args, UWorld* World)
+	{
+		APawn* P = PlayerPawn(World);
+		UOCWeaponComponent* W = P ? P->FindComponentByClass<UOCWeaponComponent>() : nullptr;
+		if (!W)
+		{
+			UE_LOG(LogOpenCity, Display, TEXT("OCDEV weapon: the player pawn has no weapon (in a vehicle?)"));
+			return;
+		}
+		const FString Verb = Args.Num() > 0 ? Args[0] : TEXT("status");
+		if (Verb == TEXT("fire"))
+		{
+			// N trigger pulls, spaced by the fire interval so each one is a real shot.
+			const int32 N = Args.IsValidIndex(1) ? FMath::Max(1, FCString::Atoi(*Args[1])) : 1;
+			const float Gap = W->GetEquippedWeapon() ? 1.05f / FMath::Max(W->GetEquippedWeapon()->FireRate, 0.1f) : 0.3f;
+			const TWeakObjectPtr<UOCWeaponComponent> WeakW(W);
+			for (int32 i = 0; i < N; ++i)
+			{
+				FTimerHandle H;
+				World->GetTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([WeakW]()
+				{
+					if (UOCWeaponComponent* Wc = WeakW.Get())
+					{
+						Wc->Fire();
+						Wc->StopFire();
+					}
+				}), 0.01f + i * Gap, false);
+			}
+		}
+		else if (Verb == TEXT("aimped"))
+		{
+			// Turn the player's view onto the nearest live pedestrian (scripted shooting tests).
+			UOCPopulationSubsystem* Pop = World->GetSubsystem<UOCPopulationSubsystem>();
+			AOCPedestrian* Ped = Pop ? Pop->FindNearestPed(P->GetActorLocation(), 5000.0) : nullptr;
+			APlayerController* PC = World->GetFirstPlayerController();
+			if (Ped && PC)
+			{
+				// The camera orbits as the view turns, so re-aim over a few frames until its line passes through the ped.
+				const TWeakObjectPtr<APlayerController> WeakPC(PC);
+				const TWeakObjectPtr<AOCPedestrian> WeakPed(Ped);
+				for (int32 i = 0; i < 4; ++i)
+				{
+					FTimerHandle H;
+					World->GetTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([WeakPC, WeakPed]()
+					{
+						if (WeakPC.IsValid() && WeakPed.IsValid())
+						{
+							FVector ViewLoc;
+							FRotator ViewRot;
+							WeakPC->GetPlayerViewPoint(ViewLoc, ViewRot);
+							WeakPC->SetControlRotation((WeakPed->GetActorLocation() - ViewLoc).Rotation());
+						}
+					}), 0.01f + i * 0.1f, false);
+				}
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV weapon: aiming at %s, %.1f m away"), *Ped->GetName(),
+					FVector::Dist(Ped->GetActorLocation(), P->GetActorLocation()) / 100.0);
+			}
+			else
+			{
+				UE_LOG(LogOpenCity, Display, TEXT("OCDEV weapon: no pedestrian within 50 m"));
+			}
+		}
+		else if (Verb == TEXT("reload"))
+		{
+			W->Reload();
+		}
+		else if (Verb == TEXT("give") && Args.IsValidIndex(1))
+		{
+			W->AddAmmo(FCString::Atoi(*Args[1]));
+		}
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV weapon: %s mag %d reserve %d reloading %d shots %d"),
+			W->GetEquippedWeapon() ? *W->GetEquippedWeapon()->GetName() : TEXT("unarmed"),
+			W->GetAmmoInMagazine(), W->GetAmmoReserve(), W->IsReloading(), W->GetShotsFired());
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdWeapon(TEXT("oc.dev.weapon"), TEXT("Weapon: status | fire [N] | aimped | reload | give <rounds>."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&WeaponCommand));
+
+	/** oc.dev.wanted [status] | clear | crime <gunshot|murder|...> */
+	void WantedCommand(const TArray<FString>& Args, UWorld* World)
+	{
+		UOCWantedSubsystem* Wanted = World ? World->GetSubsystem<UOCWantedSubsystem>() : nullptr;
+		if (!Wanted)
+		{
+			return;
+		}
+		const FString Verb = Args.Num() > 0 ? Args[0] : TEXT("status");
+		if (Verb == TEXT("clear"))
+		{
+			Wanted->ClearHeat();
+		}
+		else if (Verb == TEXT("crime") && Args.IsValidIndex(1))
+		{
+			const FString C = Args[1].ToLower();
+			const EOCrime Crime = C == TEXT("gunshot") ? EOCrime::Gunshot : C == TEXT("assault") ? EOCrime::Assault
+				: C == TEXT("murder") ? EOCrime::Murder : C == TEXT("theft") ? EOCrime::VehicleTheft : EOCrime::RecklessDriving;
+			APawn* P = PlayerPawn(World);
+			Wanted->ReportCrime(Crime, P ? P->GetActorLocation() : FVector::ZeroVector, P, 1.f);
+		}
+		UE_LOG(LogOpenCity, Display, TEXT("OCDEV wanted: level %d heat %.2f zones %d"), (int32)Wanted->GetHeatLevel(),
+			Wanted->GetHeat(), Wanted->GetSearchZones().Num());
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdWanted(TEXT("oc.dev.wanted"), TEXT("Wanted: status | clear | crime <gunshot|assault|murder|theft|reckless>."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&WantedCommand));
 
 	/** Runs -ocdevscript once, on the first tick of the first game world that has begun play. */
 	void StartScript(UWorld* World, const FString& Script)

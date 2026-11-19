@@ -6,12 +6,13 @@
 #include "Missions/OCMissionData.h"
 #include "OCMissionSubsystem.generated.h"
 
-/** Active mission state machine: objectives, triggers, checkpoints, fail/restart.
- *
- * The mission subsystem owns the active mission and its objective instances.
- * Objectives report Succeed/Fail via Evaluate(); the subsystem decides mission
- * outcome (all required succeed = success; any required fail = failure → restart
- * from checkpoint or mission failed).
+class UOCEventSubsystem;
+
+/**
+ * The active mission (M8): copies the mission's objective templates, runs them one at a time in
+ * order, and decides the outcome. All required objectives done = success (completes the story
+ * milestone, which opens areas). A required objective failing = mission failed; RetryFromCheckpoint
+ * then resumes at the checkpoint if it was reached, otherwise from the start.
  */
 UCLASS()
 class OPENCITY_API UOCMissionSubsystem : public UTickableWorldSubsystem
@@ -21,33 +22,52 @@ class OPENCITY_API UOCMissionSubsystem : public UTickableWorldSubsystem
 public:
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+	virtual void Deinitialize() override;
 	virtual void Tick(float DeltaTime) override;
-	virtual bool IsTickable() const override { return true; }
+	virtual TStatId GetStatId() const override;
 
-	/** Start a mission from a data asset. */
-	void StartMission(TObjectPtr<UOCMissionData> Mission);
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOCOnMissionEnded, const UOCMissionData* /*Mission*/, EOCMissionOutcome /*Outcome*/);
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOCOnObjectiveChanged, const UOCMissionData* /*Mission*/, int32 /*ObjectiveIndex*/);
 
-	/** Abort the current mission (failure). */
+	/** Start a mission (ignored while another is running). Returns whether it started. */
+	bool StartMission(UOCMissionData* Mission);
+
+	/** Give up the current mission (counts as failed). */
 	void AbortMission();
 
-	/** Restart from the last checkpoint. */
-	void RestartFromCheckpoint();
+	/** After a failure: resume from the checkpoint if it was reached, else from the start. */
+	bool RetryFromCheckpoint();
 
-	/** The active mission data (nullptr if none). */
-	TObjectPtr<UOCMissionData> GetActiveMission() const { return ActiveMission; }
+	/** Dev/debug: succeed every remaining objective now (same path as playing it out). */
+	void ForceComplete();
 
-	/** Current mission outcome. */
+	/** Advance objectives by DeltaSeconds now (Tick does this every frame; tests call it directly). */
+	void Step(float DeltaSeconds, const FOCObjectiveContext& Ctx);
+
+	UOCMissionData* GetActiveMission() const { return ActiveMission; }
 	EOCMissionOutcome GetOutcome() const { return Outcome; }
-
-	/** Whether a mission is currently active. */
 	bool IsMissionActive() const { return ActiveMission != nullptr && Outcome == EOCMissionOutcome::None; }
+	int32 GetCurrentObjectiveIndex() const { return Current; }
+	const UOCObjective* GetCurrentObjective() const { return Objectives.IsValidIndex(Current) ? Objectives[Current].Get() : nullptr; }
+	FString Describe() const;
+
+	FOCOnMissionEnded OnMissionEnded;
+	FOCOnObjectiveChanged OnObjectiveChanged;
 
 private:
-	void EvaluateObjectives();
-	void OnObjectiveStateChanged(UOCObjective* Objective);
+	void ActivateObjective(int32 Index);
+	void Finish(EOCMissionOutcome InOutcome, const FString& Why);
+	FOCObjectiveContext GatherContext() const;
 
+	UPROPERTY(Transient)
 	TObjectPtr<UOCMissionData> ActiveMission;
-	TArray<UOCObjective*> ObjectiveInstances;
-	int32 CheckpointObjectiveIndex = 0;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UOCObjective>> Objectives;
+
+	TArray<bool> Required;
+	int32 Current = INDEX_NONE;
+	bool bCheckpointReached = false;
 	EOCMissionOutcome Outcome = EOCMissionOutcome::None;
+	TWeakObjectPtr<UOCEventSubsystem> Events;
 };

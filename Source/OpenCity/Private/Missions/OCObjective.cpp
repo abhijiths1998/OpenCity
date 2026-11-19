@@ -1,14 +1,14 @@
 #include "Missions/OCObjective.h"
 
-#include "Damage/OCDamageable.h"
-#include "Engine/World.h"
-#include "GameFramework/Actor.h"
+#include "Events/OCEventSubsystem.h"
 
 void UOCObjective::Activate()
 {
 	if (State == EOCObjectiveState::Inactive)
 	{
 		State = EOCObjectiveState::Active;
+		ActiveSeconds = 0.f;
+		FailReason.Reset();
 	}
 }
 
@@ -31,45 +31,73 @@ void UOCObjective::Fail()
 void UOCObjective::Reset()
 {
 	State = EOCObjectiveState::Inactive;
+	ActiveSeconds = 0.f;
+	FailReason.Reset();
+	ResetProgress();
 }
 
-EOCObjectiveResult UOCObjectiveReach::Evaluate_Implementation()
+EOCObjectiveResult UOCObjective::Advance(float DeltaSeconds, const FOCObjectiveContext& Ctx)
 {
-	if (State != EOCObjectiveState::Active)
+	if (!IsActive())
 	{
 		return EOCObjectiveResult::None;
 	}
-	// The trigger volume reports entry via the mission subsystem; here we just
-	// return None and let the subsystem drive the transition. Subclasses can
-	// override with direct checks.
-	return EOCObjectiveResult::None;
-}
+	ActiveSeconds += FMath::Max(DeltaSeconds, 0.f);
 
-EOCObjectiveResult UOCObjectiveEliminate::Evaluate_Implementation()
-{
-	if (State != EOCObjectiveState::Active)
+	EOCObjectiveResult Result = Evaluate(Ctx);
+	if (Result != EOCObjectiveResult::Succeed)
 	{
-		return EOCObjectiveResult::None;
-	}
-	if (!Target || !Target->IsValidLowLevel())
-	{
-		return EOCObjectiveResult::Succeed;
-	}
-	if (IOCDamageable* Damageable = Cast<IOCDamageable>(Target))
-	{
-		if (Damageable->IsDead())
+		if (FailAtHeatLevel > 0 && Ctx.HeatLevel >= FailAtHeatLevel)
 		{
-			return EOCObjectiveResult::Succeed;
+			Result = EOCObjectiveResult::Fail;
+			FailReason = FString::Printf(TEXT("drew police attention (heat %d)"), Ctx.HeatLevel);
+		}
+		else if (TimeLimitSeconds > 0.f && ActiveSeconds > TimeLimitSeconds)
+		{
+			Result = EOCObjectiveResult::Fail;
+			FailReason = FString::Printf(TEXT("out of time (%.0f s)"), TimeLimitSeconds);
 		}
 	}
-	return EOCObjectiveResult::None;
+	if (Result == EOCObjectiveResult::Succeed) Succeed();
+	else if (Result == EOCObjectiveResult::Fail) Fail();
+	return Result;
 }
 
-EOCObjectiveResult UOCObjectiveSurvive::Evaluate_Implementation()
+EOCObjectiveResult UOCObjectiveReach::Evaluate(const FOCObjectiveContext& Ctx)
 {
-	if (State != EOCObjectiveState::Active)
+	if (!Ctx.bHasPlayer)
 	{
 		return EOCObjectiveResult::None;
 	}
-	return ElapsedSeconds >= DurationSeconds ? EOCObjectiveResult::Succeed : EOCObjectiveResult::None;
+	const bool bNear = FVector::DistSquared2D(Ctx.PlayerLocation, Location) <= FMath::Square(RadiusCm)
+		&& FMath::Abs(Ctx.PlayerLocation.Z - Location.Z) <= HeightToleranceCm;
+	return bNear ? EOCObjectiveResult::Succeed : EOCObjectiveResult::None;
+}
+
+void UOCObjectiveEliminate::OnEvent(const FOCEvent& Ev)
+{
+	if (!IsActive() || Ev.Tag != OCEventTags::Murder() || !UOCEventSubsystem::IsPlayerInstigated(Ev.Instigator.Get()))
+	{
+		return;
+	}
+	if (RadiusCm > 0.f && FVector::DistSquared2D(Ev.Location, Location) > FMath::Square(RadiusCm))
+	{
+		return;
+	}
+	++Kills;
+}
+
+EOCObjectiveResult UOCObjectiveEliminate::Evaluate(const FOCObjectiveContext& Ctx)
+{
+	return Kills >= KillCount ? EOCObjectiveResult::Succeed : EOCObjectiveResult::None;
+}
+
+EOCObjectiveResult UOCObjectiveSurvive::Evaluate(const FOCObjectiveContext& Ctx)
+{
+	return ActiveSeconds >= DurationSeconds ? EOCObjectiveResult::Succeed : EOCObjectiveResult::None;
+}
+
+EOCObjectiveResult UOCObjectiveLoseHeat::Evaluate(const FOCObjectiveContext& Ctx)
+{
+	return Ctx.HeatLevel == 0 ? EOCObjectiveResult::Succeed : EOCObjectiveResult::None;
 }

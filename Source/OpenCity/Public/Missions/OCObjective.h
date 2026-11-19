@@ -1,9 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameplayTags.h"
 #include "UObject/Object.h"
 #include "OCObjective.generated.h"
+
+struct FOCEvent;
 
 /** Objective state. */
 UENUM(BlueprintType)
@@ -12,10 +13,10 @@ enum class EOCObjectiveState : uint8
 	Inactive,   // not yet started
 	Active,     // player is working on it
 	Succeeded,  // completed
-	Failed,     // failed (can be retried from checkpoint)
+	Failed,     // failed
 };
 
-/** Result of evaluating an objective this frame. */
+/** Result of evaluating an objective. */
 UENUM(BlueprintType)
 enum class EOCObjectiveResult : uint8
 {
@@ -24,94 +25,144 @@ enum class EOCObjectiveResult : uint8
 	Fail,       // transition to Failed
 };
 
-/** One objective within a mission: pure, data-driven logic.
+/** What an objective may look at when it is evaluated (filled by UOCMissionSubsystem). */
+struct FOCObjectiveContext
+{
+	bool bHasPlayer = false;
+	FVector PlayerLocation = FVector::ZeroVector; // world cm (the possessed pawn: on foot or in a car)
+	int32 HeatLevel = 0;                          // wanted level 0..5
+};
+
+/**
+ * One objective within a mission: pure, data-driven logic (M8). Instanced inside a UOCMissionData
+ * asset, so each mission sets its own location, counts and limits; UOCMissionSubsystem copies the
+ * templates when a mission starts and drives the copies (one active at a time, in order).
  *
- * Subclasses implement Evaluate() to decide Succeed/Fail based on game state.
- * The mission subsystem drives them; no Tick here — they're evaluated on
- * relevant events (enter trigger, kill, reach checkpoint, timer).
+ * Every objective can also fail on a time limit or on drawing police attention.
  */
-UCLASS(Abstract, BlueprintType)
+UCLASS(Abstract, EditInlineNew, DefaultToInstanced, BlueprintType, CollapseCategories)
 class OPENCITY_API UOCObjective : public UObject
 {
 	GENERATED_BODY()
 
 public:
-	UOCObjective() = default;
-
-	/** Human-readable description (shown on the HUD, M9). */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Objective")
+	/** Shown on the HUD (M9). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
 	FText Description;
 
-	/** Current state. */
-	UPROPERTY(BlueprintReadOnly, Category = "Objective")
+	/** Fail if not done within this many seconds of becoming active (0 = no limit). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "0", Units = "s"))
+	float TimeLimitSeconds = 0.f;
+
+	/** Fail as soon as the wanted level reaches this (0 = police don't matter). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "0", ClampMax = "5"))
+	int32 FailAtHeatLevel = 0;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Objective")
 	EOCObjectiveState State = EOCObjectiveState::Inactive;
 
-	/** Start this objective. */
-	UFUNCTION(BlueprintCallable, Category = "Objective")
+	/** Seconds since Activate (driven by Advance). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Objective")
+	float ActiveSeconds = 0.f;
+
 	void Activate();
-
-	/** Mark succeeded (with optional fail reason text). */
-	UFUNCTION(BlueprintCallable, Category = "Objective")
 	void Succeed();
-
-	/** Mark failed. */
-	UFUNCTION(BlueprintCallable, Category = "Objective")
 	void Fail();
-
-	/** Reset to inactive (used when restarting from a checkpoint). */
-	UFUNCTION(BlueprintCallable, Category = "Objective")
+	/** Back to inactive with progress cleared (restart). */
 	void Reset();
 
-	/** Evaluate this objective now; returns Succeed/Fail/None. Override in subclasses. */
-	UFUNCTION(BlueprintNativeEvent, Category = "Objective")
-	EOCObjectiveResult Evaluate();
+	/** Advance time and decide: limits first, then the subclass rule. Applies the transition. */
+	EOCObjectiveResult Advance(float DeltaSeconds, const FOCObjectiveContext& Ctx);
 
-	/** Whether the objective is currently active and can succeed/fail. */
+	/** A gameplay event while active (kills for Eliminate). */
+	virtual void OnEvent(const FOCEvent& Ev) {}
+
 	bool IsActive() const { return State == EOCObjectiveState::Active; }
 	bool IsComplete() const { return State == EOCObjectiveState::Succeeded; }
 	bool IsFailed() const { return State == EOCObjectiveState::Failed; }
 
+	/** Why the last failure happened (log / HUD). */
+	const FString& GetFailReason() const { return FailReason; }
+
 protected:
-	virtual EOCObjectiveResult Evaluate_Implementation() { return EOCObjectiveResult::None; }
+	/** The objective's own rule; called only while active. */
+	virtual EOCObjectiveResult Evaluate(const FOCObjectiveContext& Ctx) { return EOCObjectiveResult::None; }
+	/** Clear subclass progress on Reset. */
+	virtual void ResetProgress() {}
+
+	FString FailReason;
 };
 
-/** Reach a location (trigger volume): objective completes when the player enters. */
-UCLASS()
+/** Get to a place: succeeds when the player is within Radius of Location (any vehicle or on foot). */
+UCLASS(meta = (DisplayName = "Reach"))
 class OPENCITY_API UOCObjectiveReach : public UOCObjective
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Objective")
-	FGameplayTag TriggerTag;
+	/** World location (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
+	FVector Location = FVector::ZeroVector;
 
-	virtual EOCObjectiveResult Evaluate_Implementation() override;
+	/** Horizontal radius (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "100", Units = "cm"))
+	float RadiusCm = 1500.f;
+
+	/** How far above or below Location still counts (cm): a bridge over the spot doesn't. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "100", Units = "cm"))
+	float HeightToleranceCm = 1500.f;
+
+protected:
+	virtual EOCObjectiveResult Evaluate(const FOCObjectiveContext& Ctx) override;
 };
 
-/** Eliminate a target (pedestrian/vehicle): objective completes when the target is dead. */
-UCLASS()
+/** Take people down: succeeds after KillCount player kills (within Radius of Location if Radius > 0). */
+UCLASS(meta = (DisplayName = "Eliminate"))
 class OPENCITY_API UOCObjectiveEliminate : public UOCObjective
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Objective")
-	TObjectPtr<class AActor> Target;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "1"))
+	int32 KillCount = 1;
 
-	virtual EOCObjectiveResult Evaluate_Implementation() override;
+	/** Where kills count (cm); RadiusCm 0 = anywhere. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "0", Units = "cm"))
+	float RadiusCm = 0.f;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Objective")
+	int32 Kills = 0;
+
+	virtual void OnEvent(const FOCEvent& Ev) override;
+
+protected:
+	virtual EOCObjectiveResult Evaluate(const FOCObjectiveContext& Ctx) override;
+	virtual void ResetProgress() override { Kills = 0; }
 };
 
-/** Survive for a duration: objective completes after the timer elapses. */
-UCLASS()
+/** Hold out: succeeds after DurationSeconds active (TimeLimit / heat can still fail it). */
+UCLASS(meta = (DisplayName = "Survive"))
 class OPENCITY_API UOCObjectiveSurvive : public UOCObjective
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "0", Units = "s"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Objective", meta = (ClampMin = "0", Units = "s"))
 	float DurationSeconds = 10.f;
 
-	float ElapsedSeconds = 0.f;
+protected:
+	virtual EOCObjectiveResult Evaluate(const FOCObjectiveContext& Ctx) override;
+};
 
-	virtual EOCObjectiveResult Evaluate_Implementation() override;
+/** Shake the police: succeeds while the wanted level is 0 (put it after the objective that draws heat). */
+UCLASS(meta = (DisplayName = "Lose Heat"))
+class OPENCITY_API UOCObjectiveLoseHeat : public UOCObjective
+{
+	GENERATED_BODY()
+
+protected:
+	virtual EOCObjectiveResult Evaluate(const FOCObjectiveContext& Ctx) override;
 };

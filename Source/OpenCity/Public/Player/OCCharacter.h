@@ -107,8 +107,6 @@ private:
 	/** Combat input. */
 	void HandleFireStarted(const FInputActionValue& Value);
 	void HandleFireStopped(const FInputActionValue& Value);
-	void HandleAimWeaponStarted(const FInputActionValue& Value);
-	void HandleAimWeaponStopped(const FInputActionValue& Value);
 
 	/** All input policy (toggles, cancels, buffered jump) lives here, in OpenCityCore. */
 	FOCLocomotionIntent Intent;
